@@ -1,0 +1,305 @@
+/**
+ * osContPad.c — Controles: DualShock 2 → formato de mando de N64
+ *
+ * ── QUÉ ESTABA MAL ────────────────────────────────────────────────────
+ *
+ * 1. DOBLE INICIALIZACIÓN. ps2_main.c llamaba a ps2_init_pad() y este
+ *    archivo a osContInit(), y AMBOS hacían padPortOpen() sobre los
+ *    mismos puertos con buffers DMA distintos. libpad no tolera eso:
+ *    el segundo open deja el primero apuntando a memoria que ya no se
+ *    actualiza. Ahora hay un único punto de apertura, aquí.
+ *
+ * 2. MAPEO DE BOTONES ROTO. Circle y R3 estaban los dos asignados a
+ *    C-Right, y L3 a C-Left, de modo que pulsar el stick derecho hacía
+ *    cosas raras. Además el propio archivo declaraba una zona muerta
+ *    (ANALOG_DEAD_ZONE en ps2_controller.c) que nunca se aplicaba.
+ *
+ * 3. No se esperaba a que el mando estuviera listo antes de leerlo, ni
+ *    se configuraba el modo analógico: sin padSetMainMode() el stick
+ *    izquierdo devuelve 128,128 fijo (modo digital).
+ *
+ * ── MAPEO NUEVO ───────────────────────────────────────────────────────
+ *
+ *   N64          DualShock 2
+ *   A            Cruz
+ *   B            Cuadrado
+ *   Z            L2
+ *   Start        Start
+ *   D-Pad        D-Pad
+ *   L / R        L1 / R1
+ *   C-Up         Triángulo
+ *   C-Down       Círculo
+ *   C-Left/Right stick derecho (analógico)   + L3/R3 como respaldo
+ *
+ *   Los botones C se leen sobre todo del stick derecho, que es como se
+ *   juega OoT hoy en día, y Círculo/Triángulo quedan de apoyo.
+ */
+
+#include <libpad.h>
+#include <kernel.h>
+#include <string.h>
+#include <stdio.h>
+
+#include "ps2_types.h"
+
+struct OSMesgQueue;
+
+/* ───────────────────────────────────────────────────────────────── *
+ *  Bits del mando de N64 (ultra64/controller.h)
+ * ───────────────────────────────────────────────────────────────── */
+#define N64_A_BUTTON     0x8000
+#define N64_B_BUTTON     0x4000
+#define N64_Z_TRIG       0x2000
+#define N64_START        0x1000
+#define N64_D_UP         0x0800
+#define N64_D_DOWN       0x0400
+#define N64_D_LEFT       0x0200
+#define N64_D_RIGHT      0x0100
+#define N64_L_TRIG       0x0020
+#define N64_R_TRIG       0x0010
+#define N64_C_UP         0x0008
+#define N64_C_DOWN       0x0004
+#define N64_C_LEFT       0x0002
+#define N64_C_RIGHT      0x0001
+
+/* Códigos de error de libultra */
+#define CONT_NO_RESPONSE_ERROR  0x08
+
+/* ───────────────────────────────────────────────────────────────── *
+ *  Structs de libultra — layout EXACTO (ultra64/controller.h)
+ * ───────────────────────────────────────────────────────────────── */
+typedef struct OSContStatus {
+    /* 0x00 */ u16 type;
+    /* 0x02 */ u8  status;
+    /* 0x03 */ u8  errno;
+} OSContStatus;   /* size = 0x04 */
+
+typedef struct OSContPad {
+    /* 0x00 */ u16 button;
+    /* 0x02 */ s8  stick_x;
+    /* 0x03 */ s8  stick_y;
+    /* 0x04 */ u8  errno;
+} OSContPad;      /* size = 0x06 con padding */
+
+/* ───────────────────────────────────────────────────────────────── *
+ *  Configuración
+ * ───────────────────────────────────────────────────────────────── */
+#define MAX_CONTROLLERS   4
+#define PS2_PORTS         2      /* la PS2 tiene 2 puertos físicos */
+#define ANALOG_DEAD_ZONE  10     /* sobre 128 */
+#define C_STICK_THRESHOLD 48     /* cuánto hay que mover el stick derecho */
+
+/* Tipo de mando que reportamos: mando estándar de N64 con Rumble Pak */
+#define CONT_TYPE_NORMAL  0x0005
+
+/* libpad exige buffers alineados a 64 bytes */
+static u8 s_padBuf[PS2_PORTS][256] __attribute__((aligned(64)));
+static struct padButtonStatus s_padStatus[PS2_PORTS];
+static bool s_portOpen[PS2_PORTS];
+static bool s_padInitDone = false;
+
+/* ───────────────────────────────────────────────────────────────── *
+ *  Espera a que el mando termine de negociar el modo
+ * ───────────────────────────────────────────────────────────────── */
+static int pad_wait_ready(int port) {
+    int state;
+    int timeout = 0;
+    do {
+        state = padGetState(port, 0);
+        if (state == PAD_STATE_DISCONN) return 0;
+        if (state == PAD_STATE_STABLE || state == PAD_STATE_FINDCTP1) return 1;
+        /* Cede la CPU en vez de hacer busy-wait puro */
+        if (++timeout > 1000000) return 0;
+    } while (1);
+}
+
+/* ───────────────────────────────────────────────────────────────── *
+ *  Configura un puerto: modo analógico + actuadores de vibración
+ * ───────────────────────────────────────────────────────────────── */
+static void pad_configure(int port) {
+    if (!pad_wait_ready(port)) return;
+
+    /* Modo analógico bloqueado: sin esto el stick izquierdo no se lee */
+    padSetMainMode(port, 0, PAD_MMODE_DUALSHOCK, PAD_MMODE_LOCK);
+    if (!pad_wait_ready(port)) return;
+
+    /* Actuadores de vibración. ESTO FALTABA: padSetActDirect() no hace
+     * nada si antes no se alinearon los actuadores. */
+    if (padInfoAct(port, 0, -1, 0) != 0) {
+        u8 actAlign[6] = {0, 1, 0xFF, 0xFF, 0xFF, 0xFF};
+        padSetActAlign(port, 0, actAlign);
+        pad_wait_ready(port);
+    }
+}
+
+/* ───────────────────────────────────────────────────────────────── *
+ *  osContInit — ÚNICO punto donde se abren los puertos
+ * ───────────────────────────────────────────────────────────────── */
+/* CORREGIDO: el primer parámetro es OSMesgQueue*, no void*, y
+ * osContStartReadData/Query/SetCh devuelven s32, no void.
+ * Verificado compilando contra include/ultra64.h. */
+s32 osContInit(struct OSMesgQueue* mq, u8* numControllers, OSContStatus* status) {
+    (void)mq;
+
+    if (numControllers) *numControllers = 0;
+
+    if (!s_padInitDone) {
+        padInit(0);
+        s_padInitDone = true;
+    }
+
+    for (int i = 0; i < PS2_PORTS; i++) {
+        memset(s_padBuf[i], 0, sizeof(s_padBuf[i]));
+        s_portOpen[i] = (padPortOpen(i, 0, s_padBuf[i]) != 0);
+        if (s_portOpen[i]) {
+            pad_configure(i);
+            if (numControllers) (*numControllers)++;
+        }
+    }
+
+    /* El juego pregunta por 4 puertos (los de N64); los 2 que no existen
+     * se reportan como desconectados. */
+    if (status) {
+        for (int i = 0; i < MAX_CONTROLLERS; i++) {
+            bool present = (i < PS2_PORTS) && s_portOpen[i];
+            status[i].type   = present ? CONT_TYPE_NORMAL : 0;
+            status[i].status = 0;
+            status[i].errno  = present ? 0 : CONT_NO_RESPONSE_ERROR;
+        }
+    }
+
+    printf("[osContPad] %d mando(s) detectado(s)\n",
+           numControllers ? *numControllers : 0);
+    return 0;
+}
+
+/* ───────────────────────────────────────────────────────────────── *
+ *  Zona muerta
+ * ───────────────────────────────────────────────────────────────── */
+static s8 apply_deadzone(int v) {
+    if (v > -ANALOG_DEAD_ZONE && v < ANALOG_DEAD_ZONE) return 0;
+    if (v >  127) v =  127;
+    if (v < -128) v = -128;
+    return (s8)v;
+}
+
+/* ───────────────────────────────────────────────────────────────── *
+ *  osContStartReadData / osContGetReadData
+ * ───────────────────────────────────────────────────────────────── */
+s32 osContStartReadData(struct OSMesgQueue* mq) {
+    (void)mq;
+    /* En PS2 la lectura es síncrona; no hay nada que lanzar. */
+    return 0;
+}
+
+void osContGetReadData(OSContPad* pad) {
+    if (!pad) return;
+
+    for (int port = 0; port < MAX_CONTROLLERS; port++) {
+        pad[port].button  = 0;
+        pad[port].stick_x = 0;
+        pad[port].stick_y = 0;
+        pad[port].errno   = 0;
+
+        if (port >= PS2_PORTS || !s_portOpen[port]) {
+            pad[port].errno = CONT_NO_RESPONSE_ERROR;
+            continue;
+        }
+
+        int state = padGetState(port, 0);
+        if (state != PAD_STATE_STABLE && state != PAD_STATE_FINDCTP1) {
+            pad[port].errno = CONT_NO_RESPONSE_ERROR;
+            continue;
+        }
+
+        if (padRead(port, 0, &s_padStatus[port]) == 0) {
+            pad[port].errno = CONT_NO_RESPONSE_ERROR;
+            continue;
+        }
+
+        /* libpad invierte la lógica: 0 = pulsado */
+        u32 btns = (~s_padStatus[port].btns) & 0xFFFF;
+        u16 n64  = 0;
+
+        /* ── Botones de acción ──────────────────────────────── */
+        if (btns & PAD_CROSS)     n64 |= N64_A_BUTTON;
+        if (btns & PAD_SQUARE)    n64 |= N64_B_BUTTON;
+        if (btns & PAD_L2)        n64 |= N64_Z_TRIG;
+        if (btns & PAD_START)     n64 |= N64_START;
+
+        /* ── D-Pad ──────────────────────────────────────────── */
+        if (btns & PAD_UP)        n64 |= N64_D_UP;
+        if (btns & PAD_DOWN)      n64 |= N64_D_DOWN;
+        if (btns & PAD_LEFT)      n64 |= N64_D_LEFT;
+        if (btns & PAD_RIGHT)     n64 |= N64_D_RIGHT;
+
+        /* ── Gatillos L / R ─────────────────────────────────── */
+        if (btns & PAD_L1)        n64 |= N64_L_TRIG;
+        if (btns & PAD_R1)        n64 |= N64_R_TRIG;
+
+        /* ── Botones C desde el stick derecho ───────────────── */
+        int rx = (int)s_padStatus[port].rjoy_h - 128;
+        int ry = (int)s_padStatus[port].rjoy_v - 128;
+        if (rx >  C_STICK_THRESHOLD) n64 |= N64_C_RIGHT;
+        if (rx < -C_STICK_THRESHOLD) n64 |= N64_C_LEFT;
+        if (ry >  C_STICK_THRESHOLD) n64 |= N64_C_DOWN;
+        if (ry < -C_STICK_THRESHOLD) n64 |= N64_C_UP;
+
+        /* ── Botones C de respaldo (sin conflictos) ─────────── */
+        if (btns & PAD_TRIANGLE)  n64 |= N64_C_UP;
+        if (btns & PAD_CIRCLE)    n64 |= N64_C_DOWN;
+        if (btns & PAD_R2)        n64 |= N64_C_RIGHT;
+        /* L3/R3 se dejan libres: antes chocaban con C-Left/C-Right y
+         * hacían que pulsar los sticks disparase acciones. */
+
+        pad[port].button = n64;
+
+        /* ── Stick izquierdo ────────────────────────────────── */
+        /* PS2: 0..255, centro 128. N64: -128..127, Y hacia arriba. */
+        pad[port].stick_x = apply_deadzone((int)s_padStatus[port].ljoy_h - 128);
+        pad[port].stick_y = apply_deadzone(128 - (int)s_padStatus[port].ljoy_v);
+    }
+}
+
+/* ───────────────────────────────────────────────────────────────── *
+ *  osContStartQuery / osContGetQuery
+ * ───────────────────────────────────────────────────────────────── */
+s32 osContStartQuery(struct OSMesgQueue* mq) {
+    (void)mq;
+    return 0;
+}
+
+void osContGetQuery(OSContStatus* status) {
+    if (!status) return;
+    for (int i = 0; i < MAX_CONTROLLERS; i++) {
+        bool present = (i < PS2_PORTS) && s_portOpen[i];
+        status[i].type   = present ? CONT_TYPE_NORMAL : 0;
+        status[i].status = 0;
+        status[i].errno  = present ? 0 : CONT_NO_RESPONSE_ERROR;
+    }
+}
+
+s32 osContSetCh(u8 ch) {
+    (void)ch;
+    return 0;
+}
+
+/* ───────────────────────────────────────────────────────────────── *
+ *  Acceso para el módulo de vibración (io/ps2_controller.c)
+ * ───────────────────────────────────────────────────────────────── */
+bool ps2_pad_is_open(int port) {
+    return (port >= 0 && port < PS2_PORTS) && s_portOpen[port];
+}
+
+void ps2_pad_shutdown(void) {
+    for (int i = 0; i < PS2_PORTS; i++) {
+        if (s_portOpen[i]) {
+            padPortClose(i, 0);
+            s_portOpen[i] = false;
+        }
+    }
+    if (s_padInitDone) {
+        padEnd();
+        s_padInitDone = false;
+    }
+}

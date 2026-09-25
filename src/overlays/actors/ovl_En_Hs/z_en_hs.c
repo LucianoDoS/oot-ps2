@@ -1,0 +1,310 @@
+/*
+ * File: z_en_hs.c
+ * Overlay: ovl_En_Hs
+ * Description: Carpenter's Son
+ */
+
+#include "z_en_hs.h"
+
+#include "gfx.h"
+#include "gfx_setupdl.h"
+#include "printf.h"
+#include "sfx.h"
+#include "sys_matrix.h"
+#include "terminal.h"
+#include "translation.h"
+#include "z_lib.h"
+#include "play_state.h"
+#include "player.h"
+#include "save.h"
+
+#include "assets/objects/object_hs/object_hs.h"
+
+#define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_FRIENDLY)
+
+#define ENHS_TRACKING_PLAYER (1 << 0)
+
+void EnHs_Init(Actor* thisx, PlayState* play);
+void EnHs_Destroy(Actor* thisx, PlayState* play);
+void EnHs_Update(Actor* thisx, PlayState* play);
+void EnHs_Draw(Actor* thisx, PlayState* play);
+
+void EnHs_SleepingInteract(EnHs* this, PlayState* play);
+void EnHs_SittingAwake(EnHs* this, PlayState* play);
+
+ActorProfile En_Hs_Profile = {
+    /**/ ACTOR_EN_HS,
+    /**/ ACTORCAT_NPC,
+    /**/ FLAGS,
+    /**/ OBJECT_HS,
+    /**/ sizeof(EnHs),
+    /**/ EnHs_Init,
+    /**/ EnHs_Destroy,
+    /**/ EnHs_Update,
+    /**/ EnHs_Draw,
+};
+
+static ColliderCylinderInit sCylinderInit = {
+    {
+        COL_MATERIAL_NONE,
+        AT_NONE,
+        AC_ON | AC_TYPE_ENEMY,
+        OC1_ON | OC1_TYPE_ALL,
+        OC2_TYPE_1,
+        COLSHAPE_CYLINDER,
+    },
+    {
+        ELEM_MATERIAL_UNK0,
+        { 0x00000000, HIT_SPECIAL_EFFECT_NONE, 0x00 },
+        { 0xFFCFFFFF, HIT_BACKLASH_NONE, 0x00 },
+        ATELEM_NONE,
+        ACELEM_ON,
+        OCELEM_ON,
+    },
+    { 40, 40, 0, { 0, 0, 0 } },
+};
+
+void EnHs_SetActionFunc(EnHs* this, EnHsActionFunc actionFunc) {
+    this->actionFunc = actionFunc;
+}
+
+void EnHs_Init(Actor* thisx, PlayState* play) {
+    EnHs* this = (EnHs*)thisx;
+    s32 pad;
+
+    ActorShape_Init(&this->actor.shape, 0.0f, ActorShadow_DrawCircle, 36.0f);
+    SkelAnime_InitFlex(play, &this->skelAnime, &gCarpenterSonSkel, &gCarpenterSonSittingAnim, this->jointTable,
+                       this->morphTable, 16);
+    Animation_PlayLoop(&this->skelAnime, &gCarpenterSonSittingAnim);
+    Collider_InitCylinder(play, &this->collider);
+    Collider_SetCylinder(play, &this->collider, &this->actor, &sCylinderInit);
+    this->actor.colChkInfo.mass = MASS_IMMOVABLE;
+    Actor_SetScale(&this->actor, 0.01f);
+
+    if (!LINK_IS_ADULT) {
+        this->actor.params = 0;
+    } else {
+        this->actor.params = 1;
+    }
+
+    if (this->actor.params == 1) {
+        PRINTF(VT_FGCOL(CYAN) T(" ヒヨコの店(大人の時) \n", " chicken shop (adult era) \n") VT_RST);
+        EnHs_SetActionFunc(this, EnHs_SleepingInteract);
+        if (GET_ITEMGETINF(ITEMGETINF_30)) {
+            PRINTF(VT_FGCOL(CYAN) T(" ヒヨコ屋閉店 \n", " chicken shop closed \n") VT_RST);
+            Actor_Kill(&this->actor);
+        }
+    } else {
+        PRINTF(VT_FGCOL(CYAN) T(" ヒヨコの店(子人の時) \n", " chicken shop (child era) \n") VT_RST);
+        EnHs_SetActionFunc(this, EnHs_SleepingInteract);
+    }
+
+    this->trackingFlags = 0;
+    this->actor.attentionRangeType = ATTENTION_RANGE_6;
+}
+
+void EnHs_Destroy(Actor* thisx, PlayState* play) {
+    EnHs* this = (EnHs*)thisx;
+
+    Collider_DestroyCylinder(play, &this->collider);
+}
+
+s32 EnHs_SittingAwakeInteract(EnHs* this, PlayState* play, u16 textId, EnHsActionFunc actionFunc) {
+    s16 yawDiff;
+
+    if (Actor_TalkOfferAccepted(&this->actor, play)) {
+        EnHs_SetActionFunc(this, actionFunc);
+        return true;
+    }
+
+    this->actor.textId = textId;
+    yawDiff = this->actor.yawTowardsPlayer - this->actor.shape.rot.y;
+    if ((ABS(yawDiff) <= 0x2150) && (this->actor.xzDistToPlayer < 100.0f)) {
+        this->trackingFlags |= ENHS_TRACKING_PLAYER;
+        Actor_OfferTalk(&this->actor, play, 100.0f);
+    }
+
+    return false;
+}
+
+void EnHs_SittingAwakeTalk(EnHs* this, PlayState* play) {
+    if (Actor_TextboxIsClosing(&this->actor, play)) {
+        EnHs_SetActionFunc(this, EnHs_SittingAwake);
+    }
+
+    this->trackingFlags |= ENHS_TRACKING_PLAYER;
+}
+
+void EnHs_GivingOddMushroom(EnHs* this, PlayState* play) {
+    if ((Message_GetState(&play->msgCtx) == TEXT_STATE_DONE) && Message_ShouldAdvance(play)) {
+        Interface_SetSubTimer(180);
+        EnHs_SetActionFunc(this, EnHs_SittingAwake);
+        CLEAR_EVENTINF(EVENTINF_MARATHON_ACTIVE);
+    }
+
+    this->trackingFlags |= ENHS_TRACKING_PLAYER;
+}
+
+void EnHs_SittingAwake(EnHs* this, PlayState* play) {
+    EnHs_SittingAwakeInteract(this, play, 0x10B6, EnHs_SittingAwakeTalk);
+}
+
+void EnHs_SleepingTalk(EnHs* this, PlayState* play) {
+    if (Actor_TextboxIsClosing(&this->actor, play)) {
+        EnHs_SetActionFunc(this, EnHs_SleepingInteract);
+    }
+}
+
+void EnHs_OddMushroomNo(EnHs* this, PlayState* play) {
+    if (Actor_TextboxIsClosing(&this->actor, play)) {
+        EnHs_SetActionFunc(this, EnHs_SleepingInteract);
+    }
+}
+
+void EnHs_OddMushroomYes(EnHs* this, PlayState* play) {
+    if (Actor_HasParent(&this->actor, play)) {
+        this->actor.parent = NULL;
+        EnHs_SetActionFunc(this, EnHs_GivingOddMushroom);
+    } else {
+        Actor_OfferGetItem(&this->actor, play, GI_ODD_MUSHROOM, 10000.0f, 50.0f);
+    }
+
+    this->trackingFlags |= ENHS_TRACKING_PLAYER;
+}
+
+void EnHs_OddMushroomChoice(EnHs* this, PlayState* play) {
+    if ((Message_GetState(&play->msgCtx) == TEXT_STATE_CHOICE) && Message_ShouldAdvance(play)) {
+        switch (play->msgCtx.choiceIndex) {
+            case 0:
+                EnHs_SetActionFunc(this, EnHs_OddMushroomYes);
+                Actor_OfferGetItem(&this->actor, play, GI_ODD_MUSHROOM, 10000.0f, 50.0f);
+                break;
+            case 1:
+                Message_ContinueTextbox(play, 0x10B4);
+                EnHs_SetActionFunc(this, EnHs_OddMushroomNo);
+                break;
+        }
+
+        Animation_Change(&this->skelAnime, &gCarpenterSonSittingAnim, 1.0f, 0.0f,
+                         Animation_GetLastFrame(&gCarpenterSonSittingAnim), ANIMMODE_LOOP, 8.0f);
+    }
+
+    this->trackingFlags |= ENHS_TRACKING_PLAYER;
+}
+
+void EnHs_SeeingCojiro(EnHs* this, PlayState* play) {
+    Player* player = GET_PLAYER(play);
+
+    if ((Message_GetState(&play->msgCtx) == TEXT_STATE_EVENT) && Message_ShouldAdvance(play)) {
+        Message_ContinueTextbox(play, 0x10B3);
+        EnHs_SetActionFunc(this, EnHs_OddMushroomChoice);
+        Animation_Change(&this->skelAnime, &gCarpenterSonPleadingAnim, 1.0f, 0.0f,
+                         Animation_GetLastFrame(&gCarpenterSonPleadingAnim), ANIMMODE_LOOP, 8.0f);
+    }
+
+    if (this->cojiroSfxTimer > 0) {
+        this->cojiroSfxTimer--;
+        if (this->cojiroSfxTimer == 0) {
+            Player_PlaySfx(player, NA_SE_EV_CHICKEN_CRY_M);
+        }
+    }
+
+    this->trackingFlags |= ENHS_TRACKING_PLAYER;
+}
+
+void EnHs_SleepingInteract(EnHs* this, PlayState* play) {
+    Player* player = GET_PLAYER(play);
+    s16 yawDiff;
+
+    if (Actor_TalkOfferAccepted(&this->actor, play)) {
+        if (Actor_GetPlayerExchangeItemId(play) == EXCH_ITEM_COJIRO) {
+            player->actor.textId = 0x10B2;
+            EnHs_SetActionFunc(this, EnHs_SeeingCojiro);
+            Animation_Change(&this->skelAnime, &gCarpenterSonReachingAnim, 1.0f, 0.0f,
+                             Animation_GetLastFrame(&gCarpenterSonReachingAnim), ANIMMODE_LOOP, 8.0f);
+            this->cojiroSfxTimer = 40;
+            Sfx_PlaySfxCentered(NA_SE_SY_TRE_BOX_APPEAR);
+        } else {
+            player->actor.textId = 0x10B1;
+            EnHs_SetActionFunc(this, EnHs_SleepingTalk);
+        }
+    } else {
+        yawDiff = this->actor.yawTowardsPlayer - this->actor.shape.rot.y;
+        this->actor.textId = 0x10B1;
+        if ((ABS(yawDiff) <= 0x2150) && (this->actor.xzDistToPlayer < 100.0f)) {
+            Actor_OfferTalkExchangeEquiCylinder(&this->actor, play, 100.0f, EXCH_ITEM_COJIRO);
+        }
+    }
+}
+
+void EnHs_Update(Actor* thisx, PlayState* play) {
+    EnHs* this = (EnHs*)thisx;
+    s32 pad;
+
+    Collider_UpdateCylinder(thisx, &this->collider);
+    CollisionCheck_SetOC(play, &play->colChkCtx, &this->collider.base);
+    Actor_MoveXZGravity(&this->actor);
+    Actor_UpdateBgCheckInfo(play, &this->actor, 0.0f, 0.0f, 0.0f, UPDBGCHECKINFO_FLAG_2);
+    if (SkelAnime_Update(&this->skelAnime)) {
+        this->skelAnime.curFrame = 0.0f;
+    }
+
+    this->actionFunc(this, play);
+
+    if (this->trackingFlags & ENHS_TRACKING_PLAYER) {
+        Actor_TrackPlayer(play, &this->actor, &this->headRot, &this->torsoRot, this->actor.focus.pos);
+        this->trackingFlags &= ~ENHS_TRACKING_PLAYER;
+    } else {
+        Math_SmoothStepToS(&this->headRot.x, 12800, 6, 6200, 100);
+        Math_SmoothStepToS(&this->headRot.y, 0, 6, 6200, 100);
+        Math_SmoothStepToS(&this->torsoRot.x, 0, 6, 6200, 100);
+        Math_SmoothStepToS(&this->torsoRot.y, 0, 6, 6200, 100);
+    }
+}
+
+s32 EnHs_OverrideLimbDraw(PlayState* play, s32 limbIndex, Gfx** dList, Vec3f* pos, Vec3s* rot, void* thisx) {
+    EnHs* this = (EnHs*)thisx;
+
+    switch (limbIndex) {
+        case 9:
+            rot->x += this->headRot.y;
+            rot->z += this->headRot.x;
+            break;
+        case 10:
+            *dList = NULL;
+            return false;
+        case 11:
+            *dList = NULL;
+            return false;
+        case 12:
+            if (this->actor.params == 1) {
+                *dList = NULL;
+                return false;
+            }
+            break;
+        case 13:
+            if (this->actor.params == 1) {
+                *dList = NULL;
+                return false;
+            }
+            break;
+    }
+    return false;
+}
+
+void EnHs_PostLimbDraw(PlayState* play, s32 limbIndex, Gfx** dList, Vec3s* rot, void* thisx) {
+    static Vec3f sFocusOffset = { 300.0f, 1000.0f, 0.0f };
+    EnHs* this = (EnHs*)thisx;
+
+    if (limbIndex == 9) {
+        Matrix_MultVec3f(&sFocusOffset, &this->actor.focus.pos);
+    }
+}
+
+void EnHs_Draw(Actor* thisx, PlayState* play) {
+    EnHs* this = (EnHs*)thisx;
+
+    Gfx_SetupDL_37Opa(play->state.gfxCtx);
+    SkelAnime_DrawFlexOpa(play, this->skelAnime.skeleton, this->skelAnime.jointTable, this->skelAnime.dListCount,
+                          EnHs_OverrideLimbDraw, EnHs_PostLimbDraw, this);
+}

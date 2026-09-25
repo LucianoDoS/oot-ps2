@@ -1,0 +1,185 @@
+/* ====================================================================
+ *  linkfile.ps2 — Linker script para el port de OoT a PS2
+ *
+ *  USO: este script es OPCIONAL.
+ *      make PLATFORM=PS2                      -> linkfile de ps2sdk
+ *      make PLATFORM=PS2 OOT_CUSTOM_LINKER=1  -> ESTE
+ *
+ *  Empieza con el de ps2sdk. Pasa a este solo cuando necesites
+ *  controlar el mapa de memoria (por ejemplo, para colocar overlays en
+ *  direcciones fijas).
+ *
+ * ====================================================================
+ *  QUÉ ESTABA MAL EN LA VERSIÓN ANTERIOR
+ * ====================================================================
+ *
+ * 1. NO DEFINÍA NINGÚN SÍMBOLO DE SEGMENTO DE OoT.
+ *    El juego referencia 144 símbolos con el patrón _xxxSegmentStart /
+ *    _xxxSegmentRomStart / _xxxSegmentBssEnd (include/segment_symbols.h).
+ *    En N64 los generaba el "spec" de la ROM. Aquí no los generaba
+ *    nadie, así que el enlace habría muerto con 144 símbolos
+ *    indefinidos en cuanto se compilara src/code de verdad.
+ *
+ * 2. Colocaba el código a mano en 0x00100000 sin alinear a 128 bytes,
+ *    que es lo que exige el DMA del GS, y sin declarar _gp, _fbss ni
+ *    _end, que ps2sdk necesita para arrancar el ELF.
+ *
+ *  Sobre los *RomStart: en PS2 no hay ROM mapeada en memoria. Valen 0 a
+ *  propósito; la posición real de cada dato la resuelve la tabla
+ *  dmadata leída del fichero .z64 en tiempo de ejecución (ver osRom.c).
+ * ==================================================================== */
+
+ENTRY(_start);
+
+PHDRS
+{
+    text PT_LOAD;
+}
+
+SECTIONS
+{
+    /* Dirección estándar de carga de un ELF de PS2. Por debajo está
+     * reservado para el kernel de la consola. */
+    . = 0x00100000;
+
+    .text : {
+        _ftext = . ;
+        *(.start)
+        *(.text)
+        *(.text.*)
+        *(.gnu.linkonce.t*)
+        KEEP(*(.init))
+        KEEP(*(.fini))
+        QUAD(0)
+    } : text
+    PROVIDE(_etext = .);
+    PROVIDE(etext = .);
+
+    .ctors ALIGN(16) : {
+        KEEP(*crtbegin*.o(.ctors))
+        KEEP(*(EXCLUDE_FILE(*crtend*.o) .ctors))
+        KEEP(*(SORT(.ctors.*)))
+        KEEP(*(.ctors))
+    }
+    .dtors ALIGN(16) : {
+        KEEP(*crtbegin*.o(.dtors))
+        KEEP(*(EXCLUDE_FILE(*crtend*.o) .dtors))
+        KEEP(*(SORT(.dtors.*)))
+        KEEP(*(.dtors))
+    }
+
+    .rodata ALIGN(128) : {
+        *(.rodata)
+        *(.rodata.*)
+        *(.gnu.linkonce.r*)
+        . = ALIGN(128);
+    }
+
+    .data ALIGN(128) : {
+        _fdata = . ;
+        *(.data)
+        *(.data.*)
+        *(.gnu.linkonce.d*)
+        SORT(CONSTRUCTORS)
+        . = ALIGN(128);
+    }
+
+    /* Small-data del MIPS. Compilamos con -G0 para que quede vacía,
+     * pero el enlazador la quiere declarada igualmente. */
+    _gp = ALIGN(128) + 0x7ff0;
+    .lit4 ALIGN(128) : { *(.lit4) }
+    .lit8 ALIGN(128) : { *(.lit8) }
+    .sdata ALIGN(128) : {
+        *(.sdata)
+        *(.sdata.*)
+        *(.gnu.linkonce.s*)
+        . = ALIGN(128);
+    }
+    _edata = .;
+    PROVIDE(edata = .);
+
+    .sbss ALIGN(128) : {
+        _fbss = . ;
+        *(.sbss)
+        *(.sbss.*)
+        *(.gnu.linkonce.sb*)
+        *(.scommon)
+    }
+    .bss ALIGN(128) : {
+        *(.bss)
+        *(.bss.*)
+        *(.gnu.linkonce.b*)
+        *(COMMON)
+        . = ALIGN(128);
+    }
+    _end_bss = .;
+    _end = . ;
+    PROVIDE(end = .);
+
+    /* ================================================================
+     *  SÍMBOLOS DE SEGMENTO DE OoT
+     *
+     *    *SegmentStart / *SegmentEnd       -> dónde vive en MEMORIA
+     *    *SegmentRomStart / *SegmentRomEnd -> offset en la ROM (aquí 0)
+     *    *SegmentBssStart / *SegmentBssEnd -> zona sin inicializar
+     * ================================================================ */
+
+    PROVIDE(_bootSegmentEnd      = _end);
+    PROVIDE(_bootSegmentRomStart = 0x0);
+
+    PROVIDE(_codeSegmentStart    = _ftext);
+    PROVIDE(_codeSegmentEnd      = _end);
+    PROVIDE(_codeSegmentBssStart = _fbss);
+    PROVIDE(_codeSegmentBssEnd   = _end_bss);
+    PROVIDE(_codeSegmentRomStart = 0x0);
+    PROVIDE(_codeSegmentRomEnd   = 0x0);
+
+    /* Final de la RAM utilizable para el heap. Main() lo usa para
+     * dimensionar la arena del sistema. */
+    PROVIDE(_buffersSegmentEnd   = _end + 0x400000);
+
+    /* Tabla dmadata: el índice de la ROM */
+    PROVIDE(_dmadataSegmentStart    = _end);
+    PROVIDE(_dmadataSegmentRomStart = 0x7430);   /* offset de NTSC 1.0 */
+    PROVIDE(_dmadataSegmentRomEnd   = 0x0);
+
+    /* 64DD: no existe en este port */
+    PROVIDE(_n64ddSegmentStart    = _end);
+    PROVIDE(_n64ddSegmentEnd      = _end);
+    PROVIDE(_n64ddSegmentBssStart = _end);
+    PROVIDE(_n64ddSegmentBssEnd   = _end);
+    PROVIDE(_n64ddSegmentRomStart = 0x0);
+    PROVIDE(_n64ddSegmentRomEnd   = 0x0);
+
+    /* Datos cargados desde la ROM */
+    PROVIDE(_link_animetionSegmentStart            = _end);
+    PROVIDE(_link_animetionSegmentRomStart         = 0x0);
+    PROVIDE(_kanjiSegmentRomStart                  = 0x0);
+    PROVIDE(_nes_font_staticSegmentRomStart        = 0x0);
+    PROVIDE(_message_staticSegmentRomStart         = 0x0);
+    PROVIDE(_message_texture_staticSegmentRomStart = 0x0);
+    PROVIDE(_do_action_staticSegmentRomStart       = 0x0);
+    PROVIDE(_map_grand_staticSegmentRomStart       = 0x0);
+    PROVIDE(_map_i_staticSegmentRomStart           = 0x0);
+    PROVIDE(_jpn_message_data_staticSegmentStart    = _end);
+    PROVIDE(_jpn_message_data_staticSegmentRomStart = 0x0);
+    PROVIDE(_fra_message_data_staticSegmentRomStart = 0x0);
+    PROVIDE(_ger_message_data_staticSegmentRomStart = 0x0);
+
+    /* El juego referencia ~144 símbolos de este tipo en total. Arriba
+     * están los que usan src/code y src/boot, suficientes para
+     * arrancar. Los de overlays (uno por actor y por escena) los genera
+     * tools/gen_segment_syms.py. Ejecútalo si el enlace pide más:
+     *     python3 tools/gen_segment_syms.py > linker/segments.ld
+     * y añade   INCLUDE linker/segments.ld   aquí abajo. */
+
+    /* Símbolos de segmento generados automáticamente (135 más).
+     * Genéralos con: python3 tools/gen_segment_syms.py > linker/segments.ld */
+    INCLUDE linker/segments.ld
+
+    /DISCARD/ : {
+        *(.reginfo)
+        *(.MIPS.abiflags)
+        *(.comment)
+    }
+}
