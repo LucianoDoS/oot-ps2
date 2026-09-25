@@ -1,0 +1,8 @@
+build/
+.tools/
+baseroms/
+*.z64
+*.n64
+*.v64
+__pycache__/
+build-platform.log

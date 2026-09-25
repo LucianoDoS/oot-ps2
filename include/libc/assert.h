@@ -7,6 +7,11 @@
 
 // Runtime assertions
 
+#if PLATFORM_PS2
+// newlib exports __assert with a different argument order.
+#define __assert oot_ps2_assert
+#endif
+
 __attribute__((noreturn)) void __assert(const char* assertion, const char* file, int line);
 
 // assert for matching

@@ -88,6 +88,8 @@ typedef struct {
 } AudioVoice;
 
 static AudioVoice  s_voices[MAX_AUDIO_VOICES];
+static bool s_audioReady;
+static bool s_nativeOutput;
 static s16         s_mixBuf[AUDIO_BUFFER_BYTES / sizeof(s16)]
                             __attribute__((aligned(64)));
 
@@ -105,6 +107,8 @@ static struct audsrv_fmt_t s_audfmt = {
  * ─────────────────────────────────────────────────────────── */
 void PS2Audio_Init(void) {
     int ret;
+    s_audioReady = false;
+    s_nativeOutput = false;
 
     /* audsrv_init() ya NO se llama aquí: lo hace ps2_main.c una sola
      * vez, después de cargar audsrv.irx. Llamarla dos veces dejaba el
@@ -125,6 +129,7 @@ void PS2Audio_Init(void) {
 
     memset(s_voices, 0, sizeof(s_voices));
     memset(s_mixBuf, 0, sizeof(s_mixBuf));
+    s_audioReady = true;
 
     printf("[Audio] Initialized: %d Hz, %d-bit, %d ch\n",
            AUDIO_SAMPLE_RATE, AUDIO_BITS, AUDIO_CHANNELS);
@@ -186,17 +191,42 @@ static void _mix_voices(int numSamples) {
  *  Mixes voices and pushes PCM to audsrv.
  * ─────────────────────────────────────────────────────────── */
 void PS2Audio_Update(void) {
-    _mix_voices(AUDIO_BUFFER_SAMPLES);
+    if (!s_audioReady || s_nativeOutput) return;
 
     /* Enviar el PCM mezclado a audsrv.
      * CORREGIDO: sólo escribimos si cabe el bloque ENTERO. Antes se
      * escribía un trozo suelto cuando había poco hueco, lo que parte un
      * frame estéreo por la mitad y desincroniza los canales para
      * siempre (a partir de ahí, izquierda y derecha quedan cruzados). */
-    int free_bytes = audsrv_freebuf();
+    int free_bytes = audsrv_available();
     if (free_bytes >= AUDIO_BUFFER_BYTES) {
+        _mix_voices(AUDIO_BUFFER_SAMPLES);
         audsrv_play_audio((char*)s_mixBuf, AUDIO_BUFFER_BYTES);
     }
+}
+
+/* The game's audio interface queues native stereo PCM through audsrv. */
+s32 osAiSetFrequency(u32 frequency) {
+    if (!s_audioReady) return -1;
+    struct audsrv_fmt_t format = s_audfmt;
+    format.freq = frequency;
+    if (audsrv_set_format(&format) != 0) return -1;
+    s_audfmt = format;
+    s_nativeOutput = true;
+    return (s32)frequency;
+}
+
+u32 osAiGetLength(void) {
+    if (!s_audioReady) return 0;
+    int queued = audsrv_queued();
+    return queued > 0 ? (u32)queued : 0;
+}
+
+int PS2Audio_SubmitBuffer(void* buffer, unsigned int size) {
+    if (!s_audioReady || !buffer || (size & 3) || size > 0x40000) return -1;
+    if (audsrv_available() < (int)size) return -1;
+    s_nativeOutput = true;
+    return audsrv_play_audio((const char*)buffer, size) == (int)size ? 0 : -1;
 }
 
 /* ─────────────────────────────────────────────────────────── *

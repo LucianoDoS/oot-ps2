@@ -58,7 +58,7 @@ ifeq ($(PLATFORM), PS2)
   PS2SDK    ?= $(PS2DEV)/ps2sdk
   GSKIT     ?= $(PS2DEV)/gsKit
 
-  PREFIX    := $(PS2DEV)/ee/bin/ee-
+  PREFIX    := $(PS2DEV)/ee/bin/mips64r5900el-ps2-elf-
   CC        := $(PREFIX)gcc
   AS        := $(PREFIX)gcc
   LD        := $(PREFIX)gcc
@@ -80,9 +80,6 @@ ifeq ($(PLATFORM), PS2)
     -DNON_MATCHING=1 \
     -G0 \
     -mno-gpopt \
-    -mips3 \
-    -mgp32 \
-    -mfp32 \
     -fno-builtin-printf
 
   PLATFORM_INCLUDES := \
@@ -97,13 +94,13 @@ ifeq ($(PLATFORM), PS2)
     -L$(PS2SDK)/ee/lib \
     -L$(PS2SDK)/ports/lib \
     -L$(GSKIT)/lib \
+    -lgskit_toolkit \
     -lgskit \
     -ldmakit \
-    -lgskit_toolkit \
     -laudsrv \
-    -lpadx \
+    -lpad \
     -lmc \
-    -lfileXio \
+    -lpatches \
     -lm \
     -lc \
     -lkernel
@@ -133,7 +130,11 @@ endif
 # ──────────────────────────────────────────────
 #  Flags comunes
 # ──────────────────────────────────────────────
-BUILD_DIR := build/$(PLATFORM)
+BUILD_DIR ?= build/$(PLATFORM)
+
+# Optional roots from a local zeldaret extraction. Keep ROM-derived data out of Git.
+OOT_UPSTREAM ?=
+OOT_ASSET_VERSION ?= ntsc-1.2
 
 ifeq ($(DEBUG),1)
   OPT_FLAGS := -O0 -g
@@ -148,6 +149,7 @@ endif
 
 # Defines comunes a debug y release
 PLATFORM_CFLAGS += \
+  -DMML_VERSION=MML_VERSION_OOT \
   -DOOT_VERSION=$(OOT_VERSION) \
   -DBUILD_CREATOR='"$(BUILD_CREATOR)"' \
   -DBUILD_DATE='"$(BUILD_DATE)"' \
@@ -180,6 +182,11 @@ INCLUDES := \
   -Isrc \
   $(PLATFORM_INCLUDES)
 
+ifneq ($(OOT_UPSTREAM),)
+INCLUDES += -I$(BUILD_DIR)/generated -I$(OOT_UPSTREAM) -I$(OOT_UPSTREAM)/extracted/$(OOT_ASSET_VERSION) \
+            -I$(OOT_UPSTREAM)/build/$(OOT_ASSET_VERSION)
+endif
+
 DEPFLAGS = -MMD -MP -MF $(@:.o=.d)
 
 # ──────────────────────────────────────────────
@@ -205,14 +212,36 @@ GAME_SRCS := \
   $(call find_c, src/libc) \
   $(call find_c, src/libc64)
 
-# En PS2 NO compilamos src/libultra: lo reemplazan nuestros stubs.
-# (Si algún día copias src/libultra al proyecto, seguirá excluido aquí.)
+ifeq ($(PLATFORM),PS2)
+# CPU-side math and native storage, not N64 OS/hardware implementations.
+GAME_SRCS += $(call find_c, src/libultra/gu) $(call find_c, src/buffers)
+endif
+
+# The remaining libultra services are supplied by the PS2 platform layer.
 
 # El juego trae DOS implementaciones del gestor de fallos y hay que
 # elegir una según la plataforma. Con PLATFORM_N64=0, include/fault.h
 # expone la variante GC, así que fault_n64.c sobra y además choca:
 # redefine struct FaultMgr.
-GAME_SRCS := $(filter-out src/code/fault_n64.c, $(GAME_SRCS))
+GAME_SRCS := $(filter-out src/code/fault_n64.c src/libc64/__osMalloc_n64.c \
+    src/libu64/loadfragment2_n64.c, $(GAME_SRCS))
+
+ifeq ($(PLATFORM),PS2)
+ifneq ($(OOT_UPSTREAM),)
+GAME_SRCS := $(filter-out src/audio/tables/%.c,$(GAME_SRCS))
+endif
+endif
+
+ifeq ($(PLATFORM),PS2)
+GAME_SRCS := $(filter-out src/boot/driverominit.c src/boot/is_debug.c src/boot/is_debug_ique.c \
+    src/boot/cic6105.c src/code/code_n64dd_800AD410.c src/code/code_n64dd_800AD4C0.c,$(GAME_SRCS))
+ifneq ($(filter $(OOT_VERSION),GC_JP_MQ GC_US_MQ GC_EU_MQ GC_EU_MQ_DBG),)
+GAME_SRCS := $(filter-out src/overlays/misc/ovl_kaleido_scope/z_lmap_mark_data.c \
+    src/overlays/misc/ovl_map_mark_data/z_map_mark_data.c,$(GAME_SRCS))
+else
+GAME_SRCS := $(filter-out %_mq.c,$(GAME_SRCS))
+endif
+endif
 
 PS2_PLATFORM_SRCS := \
   src/platform/ps2/ps2_main.c \
@@ -246,13 +275,25 @@ OBJS := $(patsubst %.c, $(BUILD_DIR)/%.o, $(C_SRCS))
 OBJS += $(patsubst %.s, $(BUILD_DIR)/%.o, $(S_SRCS))
 DEPS := $(OBJS:.o=.d)
 
+ifeq ($(PLATFORM),PS2)
+OBJS += $(BUILD_DIR)/generated/audsrv_irx.o
+ifneq ($(OOT_UPSTREAM),)
+OBJS += $(BUILD_DIR)/generated/rom_metadata.o
+ROM_LDFLAGS := -Wl,-T,$(BUILD_DIR)/generated/rom_segments.ld
+endif
+endif
+
 # ──────────────────────────────────────────────
 #  Linker script
 # ──────────────────────────────────────────────
 ifeq ($(OOT_CUSTOM_LINKER),1)
   LDSCRIPT_FLAG := -T linker/linkfile.ps2
 else
-  LDSCRIPT_FLAG :=
+  ifeq ($(PLATFORM),PS2)
+    LDSCRIPT_FLAG := -T $(PS2SDK)/ee/startup/linkfile -Wl,-zmax-page-size=128
+  else
+    LDSCRIPT_FLAG :=
+  endif
 endif
 
 # ──────────────────────────────────────────────
@@ -265,7 +306,7 @@ all: $(BUILD_DIR)/$(TARGET)
 $(BUILD_DIR)/$(TARGET): $(OBJS)
 	@echo "[LD] $@  ($(words $(OBJS)) objetos)"
 	@mkdir -p $(dir $@)
-	$(Q)$(LD) $(CFLAGS) $(LDSCRIPT_FLAG) -o $@ $(OBJS) \
+	$(Q)$(LD) $(CFLAGS) $(LDSCRIPT_FLAG) $(ROM_LDFLAGS) -o $@ $(OBJS) \
 	    $(PLATFORM_LIBS) -Wl,-Map=$(BUILD_DIR)/oot.map
 	@echo "[OK] $@"
 
@@ -273,6 +314,36 @@ $(BUILD_DIR)/%.o: %.c
 	@echo "[CC] $<"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) $(CFLAGS) $(INCLUDES) $(DEPFLAGS) -c $< -o $@
+
+# SDK code must use newlib headers, not the N64 libc replacements.
+$(BUILD_DIR)/src/platform/ps2/%.o: src/platform/ps2/%.c
+	@echo "[CC PS2] $<"
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CFLAGS) -Iinclude -Isrc $(PLATFORM_INCLUDES) $(DEPFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/generated/audsrv_irx.c: $(PS2SDK)/iop/irx/audsrv.irx
+	@mkdir -p $(dir $@)
+	$(Q)$(PS2SDK)/bin/bin2c $< $@ audsrv_irx
+
+$(BUILD_DIR)/generated/audsrv_irx.o: $(BUILD_DIR)/generated/audsrv_irx.c
+	$(Q)$(CC) $(CFLAGS) $(PLATFORM_INCLUDES) -c $< -o $@
+
+ifneq ($(OOT_UPSTREAM),)
+$(BUILD_DIR)/generated/rom_metadata.c $(BUILD_DIR)/generated/rom_segments.ld \
+$(BUILD_DIR)/generated/assets/audio/sequence_sizes.h \
+$(BUILD_DIR)/generated/assets/audio/soundfont_sizes.h &: tools/generate_ps2_rom_metadata.py \
+    $(OOT_UPSTREAM)/baseroms/$(OOT_ASSET_VERSION)/baserom-decompressed.z64
+	$(Q)$(OOT_UPSTREAM)/.venv/bin/python tools/generate_ps2_rom_metadata.py \
+	    --upstream $(OOT_UPSTREAM) --output $(BUILD_DIR)/generated --version $(OOT_ASSET_VERSION)
+
+$(OBJS): | $(BUILD_DIR)/generated/rom_metadata.c
+
+$(BUILD_DIR)/generated/rom_metadata.o: $(BUILD_DIR)/generated/rom_metadata.c
+	$(Q)$(CC) $(CFLAGS) $(INCLUDES) $(DEPFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/src/audio/game/session_init.o: $(BUILD_DIR)/generated/assets/audio/sequence_sizes.h \
+    $(BUILD_DIR)/generated/assets/audio/soundfont_sizes.h
+endif
 
 $(BUILD_DIR)/%.o: %.s
 	@echo "[AS] $<"

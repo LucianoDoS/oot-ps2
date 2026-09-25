@@ -27,6 +27,16 @@
 #define E_VEC       (K0BASE + 0x180)        /* Gen. exception vector */
 
 /* Address conversion macros */
+#if PLATFORM_PS2
+// EE user-mode cached RAM is mapped at its physical address.
+#define K0_TO_K1(x)     ((U32(x) & 0x1FFFFFFF) | 0x20000000)
+#define K1_TO_K0(x)     (U32(x) & 0x1FFFFFFF)
+#define K0_TO_PHYS(x)   (U32(x) & 0x1FFFFFFF)
+#define K1_TO_PHYS(x)   (U32(x) & 0x1FFFFFFF)
+#define KDM_TO_PHYS(x)  (U32(x) & 0x1FFFFFFF)
+#define PHYS_TO_K0(x)   (U32(x) & 0x1FFFFFFF)
+#define PHYS_TO_K1(x)   ((U32(x) & 0x1FFFFFFF) | 0x20000000)
+#else
 #define K0_TO_K1(x)     (U32(x) | 0xA0000000)  /* kseg0 to kseg1 */
 #define K1_TO_K0(x)     (U32(x) & 0x9FFFFFFF)  /* kseg1 to kseg0 */
 #define K0_TO_PHYS(x)   (U32(x) & 0x1FFFFFFF)  /* kseg0 to physical */
@@ -34,6 +44,7 @@
 #define KDM_TO_PHYS(x)  (U32(x) & 0x1FFFFFFF)  /* direct mapped to physical */
 #define PHYS_TO_K0(x)   (U32(x) | 0x80000000)  /* physical to kseg0 */
 #define PHYS_TO_K1(x)   (U32(x) | 0xA0000000)  /* physical to kseg1 */
+#endif
 
 /* Address predicates */
 #define IS_KSEG0(x)     (U32(x) >= K0BASE && U32(x) < K1BASE)

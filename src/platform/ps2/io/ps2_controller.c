@@ -35,6 +35,7 @@
 
 #include <kernel.h>
 #include <libmc.h>
+#include <fcntl.h>
 #include <string.h>
 #include <stdio.h>
 
@@ -118,7 +119,7 @@ int ps2_save_write(const void* saveData, u32 size) {
     memcpy(s_saveFile.data, saveData, size);
     s_saveFile.checksum = save_checksum(s_saveFile.data, size);
 
-    mcOpen(SAVE_PORT, SAVE_SLOT, SAVE_PATH, MC_O_WRONLY | MC_O_CREAT);
+    mcOpen(SAVE_PORT, SAVE_SLOT, SAVE_PATH, O_WRONLY | O_CREAT);
     mcSync(MC_WAIT, NULL, &fd);
     if (fd < 0) {
         printf("[Save] No se pudo abrir %s para escribir (%d)\n",
@@ -150,7 +151,7 @@ int ps2_save_read(void* saveData, u32 size) {
 
     if (!s_mcReady || !saveData) return -1;
 
-    mcOpen(SAVE_PORT, SAVE_SLOT, SAVE_PATH, MC_O_RDONLY);
+    mcOpen(SAVE_PORT, SAVE_SLOT, SAVE_PATH, O_RDONLY);
     mcSync(MC_WAIT, NULL, &fd);
     if (fd < 0) {
         printf("[Save] No hay partida guardada todavia\n");

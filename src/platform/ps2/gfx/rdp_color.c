@@ -301,7 +301,7 @@ void rdp_setscissor(u32 w0, u32 w1, RDPState* rdp) {
     u16 y1 = rdp->scissorY1 >> 2;
 
     if (rdp->gs) {
-        GS_SET_SCISSOR(GS_SETREG_SCISSOR(x0, x1, y0, y1));
+        gsKit_set_scissor(rdp->gs, GS_SETREG_SCISSOR(x0, x1, y0, y1));
     }
 }
 

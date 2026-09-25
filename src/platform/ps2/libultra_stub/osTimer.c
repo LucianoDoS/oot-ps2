@@ -85,8 +85,8 @@ static int _timer_overflow_handler(int id) {
  * ───────────────────────────────────────────────────────────────── */
 void ps2_timer_init(void) {
     /* CLKS=0 (bus clock), CUE=1 (contar), OVFE=1 (int. por overflow) */
-    SetTimerMode(0, 0);
-    SetTimerCounter(0, 0);
+    *T0_MODE = 0;
+    *T0_COUNT = 0;
 
     s_tickHigh  = 0;
     s_handlerId = AddIntcHandler(INTC_TIM0, _timer_overflow_handler, 0);
@@ -97,8 +97,7 @@ void ps2_timer_init(void) {
     }
 
     /* CUE | OVFE */
-    SetTimerMode(0, (1 << 7) | (1 << 9));
-    StartTimer(0);
+    *T0_MODE = Tn_MODE(0, 0, 0, 0, 0, 1, 0, 1, 1, 1);
 
     printf("[osTimer] EE Timer 0 en marcha\n");
 }
@@ -110,14 +109,16 @@ void ps2_timer_init(void) {
  *  repetimos. Evita el salto hacia atrás en el instante del overflow.
  * ───────────────────────────────────────────────────────────────── */
 static u64 read_ticks(void) {
-    u64 hi1, hi2;
-    u32 low;
-    do {
-        hi1 = s_tickHigh;
-        low = (u32)GetTimerCounter(0) & 0xFFFF;
-        hi2 = s_tickHigh;
-    } while (hi1 != hi2);
-    return hi1 + (u64)low;     /* SUMA, no OR */
+    int lock = ps2_os_lock();
+    u64 high = s_tickHigh;
+    u32 low = *T0_COUNT & 0xFFFF;
+    /* An overflow may be pending while interrupts are disabled. */
+    if (*T0_MODE & (1 << 11)) {
+        high += 0x10000ULL;
+        low = *T0_COUNT & 0xFFFF;
+    }
+    ps2_os_unlock(lock);
+    return high + low;
 }
 
 /* ───────────────────────────────────────────────────────────────── *
@@ -127,14 +128,15 @@ OSTime osGetTime(void) {
     u64 t = read_ticks();
     /* Multiplicar primero y dividir después conserva la precisión.
      * 46875000/147456000 exacto, sin la aproximación 3178/10000. */
-    return (OSTime)((t * N64_COUNTER_HZ) / PS2_T0_HZ);
+    return (t / PS2_T0_HZ) * N64_COUNTER_HZ
+         + ((t % PS2_T0_HZ) * N64_COUNTER_HZ) / PS2_T0_HZ;
 }
 
 /* ───────────────────────────────────────────────────────────────── *
  *  osGetCount — contador crudo de 32 bits (equivale a CP0 Count)
  * ───────────────────────────────────────────────────────────────── */
 u32 osGetCount(void) {
-    return (u32)read_ticks();
+    return (u32)osGetTime();
 }
 
 void osSetTime(OSTime time) {
@@ -154,8 +156,11 @@ static void timer_unlink(OSTimer* t) {
 }
 
 static bool timer_is_linked(OSTimer* t) {
-    if (s_activeList == t) return true;
-    return (t->next != NULL || t->prev != NULL);
+    /* libultra allows the caller to pass an uninitialized stack timer. */
+    for (OSTimer* active = s_activeList; active; active = active->next) {
+        if (active == t) return true;
+    }
+    return false;
 }
 
 /* ───────────────────────────────────────────────────────────────── *
@@ -169,7 +174,7 @@ s32 osSetTimer(OSTimer* timer, OSTime countdown, OSTime interval,
 
     if (timer_is_linked(timer)) timer_unlink(timer);
 
-    timer->value    = osGetTime() + countdown;   /* momento de disparo */
+    timer->value    = osGetTime() + (countdown ? countdown : interval);
     timer->interval = interval;
     timer->mq       = mq;
     timer->msg      = msg;
@@ -203,23 +208,24 @@ s32 osStopTimer(OSTimer* timer) {
  * ───────────────────────────────────────────────────────────────── */
 void ps2_timer_tick(void) {
     OSTime now = osGetTime();
-
-    int lock = ps2_os_lock();
-    OSTimer* t = s_activeList;
-    while (t) {
-        OSTimer* next = t->next;   /* t puede desenlazarse abajo */
-
-        if (now >= t->value) {
-            if (t->mq) {
-                osSendMesg(t->mq, t->msg, OS_MESG_NOBLOCK);
-            }
-            if (t->interval > 0) {
-                t->value = now + t->interval;   /* reprogramar */
-            } else {
-                timer_unlink(t);                /* one-shot: fuera */
-            }
+    for (;;) {
+        int lock = ps2_os_lock();
+        OSTimer* t = s_activeList;
+        while (t && now < t->value) t = t->next;
+        if (!t) {
+            ps2_os_unlock(lock);
+            break;
         }
-        t = next;
+        struct OSMesgQueue* mq = t->mq;
+        OSMesg msg = t->msg;
+        if (t->interval > 0) {
+            t->value += ((now - t->value) / t->interval + 1) * t->interval;
+        } else {
+            timer_unlink(t);
+        }
+        ps2_os_unlock(lock);
+        /* Queue operations may schedule another thread. Never hold the
+         * interrupt lock while sending, nor retain t across the send. */
+        if (mq) osSendMesg(mq, msg, OS_MESG_NOBLOCK);
     }
-    ps2_os_unlock(lock);
 }

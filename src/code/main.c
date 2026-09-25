@@ -1,4 +1,7 @@
 #include "sys_cfb.h"
+#if PLATFORM_PS2
+#include "ps2/ps2_memory.h"
+#endif
 #include "ultra64.h"
 #include "versions.h"
 
@@ -100,7 +103,10 @@ void Main(void* arg) {
     gAppNmiBufferPtr = (PreNmiBuff*)osAppNMIBuffer;
     PreNmiBuff_Init(gAppNmiBufferPtr);
     Fault_Init();
-#if PLATFORM_N64
+#if PLATFORM_PS2
+    SysCfb_Init(0);
+    systemHeapStart = (uintptr_t)ps2_heap_base();
+#elif PLATFORM_N64
     func_800AD410();
     if (D_80121211 != 0) {
         systemHeapStart = (uintptr_t)_n64ddSegmentEnd;
@@ -114,7 +120,11 @@ void Main(void* arg) {
     SysCfb_Init(0);
     systemHeapStart = (uintptr_t)_buffersSegmentEnd;
 #endif
+#if PLATFORM_PS2
+    fb = systemHeapStart + ps2_heap_size();
+#else
     fb = (uintptr_t)SysCfb_GetFbPtr(0);
+#endif
     gSystemHeapSize = fb - systemHeapStart;
     PRINTF(T("システムヒープ初期化 %08x-%08x %08x\n", "System heap initialization %08x-%08x %08x\n"), systemHeapStart,
            fb, gSystemHeapSize);

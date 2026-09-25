@@ -38,6 +38,11 @@
         sizeof(typeName##State),                   \
     },
 
+#if PLATFORM_PS2
+#undef DEFINE_GAMESTATE
+#define DEFINE_GAMESTATE(typeName, enumName, name) DEFINE_GAMESTATE_INTERNAL(typeName, enumName)
+#endif
+
 GameStateOverlay gGameStateOverlayTable[] = {
 #include "tables/gamestate_table.h"
 };

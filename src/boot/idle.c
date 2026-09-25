@@ -51,6 +51,7 @@ void Main_ThreadEntry(void* arg) {
 
     PRINTF(T("mainx 実行開始\n", "mainx execution started\n"));
     DmaMgr_Init();
+#if !PLATFORM_PS2
     PRINTF(T("codeセグメントロード中...", "code segment loading..."));
     time = osGetTime();
     DMA_REQUEST_SYNC(_codeSegmentStart, (uintptr_t)_codeSegmentRomStart, _codeSegmentRomEnd - _codeSegmentRomStart,
@@ -60,6 +61,8 @@ void Main_ThreadEntry(void* arg) {
     PRINTF(T("転送時間 %6.3f\n", "Transfer time %6.3f\n"));
     bzero(_codeSegmentBssStart, _codeSegmentBssEnd - _codeSegmentBssStart);
     PRINTF(T("codeセグメントBSSクリア完了\n", "code segment BSS cleared\n"));
+#endif
+    /* The PS2 executable already contains native code and initialized BSS. */
     Main(arg);
     PRINTF(T("mainx 実行終了\n", "mainx execution finished\n"));
 }

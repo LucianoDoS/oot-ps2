@@ -126,7 +126,7 @@ static void pad_configure(int port) {
     /* Actuadores de vibración. ESTO FALTABA: padSetActDirect() no hace
      * nada si antes no se alinearon los actuadores. */
     if (padInfoAct(port, 0, -1, 0) != 0) {
-        u8 actAlign[6] = {0, 1, 0xFF, 0xFF, 0xFF, 0xFF};
+        char actAlign[6] = {0, 1, -1, -1, -1, -1};
         padSetActAlign(port, 0, actAlign);
         pad_wait_ready(port);
     }

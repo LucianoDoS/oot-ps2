@@ -134,11 +134,6 @@ static void n64_mtx_to_float(const u8* src, float* m) {
     }
 }
 
-static void mat4_identity(float* m) {
-    memset(m, 0, sizeof(float) * 16);
-    m[0] = m[5] = m[10] = m[15] = 1.0f;
-}
-
 static void mat4_mul(float* dst, const float* a, const float* b) {
     float tmp[16];
     for (int r = 0; r < 4; r++) {
@@ -334,7 +329,7 @@ static void submit_triangle(int i0, int i1, int i2,
             v1->sx, v1->sy, z1, u1, t1, c1,
             v2->sx, v2->sy, z2, u2, t2, c2);
     } else {
-        gsKit_prim_triangle_goraud_3d(
+        gsKit_prim_triangle_gouraud_3d(
             gs,
             v0->sx, v0->sy, z0, c0,
             v1->sx, v1->sy, z1, c1,

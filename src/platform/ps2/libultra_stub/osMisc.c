@@ -62,7 +62,6 @@ u32 osSetIntMask(u32 mask) {
  *  osSyncPrintf — la macro PRINTF del juego acaba aquí
  * ───────────────────────────────────────────────────────────────── */
 s32 osSyncPrintfEnabled = 1;
-s32 osSyncPrintfUnused  = 0;
 
 void osSyncPrintf(const char* fmt, ...) {
 #if defined(DEBUG_FEATURES) && DEBUG_FEATURES
@@ -118,7 +117,7 @@ typedef struct OSPfs {
 
 _Static_assert(sizeof(OSPfs) == 0x68, "OSPfs debe medir 0x68");
 
-static u8 s_actuator[PS2_MAX_PORTS][6];
+static char s_actuator[PS2_MAX_PORTS][6];
 
 s32 osMotorInit(struct OSMesgQueue* ctrlrqueue, OSPfs* pfs, s32 channel) {
     (void)ctrlrqueue;

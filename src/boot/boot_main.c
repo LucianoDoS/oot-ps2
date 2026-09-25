@@ -21,7 +21,11 @@ StackEntry sIdleThreadInfo;
 STACK(sBootThreadStack, BOOT_STACK_SIZE);
 
 void bootclear(void) {
+#if !PLATFORM_PS2
     bzero(_bootSegmentEnd, osMemSize - OS_K0_TO_PHYSICAL(_bootSegmentEnd));
+#endif
+    /* PS2's ELF startup already cleared BSS. Clearing the N64 RAM range
+     * here would overwrite live SDK allocations and running PS2 threads. */
 }
 
 void bootproc(void) {

@@ -2,6 +2,41 @@
 
 Port de **The Legend of Zelda: Ocarina of Time** a PlayStation 2, basado en la descompilación [zeldaret/oot](https://github.com/zeldaret/oot).
 
+## Estado comprobado — 25 de septiembre de 2026
+
+**Todavía no es un port jugable.** Ya se compila la capa PS2 con ps2dev real
+(GCC 15.2.0), y el ejecutable de diagnóstico arranca en PCSX2 2.8.0.
+Las pruebas en el EE verifican matrices, trigonometría, formato de texto,
+secciones críticas, colas de mensajes y temporizadores. El renderer envía
+120 fotogramas; esto aún no constituye una validación visual del juego.
+
+El build completo llegó al enlace con 715 objetos. Sigue fallando por
+referencias pendientes a recursos y servicios de N64. Se están adaptando
+los recursos al orden de bytes de PS2 y el código de overlays a funciones
+nativas residentes. El procesamiento DSP de las tareas de audio sigue pendiente.
+Las instrucciones históricas de abajo describen la intención del port,
+no garantizan que el juego arranque.
+
+### Reproducir el trabajo local
+
+Desde Ubuntu WSL, en esta carpeta:
+
+```sh
+bash tools/build_ps2_smoke.sh
+bash tools/check_ps2_platform.sh
+bash tools/check_ps2_game.sh
+python3 tools/check_ps2_texture_words.py
+```
+
+El diagnóstico sin ROM se genera en `build/PS2/oot_ps2_smoke.elf`.
+`tools/run_ps2_smoke.ps1` lo inicia con una configuración aislada de PCSX2
+en `build/PCSX2-diagnostic`; requiere una BIOS y configuración ya disponibles.
+El log se guarda en `build/PS2/pcsx2-smoke.log`.
+
+El build del juego usa la extracción local US NTSC 1.2. La procedencia de las
+fuentes, versión del SDK y hash de ROM están en [UPSTREAM.md](UPSTREAM.md).
+ROMs, recursos extraídos y salidas de compilación quedan fuera de Git.
+
 ---
 
 ## Estructura del Proyecto

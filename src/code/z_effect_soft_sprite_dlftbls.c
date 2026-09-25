@@ -30,6 +30,11 @@
         ROM_FILE_UNSET, NULL, NULL, NULL, NULL, 0, \
     },
 
+#if PLATFORM_PS2
+#undef DEFINE_EFFECT_SS
+#define DEFINE_EFFECT_SS(name, id) { ROM_FILE_UNSET, NULL, NULL, NULL, &name##_Profile, 1 },
+#endif
+
 EffectSsOverlay gEffectSsOverlayTable[] = {
 #include "tables/effect_ss_table.h"
 };

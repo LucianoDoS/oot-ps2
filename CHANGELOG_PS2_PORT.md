@@ -4,6 +4,64 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Avance con herramientas reales — 2026-09-25
+
+Esta sección sustituye las conclusiones de la revisión histórica con headers
+falsos que aparece más abajo. **El juego completo todavía no enlaza ni arranca.**
+
+- Instalado ps2dev/GCC 15.2.0 en Ubuntu WSL; corregidas llamadas incompatibles
+  con ps2sdk/gsKit reales, flags del compilador y script de enlace del SDK.
+- Recuperados audio, libc, libc64, libu64, buffers y rutinas C de matrices y
+  trigonometría del upstream fijado en `UPSTREAM.md`.
+- Extraída la ROM local US NTSC 1.2. Generadas tablas DMA/audio en formato
+  nativo y direcciones VROM reales, sin sustituir recursos desconocidos por cero.
+- Inicialización del heap/framebuffers adaptada al espacio de direcciones EE;
+  ya no se copia código N64 sobre código nativo ni se borra el BSS desde boot.
+- Tablas de actores, estados y efectos usan código residente. Player, pausa
+  y marcas del mapa ya no intentan cargar sus instrucciones desde la ROM N64.
+  Pendiente revisar la reinicialización de datos estáticos al cambiar overlays
+  y medir el consumo total de RAM con todos los recursos integrados.
+- Arregladas las matrices de libultra para usar los mismos medios enteros de
+  16 bits que `Matrix_MtxFToMtx` y el renderer en little-endian.
+- Temporizador EE real con desbordamiento de 64 bits, alta de temporizadores
+  sin exigir memoria inicializada y envío de eventos fuera de la sección crítica.
+- Añadidos `_Printf` mediante newlib y restauración anidada de interrupciones.
+  Separado el símbolo de assert del juego del de newlib, que tiene otra firma.
+- Eliminada la mezcla de fuentes normal/Master Quest e implementaciones de
+  depuración N64/iQue en el build PS2.
+- Conversión de 110 includes de texturas: se invierte el valor numérico de cada
+  u64 para preservar los bytes originales al compilarlos en EE. No se aplica
+  esta transformación a vértices ni matrices.
+
+### Verificación
+
+PCSX2 2.8.0, con configuración aislada y BIOS existente, ejecutó el ELF de
+diagnóstico compilado con ps2dev. El log confirmó:
+
+```text
+[PS2 MATH TEST] PASS: native matrix layout and trigonometry (0)
+[PS2 PRINTF TEST] PASS: game varargs and callback (0)
+[PS2 OS TEST] PASS: queue ABI, FIFO/full/empty, timer, monotonic clock
+[PS2 SMOKE] PASS: 120 frames submitted
+```
+
+La prueba OS también comprueba restauración anidada de interrupciones.
+`tools/check_ps2_texture_words.py` verificó que las 110 texturas conservan
+exactamente sus 212352 bytes originales dentro de un objeto compilado para EE.
+No se ha validado visualmente el render ni probado hardware físico.
+El build completo llegó a enlazar 715 objetos, pero falló: compilar las unidades
+C no significa tener un ELF del juego funcional.
+
+### Trabajo pendiente
+
+Integrar símbolos y conversión de recursos (escenas, colisiones, esqueletos,
+animaciones y display lists); sustituir las dependencias de microcódigo/RCP,
+fallos y JPEG de N64; implementar DSP de audio y conversión de soundfonts;
+validar arranque, pantalla de título, controles y guardado con el juego real.
+La ruta de lectura de ROM todavía no proporciona todos los recursos en formato
+nativo. Activar globalmente una opción de endian no resuelve la mezcla de
+estructuras creadas por el CPU con datos leídos de la ROM.
+
 ## Cómo se verificó esto
 
 No basta con leer el código para saber si compila. Para este port en

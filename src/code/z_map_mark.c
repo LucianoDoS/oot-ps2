@@ -45,12 +45,19 @@ MapMarkInfo sMapMarkInfoTable[] = {
 };
 
 static MapMarkDataOverlay sMapMarkDataOvl = {
+#if PLATFORM_PS2
+    NULL, ROM_FILE_UNSET, NULL, NULL, gMapMarkDataTable,
+#else
     NULL, ROM_FILE(ovl_map_mark_data), _ovl_map_mark_dataSegmentStart, _ovl_map_mark_dataSegmentEnd, gMapMarkDataTable,
+#endif
 };
 
 static MapMarkData** sLoadedMarkDataTable;
 
 void MapMark_Init(PlayState* play) {
+#if PLATFORM_PS2
+    sLoadedMarkDataTable = gMapMarkDataTable;
+#else
     MapMarkDataOverlay* overlay = &sMapMarkDataOvl;
     u32 overlaySize = (uintptr_t)overlay->vramEnd - (uintptr_t)overlay->vramStart;
 
@@ -71,6 +78,7 @@ void MapMark_Init(PlayState* play) {
     if ((B_80121220 != NULL) && (B_80121220->unk_2C != NULL)) {
         B_80121220->unk_2C(&sLoadedMarkDataTable);
     }
+#endif
 #endif
 }
 

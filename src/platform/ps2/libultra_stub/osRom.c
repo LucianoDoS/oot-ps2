@@ -31,7 +31,8 @@
  */
 
 #include <kernel.h>
-#include <fileio.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <string.h>
 #include <stdio.h>
 
@@ -107,12 +108,12 @@ static bool rom_open(void) {
     if (s_romOpen) return true;
 
     for (int i = 0; kRomPaths[i] != NULL; i++) {
-        int fd = fioOpen(kRomPaths[i], O_RDONLY);
+        int fd = open(kRomPaths[i], O_RDONLY);
         if (fd >= 0) {
             s_romFd   = fd;
             s_romOpen = true;
-            int size = fioLseek(fd, 0, SEEK_END);
-            fioLseek(fd, 0, SEEK_SET);
+            int size = lseek(fd, 0, SEEK_END);
+            lseek(fd, 0, SEEK_SET);
             printf("[osRom] ROM abierta: %s (%d bytes)\n",
                    kRomPaths[i], size);
             return true;
@@ -161,9 +162,9 @@ static s32 rom_read(u32 devAddr, void* dram, u32 size) {
     u32 offset = devAddr;
     if (offset >= 0x10000000u) offset -= 0x10000000u;
 
-    if (fioLseek(s_romFd, (int)offset, SEEK_SET) < 0) return -1;
+    if (lseek(s_romFd, (int)offset, SEEK_SET) < 0) return -1;
 
-    int got = fioRead(s_romFd, dram, (int)size);
+    int got = read(s_romFd, dram, (int)size);
     if (got < 0) return -1;
 
     /* Si la lectura se quedó corta, rellenamos con ceros en vez de
@@ -245,7 +246,7 @@ void osCreatePiManager(OSPri pri, struct OSMesgQueue* cmdQ,
 
 void ps2_rom_shutdown(void) {
     if (s_romOpen) {
-        fioClose(s_romFd);
+        close(s_romFd);
         s_romFd   = -1;
         s_romOpen = false;
     }

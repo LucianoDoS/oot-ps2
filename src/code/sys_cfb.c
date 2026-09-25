@@ -13,7 +13,19 @@
 uintptr_t sSysCfbFbPtr[2];
 uintptr_t sSysCfbEnd;
 
+#if PLATFORM_PS2
+/* CPU-visible buffers are still used by game effects; the GS keeps its own
+ * render targets in VRAM. Never point these at hard-coded N64 RAM addresses. */
+static u16 sPs2CpuFramebuffers[2][SCREEN_WIDTH * SCREEN_HEIGHT] __attribute__((aligned(64)));
+#endif
+
 void SysCfb_Init(s32 n64dd) {
+#if PLATFORM_PS2
+    (void)n64dd;
+    sSysCfbFbPtr[0] = (uintptr_t)sPs2CpuFramebuffers[0];
+    sSysCfbFbPtr[1] = (uintptr_t)sPs2CpuFramebuffers[1];
+    sSysCfbEnd = (uintptr_t)(sPs2CpuFramebuffers + 2);
+#else
     u32 screenSize;
     UNUSED_NDEBUG uintptr_t tmpFbEnd;
 
@@ -54,6 +66,7 @@ void SysCfb_Init(s32 n64dd) {
     sSysCfbFbPtr[1] = sSysCfbEnd - (screenSize * 2);
     PRINTF(T("フレームバッファのアドレスは %08x と %08x です\n", "Frame buffer addresses are %08x and %08x\n"),
            sSysCfbFbPtr[0], sSysCfbFbPtr[1]);
+#endif
 }
 
 void SysCfb_Reset(void) {

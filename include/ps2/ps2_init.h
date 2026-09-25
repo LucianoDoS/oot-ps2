@@ -17,7 +17,6 @@ extern "C" {
 #include <sifrpc.h>
 #include <loadfile.h>
 #include <libpad.h>
-#include <gs_privileged.h>  /* GS registers (privileged) */
 #include <dmaKit.h>
 #include <gsKit.h>
 

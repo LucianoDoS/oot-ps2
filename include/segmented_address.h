@@ -6,6 +6,10 @@
 
 extern uintptr_t gSegments[NUM_SEGMENTS];
 
+#if PLATFORM_PS2
+#define SEGMENTED_TO_VIRTUAL(addr) (void*)(gSegments[SEGMENT_NUMBER(addr)] + SEGMENT_OFFSET(addr))
+#else
 #define SEGMENTED_TO_VIRTUAL(addr) (void*)(gSegments[SEGMENT_NUMBER(addr)] + SEGMENT_OFFSET(addr) + K0BASE)
+#endif
 
 #endif

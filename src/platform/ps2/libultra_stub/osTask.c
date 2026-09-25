@@ -94,6 +94,7 @@ void osSpTaskStartGo(OSTask* task) {
 
     if (type == M_GFXTASK) {
         rdp_to_gs_exec((const Gfx*)t->t.data_ptr);
+        rdp_to_gs_flip();
 
         /* El RSP terminó de procesar la lista... */
         ps2_os_fire_event(PS2_OS_EVENT_SP);

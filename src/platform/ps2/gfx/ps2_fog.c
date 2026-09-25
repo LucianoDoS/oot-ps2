@@ -27,7 +27,11 @@ void ps2_fog_update(RDPState* rdp) {
     u8 b = (rdp->fogColor >>  8) & 0xFF;
 
     /* Set GS FOGCOL register */
-    GS_SET_FOGCOL(GS_SETREG_FOGCOL(r, g, b));
+    u64* packet = gsKit_heap_alloc(rdp->gs, 1, 16, GIF_AD);
+    packet[0] = GIF_TAG(1, 1, 0, 0, 0, 1);
+    packet[1] = GIF_AD;
+    packet[2] = (u64)r | ((u64)g << 8) | ((u64)b << 16);
+    packet[3] = GS_FOGCOL;
 
     /* 
      * To fully enable GS fog, we also need to:

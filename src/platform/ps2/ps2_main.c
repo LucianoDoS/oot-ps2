@@ -197,7 +197,7 @@ void ps2_init_all(void) {
     ps2_init_iop();
 
     /* 3. Memory card (necesita MCMAN/MCSERV ya cargados) */
-    mcInit(MC_TYPE_XMC);
+    mcInit(MC_TYPE_MC);
 
     /* 4. Gráficos */
     ps2_init_gs();

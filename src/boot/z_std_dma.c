@@ -629,9 +629,12 @@ void DmaMgr_Init(void) {
     s32 idx;
     DmaEntry* iter;
 
+    // On PS2 this table is generated in native byte order and linked into the ELF.
+#if !PLATFORM_PS2
     // DMA the dma data table to RAM
     DmaMgr_DmaRomToRam((uintptr_t)_dmadataSegmentRomStart, _dmadataSegmentStart,
                        (u32)(_dmadataSegmentRomEnd - _dmadataSegmentRomStart));
+#endif
 
 #if DEBUG_FEATURES
     PRINTF("dma_rom_ad[]\n");

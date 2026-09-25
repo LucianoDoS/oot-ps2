@@ -69,6 +69,12 @@
 
 #define DEFINE_ACTOR_UNSET(_0) { 0 },
 
+#if PLATFORM_PS2
+// Actor code is resident in the EE executable; never DMA N64 instructions.
+#undef DEFINE_ACTOR
+#define DEFINE_ACTOR(name, id, allocType, nameString) DEFINE_ACTOR_INTERNAL(name, id, allocType, nameString)
+#endif
+
 ActorOverlay gActorOverlayTable[] = {
 #include "tables/actor_table.h"
 };
