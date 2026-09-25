@@ -90,16 +90,33 @@ _Static_assert(sizeof(OSIoMesg)   == 0x18, "OSIoMesg debe medir 0x18");
  * ───────────────────────────────────────────────────────────────── */
 static int  s_romFd   = -1;
 static bool s_romOpen = false;
+static u32 s_romSize;
+static int s_romMutex = -1;
 
 static OSPiHandle s_cartHandle;
 
 static const char* const kRomPaths[] = {
+#ifdef PS2_ROM_TEST_PATH
+    PS2_ROM_TEST_PATH,
+#else
     "host:oot.z64",
-    "host:oot.n64",
     "cdrom0:\\OOT.Z64;1",
     "mass:oot.z64",
+#endif
     NULL
 };
+
+static int rom_lock(void) {
+    int previous = ps2_os_lock();
+    if (s_romMutex < 0) {
+        ee_sema_t semaphore;
+        memset(&semaphore, 0, sizeof(semaphore));
+        semaphore.init_count = semaphore.max_count = 1;
+        s_romMutex = CreateSema(&semaphore);
+    }
+    ps2_os_unlock(previous);
+    return s_romMutex < 0 ? -1 : WaitSema(s_romMutex);
+}
 
 /* ───────────────────────────────────────────────────────────────── *
  *  Apertura de la ROM
@@ -110,10 +127,14 @@ static bool rom_open(void) {
     for (int i = 0; kRomPaths[i] != NULL; i++) {
         int fd = open(kRomPaths[i], O_RDONLY);
         if (fd >= 0) {
+            int size = lseek(fd, 0, SEEK_END);
+            if (size <= 0 || lseek(fd, 0, SEEK_SET) < 0) {
+                close(fd);
+                continue;
+            }
             s_romFd   = fd;
             s_romOpen = true;
-            int size = lseek(fd, 0, SEEK_END);
-            lseek(fd, 0, SEEK_SET);
+            s_romSize = (u32)size;
             printf("[osRom] ROM abierta: %s (%d bytes)\n",
                    kRomPaths[i], size);
             return true;
@@ -129,6 +150,7 @@ static bool rom_open(void) {
  *  osCartRomInit — devuelve el handle del "cartucho"
  * ───────────────────────────────────────────────────────────────── */
 OSPiHandle* osCartRomInit(void) {
+    if (rom_lock() < 0) return NULL;
     memset(&s_cartHandle, 0, sizeof(s_cartHandle));
     s_cartHandle.type        = 0;      /* DEVICE_TYPE_CART */
     s_cartHandle.baseAddress = 0x10000000;  /* base de cartucho de N64 */
@@ -140,6 +162,7 @@ OSPiHandle* osCartRomInit(void) {
     s_cartHandle.speed       = 0;
 
     rom_open();
+    SignalSema(s_romMutex);
     return &s_cartHandle;
 }
 
@@ -156,27 +179,29 @@ OSPiHandle* osDriveRomInit(void) {
  *  que normalizamos.
  * ───────────────────────────────────────────────────────────────── */
 static s32 rom_read(u32 devAddr, void* dram, u32 size) {
-    if (!s_romOpen && !rom_open()) return -1;
     if (!dram || size == 0) return -1;
+    if (rom_lock() < 0) return -1;
+    s32 result = -1;
+    if (!s_romOpen && !rom_open()) goto done;
 
-    u32 offset = devAddr;
+    u32 offset = devAddr & 0x1FFFFFFFu;
     if (offset >= 0x10000000u) offset -= 0x10000000u;
+    if (offset > s_romSize || size > s_romSize - offset) goto done;
 
-    if (lseek(s_romFd, (int)offset, SEEK_SET) < 0) return -1;
-
-    int got = read(s_romFd, dram, (int)size);
-    if (got < 0) return -1;
-
-    /* Si la lectura se quedó corta, rellenamos con ceros en vez de
-     * dejar basura: es mucho más fácil de diagnosticar. */
-    if ((u32)got < size) {
-        memset((u8*)dram + got, 0, size - (u32)got);
+    if (lseek(s_romFd, (int)offset, SEEK_SET) < 0) goto done;
+    for (u32 completed = 0; completed < size;) {
+        int got = read(s_romFd, (u8*)dram + completed, (int)(size - completed));
+        if (got <= 0) goto done;
+        completed += (u32)got;
     }
 
     /* La GIF y el resto de DMAs leen de RAM física: hay que volcar la
      * caché o verán los datos viejos. */
     FlushCache(0);
-    return 0;
+    result = 0;
+done:
+    SignalSema(s_romMutex);
+    return result;
 }
 
 /* ───────────────────────────────────────────────────────────────── *
@@ -225,7 +250,8 @@ s32 osEPiReadIo(OSPiHandle* handle, u32 devAddr, u32* data) {
     if (!data) return -1;
     u32 value = 0;
     if (rom_read(devAddr, &value, sizeof(value)) != 0) return -1;
-    *data = value;
+    // Register reads return an integer; DMA payloads retain their byte stream.
+    *data = __builtin_bswap32(value);
     return 0;
 }
 
@@ -236,8 +262,8 @@ s32 osEPiWriteIo(OSPiHandle* handle, u32 devAddr, u32 data) {
 
 /* ───────────────────────────────────────────────────────────────── *
  *  osCreatePiManager — en N64 lanza el hilo que serializa los DMA.
- *  Aquí no hace falta: osEPiStartDma ya es síncrono y los semáforos de
- *  las colas se encargan de la exclusión mutua.
+ *  En PS2 las transferencias son síncronas. s_romMutex serializa apertura,
+ *  seek y lectura entre el hilo DMA y el hilo de audio.
  * ───────────────────────────────────────────────────────────────── */
 void osCreatePiManager(OSPri pri, struct OSMesgQueue* cmdQ,
                        OSMesg* cmdBuf, s32 cmdMsgCnt) {
@@ -245,11 +271,14 @@ void osCreatePiManager(OSPri pri, struct OSMesgQueue* cmdQ,
 }
 
 void ps2_rom_shutdown(void) {
+    if (rom_lock() < 0) return;
     if (s_romOpen) {
         close(s_romFd);
         s_romFd   = -1;
         s_romOpen = false;
+        s_romSize = 0;
     }
+    SignalSema(s_romMutex);
 }
 
 /* MEJORA PENDIENTE (no es un bug, es rendimiento):

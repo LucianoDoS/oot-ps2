@@ -32,6 +32,10 @@ falsos que aparece más abajo. **El juego completo todavía no enlaza ni arranca
 - Conversión de 110 includes de texturas: se invierte el valor numérico de cada
   u64 para preservar los bytes originales al compilarlos en EE. No se aplica
   esta transformación a vértices ni matrices.
+- Lecturas de ROM serializadas entre hilos mediante un semáforo. Se completan
+  las lecturas parciales y se rechazan accesos fuera del archivo; ya no se
+  presenta un relleno de ceros como una transferencia correcta. Las lecturas
+  escalares PI convierten big-endian y aceptan el alias KSEG1 del cartucho.
 
 ### Verificación
 
@@ -42,6 +46,8 @@ diagnóstico compilado con ps2dev. El log confirmó:
 [PS2 MATH TEST] PASS: native matrix layout and trigonometry (0)
 [PS2 PRINTF TEST] PASS: game varargs and callback (0)
 [PS2 OS TEST] PASS: queue ABI, FIFO/full/empty, timer, monotonic clock
+[PS2 ROM TEST] PASS: file DMA, boundaries and endian (0)
+[PS2 ROM THREAD TEST] PASS: two concurrent readers (0)
 [PS2 SMOKE] PASS: 120 frames submitted
 ```
 

@@ -11,6 +11,8 @@ uintptr_t gSegments[16];
 extern int ps2_os_smoke(void);
 extern int ps2_math_smoke(void);
 extern int ps2_printf_smoke(void);
+extern int ps2_rom_smoke(void);
+extern int ps2_rom_threads_smoke(void);
 
 typedef struct {
     s16 x, y, z;
@@ -47,6 +49,22 @@ int main(void) {
         return 1;
     }
     if (ps2_os_smoke() != 0) {
+        SleepThread();
+        return 1;
+    }
+    int romResult = ps2_rom_smoke();
+    printf("[PS2 ROM TEST] %s: file DMA, boundaries and endian (%d)\n",
+           romResult == 0 ? "PASS" : "FAIL", romResult);
+    fflush(stdout);
+    if (romResult != 0) {
+        SleepThread();
+        return 1;
+    }
+    int threadsResult = ps2_rom_threads_smoke();
+    printf("[PS2 ROM THREAD TEST] %s: two concurrent readers (%d)\n",
+           threadsResult == 0 ? "PASS" : "FAIL", threadsResult);
+    fflush(stdout);
+    if (threadsResult != 0) {
         SleepThread();
         return 1;
     }

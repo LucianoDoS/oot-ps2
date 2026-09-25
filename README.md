@@ -31,6 +31,8 @@ python3 tools/check_ps2_texture_words.py
 El diagnóstico sin ROM se genera en `build/PS2/oot_ps2_smoke.elf`.
 `tools/run_ps2_smoke.ps1` lo inicia con una configuración aislada de PCSX2
 en `build/PCSX2-diagnostic`; requiere una BIOS y configuración ya disponibles.
+Activa `HostFs` en esa configuración aislada para la prueba de lectura; usa
+`ps2-rom-smoke.bin`, un archivo de 4 KiB generado por el script, sin ROM del juego.
 El log se guarda en `build/PS2/pcsx2-smoke.log`.
 
 El build del juego usa la extracción local US NTSC 1.2. La procedencia de las
