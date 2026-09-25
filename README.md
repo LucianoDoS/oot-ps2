@@ -10,8 +10,8 @@ Las pruebas en el EE verifican matrices, trigonometría, formato de texto,
 secciones críticas, colas de mensajes y temporizadores. El renderer envía
 120 fotogramas; esto aún no constituye una validación visual del juego.
 
-El build completo llegó al enlace con 715 objetos. Sigue fallando por
-referencias pendientes a recursos y servicios de N64. Se están adaptando
+El build completo llegó al enlace con 709 objetos y sin definiciones duplicadas.
+Sigue fallando por 8633 símbolos pendientes de recursos y servicios de N64. Se están adaptando
 los recursos al orden de bytes de PS2 y el código de overlays a funciones
 nativas residentes. El procesamiento DSP de las tareas de audio sigue pendiente.
 Las instrucciones históricas de abajo describen la intención del port,

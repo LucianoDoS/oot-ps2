@@ -55,8 +55,11 @@ La prueba OS también comprueba restauración anidada de interrupciones.
 `tools/check_ps2_texture_words.py` verificó que las 110 texturas conservan
 exactamente sus 212352 bytes originales dentro de un objeto compilado para EE.
 No se ha validado visualmente el render ni probado hardware físico.
-El build completo llegó a enlazar 715 objetos, pero falló: compilar las unidades
-C no significa tener un ELF del juego funcional.
+La última pasada compiló 709 objetos y llegó a la fase de enlace, pero falló
+con 8633 símbolos sin resolver y ninguna definición duplicada. El registro local
+es `build/PS2/game-native-final.log`; la lista deduplicada está en
+`build/PS2/unresolved-symbols.txt`. Compilar las unidades C no significa tener
+un ELF del juego funcional.
 
 ### Trabajo pendiente
 
