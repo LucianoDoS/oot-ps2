@@ -66,13 +66,13 @@ extern "C" {
 /* ───────────────────────────────────────────────────────────────── *
  *  Tabla de segmentos
  *
- *  La define el propio juego en src/code/main.c:
- *      uintptr_t gSegments[NUM_SEGMENTS];
- *  y la rellena con gSPSegment() / SEGMENTED_TO_VIRTUAL().
+ *  El renderer conserva su propia tabla, equivalente a la memoria DMEM del
+ *  RSP. gSPSegment() la modifica sin alterar gSegments del código del juego.
  * ───────────────────────────────────────────────────────────────── */
 #define PS2_NUM_SEGMENTS  16
 
-extern uintptr_t gSegments[PS2_NUM_SEGMENTS];
+/* RSP DMEM state is independent of the CPU's gSegments array. */
+extern uintptr_t gRspSegments[PS2_NUM_SEGMENTS];
 
 #define SEGMENT_NUMBER_OF(a)  (((u32)(a) >> 24) & 0x0F)
 #define SEGMENT_OFFSET_OF(a)  ( (u32)(a) & 0x00FFFFFF)
@@ -96,7 +96,7 @@ static inline void* ps2_segmented_to_virtual(u32 addr) {
         return (void*)(uintptr_t)addr;
     }
 
-    uintptr_t base = gSegments[seg];
+    uintptr_t base = gRspSegments[seg];
     if (base == 0) {
         /* Segmento sin asignar: devolvemos NULL en vez de un puntero
          * basura. Quien lo use debe comprobarlo (todos lo hacen). */

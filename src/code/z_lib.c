@@ -6,6 +6,9 @@
 #include "sys_math.h"
 #include "rand.h"
 #include "sfx.h"
+#if defined(PLATFORM_PS2)
+#include "fault.h"
+#endif
 
 /**
  * memset: sets `len` bytes to `val` starting at address `dest`.
@@ -251,6 +254,12 @@ void Math_Vec3f_Copy(Vec3f* dest, Vec3f* src) {
 }
 
 void Math_Vec3s_ToVec3f(Vec3f* dest, Vec3s* src) {
+#if defined(PLATFORM_PS2)
+    if ((uintptr_t)src < 0x100000) {
+        osSyncPrintf("[PS2] Invalid Vec3s %p, caller %p\n", src, __builtin_return_address(0));
+        Fault_AddHungupAndCrashImpl("Invalid native Vec3s", "Check converted asset segment");
+    }
+#endif
     dest->x = src->x;
     dest->y = src->y;
     dest->z = src->z;

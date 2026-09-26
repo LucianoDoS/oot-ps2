@@ -227,6 +227,9 @@ int main(int argc, char* argv[]) {
     (void)argc;
     (void)argv;
 
+    SifInitRpc(0);
+    setvbuf(stdout, NULL, _IONBF, 0);
+
     printf("\n=================================\n");
     printf("  OoT PS2 Port - Build " __DATE__ "\n");
     printf("=================================\n\n");

@@ -41,6 +41,7 @@
 #include <stdio.h>
 
 #include "ps2_types.h"
+#include "ps2_os_internal.h"
 
 struct OSMesgQueue;
 
@@ -149,12 +150,15 @@ s32 osContInit(struct OSMesgQueue* mq, u8* numControllers, OSContStatus* status)
     }
 
     for (int i = 0; i < PS2_PORTS; i++) {
-        memset(s_padBuf[i], 0, sizeof(s_padBuf[i]));
-        s_portOpen[i] = (padPortOpen(i, 0, s_padBuf[i]) != 0);
-        if (s_portOpen[i]) {
-            pad_configure(i);
-            if (numControllers) (*numControllers)++;
+        if (!s_portOpen[i]) {
+            memset(s_padBuf[i], 0, sizeof(s_padBuf[i]));
+            s_portOpen[i] = (padPortOpen(i, 0, s_padBuf[i]) != 0);
+            if (s_portOpen[i]) {
+                pad_configure(i);
+            }
         }
+        /* libultra returns a port bitmask, not a controller count. */
+        if (numControllers && s_portOpen[i]) *numControllers |= (1u << i);
     }
 
     /* El juego pregunta por 4 puertos (los de N64); los 2 que no existen
@@ -168,7 +172,7 @@ s32 osContInit(struct OSMesgQueue* mq, u8* numControllers, OSContStatus* status)
         }
     }
 
-    printf("[osContPad] %d mando(s) detectado(s)\n",
+    printf("[osContPad] mascara de puertos: 0x%02x\n",
            numControllers ? *numControllers : 0);
     return 0;
 }
@@ -188,7 +192,8 @@ static s8 apply_deadzone(int v) {
  * ───────────────────────────────────────────────────────────────── */
 s32 osContStartReadData(struct OSMesgQueue* mq) {
     (void)mq;
-    /* En PS2 la lectura es síncrona; no hay nada que lanzar. */
+    /* PadMgr waits for SI completion even with synchronous libpad reads. */
+    ps2_os_fire_event(PS2_OS_EVENT_SI);
     return 0;
 }
 
@@ -266,6 +271,7 @@ void osContGetReadData(OSContPad* pad) {
  * ───────────────────────────────────────────────────────────────── */
 s32 osContStartQuery(struct OSMesgQueue* mq) {
     (void)mq;
+    ps2_os_fire_event(PS2_OS_EVENT_SI);
     return 0;
 }
 

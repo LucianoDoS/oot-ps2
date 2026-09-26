@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include "ps2_types.h"
 #include "rdp_to_gs.h"
+#include "ps2_segment.h"
 
 uintptr_t gSegments[16];
 extern int ps2_os_smoke(void);
@@ -87,13 +88,14 @@ int main(void) {
     fflush(stdout);
     gsKit_mode_switch(gs, GS_ONESHOT);
     rdp_to_gs_init(gs);
-    gSegments[6] = (uintptr_t)vertices;
+    gSegments[6] = 0x123456; /* CPU mapping must survive RSP commands. */
     g_rspState.vpScaleX = 180;
     g_rspState.vpScaleY = -160;
     g_rspState.vpTransX = 320;
     g_rspState.vpTransY = 224;
     /* Native words, same layout as a runtime-generated game display list. */
     const u32 commands[][2] __attribute__((aligned(8))) = {
+        { 0xDB060018, (u32)(uintptr_t)vertices }, /* RSP segment 6 */
         { 0xD9FFFFFF, 0x00000004 }, /* G_SHADE */
         { 0x01003006, 0x06000000 }, /* G_VTX: three vertices, segment 6 */
         { 0x05000204, 0 },          /* G_TRI1: indices 0, 1, 2 */
@@ -104,12 +106,18 @@ int main(void) {
     for (unsigned frame = 0; ; ++frame) {
         gsKit_clear(gs, GS_SETREG_RGBAQ(12, 18, 30, 128, 0));
         rdp_to_gs_exec((const Gfx*)commands);
+        if (gSegments[6] != 0x123456 || gRspSegments[6] != (uintptr_t)vertices) {
+            printf("[PS2 SMOKE] FAIL: independent CPU/RSP segment tables\n");
+            fflush(stdout);
+            SleepThread();
+        }
         /* A moving marker makes a frozen frame distinguishable. */
         float x = 20 + (frame % 560);
         gsKit_prim_sprite(gs, x, 410, x + 16, 426, 1,
                           GS_SETREG_RGBAQ(255, 255, 255, 128, 0));
         rdp_to_gs_flip();
         if (frame == 119) {
+            printf("[PS2 SEGMENT TEST] PASS: independent CPU/RSP mappings\n");
             printf("[PS2 SMOKE] PASS: 120 frames submitted\n");
             fflush(stdout);
         }

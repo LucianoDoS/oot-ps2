@@ -2,7 +2,7 @@
 
 Port de **The Legend of Zelda: Ocarina of Time** a PlayStation 2, basado en la descompilación [zeldaret/oot](https://github.com/zeldaret/oot).
 
-## Estado comprobado — 25 de septiembre de 2026
+## Estado comprobado — 26 de septiembre de 2026
 
 **Todavía no es un port jugable.** Ya se compila la capa PS2 con ps2dev real
 (GCC 15.2.0), y el ejecutable de diagnóstico arranca en PCSX2 2.8.0.
@@ -10,10 +10,13 @@ Las pruebas en el EE verifican matrices, trigonometría, formato de texto,
 secciones críticas, colas de mensajes y temporizadores. El renderer envía
 120 fotogramas; esto aún no constituye una validación visual del juego.
 
-El build completo llegó al enlace con 709 objetos y sin definiciones duplicadas.
-Sigue fallando por 8633 símbolos pendientes de recursos y servicios de N64. Se están adaptando
-los recursos al orden de bytes de PS2 y el código de overlays a funciones
-nativas residentes. El procesamiento DSP de las tareas de audio sigue pendiente.
+El juego completo ya enlaza: 707 objetos generan `build/PS2-ntsc12/oot_ps2.elf`.
+En PCSX2 completa `Play_Init` y la ejecución de diagnóstico alcanzó 900
+fotogramas del estado `Play` en la secuencia del título sin excepciones registradas.
+Esto no confirma una imagen correcta ni jugabilidad. El conversor local adapta estructuras, vértices, matrices, listas
+gráficas y cinemáticas; las texturas conservan su secuencia de bytes original.
+La conversión aún cubre solo los segmentos seleccionados. El procesamiento DSP
+de las tareas de audio sigue pendiente.
 Las instrucciones históricas de abajo describen la intención del port,
 no garantizan que el juego arranque.
 
@@ -38,6 +41,20 @@ El log se guarda en `build/PS2/pcsx2-smoke.log`.
 El build del juego usa la extracción local US NTSC 1.2. La procedencia de las
 fuentes, versión del SDK y hash de ROM están en [UPSTREAM.md](UPSTREAM.md).
 ROMs, recursos extraídos y salidas de compilación quedan fuera de Git.
+
+Para la prueba actual de carga del título, después de extraer los recursos:
+
+```sh
+/home/lucia/oot-ps2-tools/oot-upstream/.venv/bin/python tools/prepare_ps2_rom.py \
+  --upstream /home/lucia/oot-ps2-tools/oot-upstream \
+  --profile title --output build/PS2-ntsc12/oot.z64
+/home/lucia/oot-ps2-tools/oot-upstream/.venv/bin/python tools/check_ps2_cutscenes.py \
+  --upstream /home/lucia/oot-ps2-tools/oot-upstream
+```
+
+Desde PowerShell, `tools/run_ps2_game.ps1` inicia el ELF. El log queda en
+`build/PS2-ntsc12/pcsx2-game.log`. El perfil `title` es una selección de recursos
+para diagnóstico; no implica que la pantalla del título funcione completamente.
 
 ---
 

@@ -533,10 +533,21 @@ void Graph_ThreadEntry(void* arg0) {
 #endif
         }
 
+#if defined(PLATFORM_PS2)
+        osSyncPrintf("[PS2 STATE] Init %p, instance %p, bytes %u\n", ovl->init, gameState, size);
+#endif
         GameState_Init(gameState, ovl->init, &gfxCtx);
+#if defined(PLATFORM_PS2)
+        osSyncPrintf("[PS2 STATE] Init completed %p\n", ovl->init);
+#endif
 
         while (GameState_IsRunning(gameState)) {
             Graph_Update(&gfxCtx, gameState);
+#if defined(PLATFORM_PS2)
+            if (gameState->frames == 1 || gameState->frames % 300 == 0) {
+                osSyncPrintf("[PS2 FRAME] State %p, frame %u\n", ovl->init, gameState->frames);
+            }
+#endif
         }
 
         nextOvl = Graph_GetNextGameState(gameState);

@@ -234,7 +234,8 @@ endif
 
 ifeq ($(PLATFORM),PS2)
 GAME_SRCS := $(filter-out src/boot/driverominit.c src/boot/is_debug.c src/boot/is_debug_ique.c \
-    src/boot/cic6105.c src/code/code_n64dd_800AD410.c src/code/code_n64dd_800AD4C0.c,$(GAME_SRCS))
+    src/boot/cic6105.c src/code/code_n64dd_800AD410.c src/code/code_n64dd_800AD4C0.c \
+    src/code/z_moji.c src/libc/memset.c src/libc/memmove.c,$(GAME_SRCS))
 ifneq ($(filter $(OOT_VERSION),GC_JP_MQ GC_US_MQ GC_EU_MQ GC_EU_MQ_DBG),)
 GAME_SRCS := $(filter-out src/overlays/misc/ovl_kaleido_scope/z_lmap_mark_data.c \
     src/overlays/misc/ovl_map_mark_data/z_map_mark_data.c,$(GAME_SRCS))
@@ -303,7 +304,7 @@ endif
 
 all: $(BUILD_DIR)/$(TARGET)
 
-$(BUILD_DIR)/$(TARGET): $(OBJS)
+$(BUILD_DIR)/$(TARGET): $(OBJS) Makefile
 	@echo "[LD] $@  ($(words $(OBJS)) objetos)"
 	@mkdir -p $(dir $@)
 	$(Q)$(LD) $(CFLAGS) $(LDSCRIPT_FLAG) $(ROM_LDFLAGS) -o $@ $(OBJS) \

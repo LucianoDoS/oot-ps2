@@ -474,7 +474,9 @@ void f3dex2_moveword(u32 w0, u32 w1, RSPState* rsp) {
             {
                 u32 seg = offset / 4;
                 if (seg < PS2_NUM_SEGMENTS) {
-                    gSegments[seg] = (uintptr_t)ps2_segmented_to_virtual(w1);
+                    /* G_MW_SEGMENT writes a physical base, not a segmented
+                     * pointer. Never modify the CPU's segment table here. */
+                    gRspSegments[seg] = (uintptr_t)(w1 & 0x1FFFFFFF);
                 }
             }
             break;

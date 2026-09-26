@@ -71,6 +71,29 @@ typedef union OSTask {
 #define M_AUDTASK   2
 
 static OSTask* s_currentTask = NULL;
+static u32 s_spStatus = 1; // HALT; tasks execute synchronously on the EE.
+static u32 s_dpStatus;
+
+u32 __osSpGetStatus(void) { return s_spStatus; }
+u32 osDpGetStatus(void) { return s_dpStatus; }
+
+void __osSpSetStatus(u32 command) {
+    if (command & 1) s_spStatus &= ~1u;
+    if (command & 2) s_spStatus |= 1u;
+    if (command & (1u << 2)) s_spStatus &= ~2u;
+    // SSTEP, INTR_BREAK and SIG0..SIG7 use consecutive clear/set pairs.
+    for (u32 bit = 5, flag = 1u << 5; bit <= 23; bit += 2, flag <<= 1) {
+        if (command & (1u << bit)) s_spStatus &= ~flag;
+        if (command & (1u << (bit + 1))) s_spStatus |= flag;
+    }
+}
+
+void osDpSetStatus(u32 command) {
+    for (u32 bit = 0, flag = 1; bit <= 4; bit += 2, flag <<= 1) {
+        if (command & (1u << bit)) s_dpStatus &= ~flag;
+        if (command & (1u << (bit + 1))) s_dpStatus |= flag;
+    }
+}
 
 /* Implementado en ps2_audio_driver.c */
 extern void PS2Audio_ProcessTask(void* cmdList, u32 size);
@@ -90,11 +113,15 @@ void osSpTaskStartGo(OSTask* task) {
     if (!s_currentTask) return;
 
     OSTask* t = s_currentTask;
+    s_spStatus &= ~(1u | (1u << 9)); // running, not TASKDONE
     u32 type = t->t.type;      /* el tipo real vive en t.type */
 
     if (type == M_GFXTASK) {
+        s_dpStatus |= 1u << 5; // PIPE_BUSY while translating/submitting work
         rdp_to_gs_exec((const Gfx*)t->t.data_ptr);
         rdp_to_gs_flip();
+        s_dpStatus &= ~(1u << 5);
+        s_spStatus |= 1u | (1u << 9);
 
         /* El RSP terminó de procesar la lista... */
         ps2_os_fire_event(PS2_OS_EVENT_SP);
@@ -106,8 +133,10 @@ void osSpTaskStartGo(OSTask* task) {
 
     } else if (type == M_AUDTASK) {
         PS2Audio_ProcessTask(t->t.data_ptr, t->t.data_size);
+        s_spStatus |= 1u | (1u << 9);
         ps2_os_fire_event(PS2_OS_EVENT_SP);
     } else {
+        s_spStatus |= 1u | (1u << 9);
         /* Tarea desconocida: avisamos igual para no bloquear a nadie */
         ps2_os_fire_event(PS2_OS_EVENT_SP);
     }

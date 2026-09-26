@@ -87,6 +87,41 @@ typedef struct {
 
 static PS2ThreadEntry s_threads[PS2_OS_MAX_THREADS];
 
+// Reconstruct libultra's inspection chain from the native thread registry.
+// EE CPU exceptions still use the SDK handler; only flags explicitly recorded
+// in an OSThread are exposed as libultra faults.
+OSThread* __osGetActiveQueue(void) {
+    static OSThread tail = { .priority = -1 };
+    OSThread* first = &tail;
+    int lock = ps2_os_lock();
+    for (int i = PS2_OS_MAX_THREADS - 1; i >= 0; i--) {
+        if (s_threads[i].key && s_threads[i].ee_id >= 0) {
+            s_threads[i].key->tlnext = first;
+            first = s_threads[i].key;
+        }
+    }
+    ps2_os_unlock(lock);
+    return first;
+}
+
+OSThread* __osGetCurrFaultedThread(void) {
+    for (OSThread* thread = __osGetActiveQueue(); thread->priority != -1; thread = thread->tlnext) {
+        if (thread->flags & 3) return thread; // OS_FLAG_CPU_BREAK | OS_FLAG_FAULT
+    }
+    return NULL;
+}
+
+void __osCleanupThread(void) {
+    int current = GetThreadId();
+    for (int i = 0; i < PS2_OS_MAX_THREADS; i++) {
+        if (s_threads[i].key && s_threads[i].ee_id == current) {
+            s_threads[i].key->state = OS_STATE_STOPPED;
+            break;
+        }
+    }
+    ExitThread();
+}
+
 static PS2ThreadEntry* thread_find(OSThread* t) {
     for (int i = 0; i < PS2_OS_MAX_THREADS; i++) {
         if (s_threads[i].key == t) return &s_threads[i];

@@ -35,6 +35,7 @@ u8 gViConfigModeType;
 #endif
 
 // Unused
+#if !PLATFORM_PS2
 void* D_80009410[] = {
     osStopThread,  __osSetHWIntrRoutine,
 #if PLATFORM_N64
@@ -45,6 +46,7 @@ void* D_80009410[] = {
     bcmp,
 #endif
 };
+#endif
 
 void Main_ThreadEntry(void* arg) {
     OSTime time;

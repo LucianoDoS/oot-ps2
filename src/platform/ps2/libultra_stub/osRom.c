@@ -94,6 +94,7 @@ static u32 s_romSize;
 static int s_romMutex = -1;
 
 static OSPiHandle s_cartHandle;
+OSPiHandle* __osPiTable = &s_cartHandle;
 
 static const char* const kRomPaths[] = {
 #ifdef PS2_ROM_TEST_PATH

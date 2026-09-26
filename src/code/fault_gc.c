@@ -1326,6 +1326,12 @@ void Fault_HungupFaultClient(const char* exp1, const char* exp2) {
  * or both may be NULL.
  */
 NORETURN void Fault_AddHungupAndCrashImpl(const char* exp1, const char* exp2) {
+#if PLATFORM_PS2
+    // Report even before Fault_Init; deliberately writing an N64 exception
+    // address would hide the original error on the EE.
+    extern void ps2_report_fatal(const char*, const char*) __attribute__((noreturn));
+    ps2_report_fatal(exp1, exp2);
+#endif
     FaultClient client;
     s32 pad;
 

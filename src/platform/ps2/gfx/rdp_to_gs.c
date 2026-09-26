@@ -40,6 +40,8 @@
 #include "rdp_to_gs.h"
 #include "f3dex2_ps2.h"
 
+uintptr_t gRspSegments[PS2_NUM_SEGMENTS];
+
 /* ═══════════════════════════════════════════════════════════════════ *
  *  OPCODES
  *
@@ -121,6 +123,7 @@ RSPState g_rspState;
  *  rdp_to_gs_init
  * ═══════════════════════════════════════════════════════════════════ */
 void rdp_to_gs_init(GSGLOBAL* gs) {
+    memset(gRspSegments, 0, sizeof(gRspSegments));
     memset(&g_rdpState, 0, sizeof(g_rdpState));
     memset(&g_rspState, 0, sizeof(g_rspState));
 

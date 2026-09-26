@@ -4,10 +4,49 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
-## Avance con herramientas reales — 2026-09-25
+## Enlace completo y carga de escenas — 2026-09-26
+
+El juego completo ya enlaza con 707 objetos. PCSX2 completa `Play_Init` y la
+ejecución de diagnóstico alcanzó 900 fotogramas del estado `Play` en la secuencia
+del título sin excepciones registradas; **todavía no se ha validado como
+jugable ni se ha confirmado visualmente su imagen**.
+
+- Generador de metadatos ampliado con direcciones reales de mensajes y recursos,
+  y microcódigo original usado para identificar tareas; sin recursos ficticios.
+- Corregido el arranque que recursaba dentro de `memset`, usando newlib/SDK.
+  Corregida la lectura de región de la cabecera para el orden de bytes EE.
+- Completados servicios de estado SP/DP, FCSR y enumeración de hilos; los
+  fallos explícitos del juego se escriben en consola antes de detenerse.
+- Conversor privado `tools/prepare_ps2_rom.py`: usa las estructuras descubiertas
+  por el extractor upstream, incluidos recursos sin una declaración XML inicial.
+  Convierte campos por tamaño, preserva texturas y blobs de bytes, y registra
+  cada recurso en un manifiesto. No convierte automáticamente toda la ROM.
+- Conversión de Hyrule Field, recursos comunes, Link adulto, Epona y título.
+  Incluye objetos del escenario y sus colisiones; el perfil `title` selecciona
+  11 segmentos. Se corrigió el acceso inválido en `DynaPoly_AddBgActorToLookup`.
+  Las cinemáticas distinguen palabras, medios enteros y campos de un byte.
+  `tools/check_ps2_cutscenes.py` verifica cámara, posiciones, secuencias,
+  tiempo, texto, transiciones y rechazo de datos truncados.
+- `osContInit` conserva los puertos ya abiertos y devuelve una máscara de bits.
+  Lectura y consulta del mando notifican la finalización SI que espera PadMgr.
+- `tools/run_ps2_game.ps1` inicia la prueba con configuración aislada y conserva
+  el log anterior; solo reemplaza el proceso de esta prueba identificado por ELF.
+- Tabla de segmentos del renderer separada de la tabla del motor: los comandos
+  `G_MW_SEGMENT` escriben bases físicas del RSP sin corromper los punteros CPU.
+  La prueba EE confirma ambas tablas independientes y 120 fotogramas enviados.
+  También volvieron a pasar matrices, printf, colas, temporizadores y DMA
+  concurrente en `build/PS2/pcsx2-smoke.log`.
+
+Pendiente: validación visual (la captura de ventana falló por timeout), control
+interactivo y selección de partida, conversión de los demás escenarios/objetos,
+guardado del juego y procesamiento DSP de audio. El avance de fotogramas del
+título no sustituye estas verificaciones.
+
+## Avance con herramientas reales — 2026-09-25 (histórico)
 
 Esta sección sustituye las conclusiones de la revisión histórica con headers
-falsos que aparece más abajo. **El juego completo todavía no enlaza ni arranca.**
+falsos que aparece más abajo. En esta fecha el juego completo aún no enlazaba;
+el avance del 26 de septiembre está documentado arriba.
 
 - Instalado ps2dev/GCC 15.2.0 en Ubuntu WSL; corregidas llamadas incompatibles
   con ps2sdk/gsKit reales, flags del compilador y script de enlace del SDK.

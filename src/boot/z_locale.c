@@ -1,6 +1,7 @@
 #include "libu64/debug.h"
 #include "alignment.h"
 #include "carthandle.h"
+#include "fault.h"
 #include "line_numbers.h"
 #include "padmgr.h"
 #include "printf.h"
@@ -27,7 +28,14 @@ typedef struct LocaleCartInfo {
 } LocaleCartInfo; // size = 0x20
 
 void Locale_Init(void) {
-#if !PLATFORM_GC
+#if PLATFORM_PS2
+    u32 regionInfo;
+    u8 countryCode;
+    if (osEPiReadIo(gCartHandle, 0x3C, &regionInfo) != 0) {
+        Fault_AddHungupAndCrashImpl("Locale_Init", "Cannot read cartridge region");
+    }
+    countryCode = (regionInfo >> 8) & 0xFF;
+#elif !PLATFORM_GC
     ALIGNED(4) u8 regionInfo[4];
     u8 countryCode;
 

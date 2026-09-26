@@ -30,6 +30,12 @@ struct OSMesgQueue;
 void osInitialize(void) {
 }
 
+void __attribute__((noreturn)) ps2_report_fatal(const char* first, const char* second) {
+    printf("[PS2 FATAL] %s: %s\n", first ? first : "", second ? second : "");
+    fflush(stdout);
+    for (;;) SleepThread();
+}
+
 /* ───────────────────────────────────────────────────────────────── *
  *  Máscara de interrupciones
  *
@@ -64,14 +70,11 @@ u32 osSetIntMask(u32 mask) {
 s32 osSyncPrintfEnabled = 1;
 
 void osSyncPrintf(const char* fmt, ...) {
-#if defined(DEBUG_FEATURES) && DEBUG_FEATURES
+    if (!osSyncPrintfEnabled) return;
     va_list args;
     va_start(args, fmt);
     vprintf(fmt, args);
     va_end(args);
-#else
-    (void)fmt;   /* en release no imprimimos: el printf de PS2 es caro */
-#endif
 }
 
 /* ───────────────────────────────────────────────────────────────── *
