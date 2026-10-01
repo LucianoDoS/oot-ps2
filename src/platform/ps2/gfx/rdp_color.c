@@ -181,6 +181,17 @@ bool ps2_combiner_uses_shade(const RDPState* rdp, bool alpha) {
     return false;
 }
 
+bool ps2_combiner_texture_lerp(const RDPState* rdp) {
+    if (((rdp->otherMode.hi >> 20) & 3) != 1 || (rdp->otherMode.lo & 0x5003)) return false;
+    const u8 expected[4][4] = {{2,1,12,1}, {0,15,4,7}, {7,7,7,6}, {7,7,7,0}};
+    for (int i = 0; i < 4; i++) {
+        u8 sources[4];
+        combiner_sources(rdp, i & 1, i >= 2, sources);
+        for (int j = 0; j < 4; j++) if (sources[j] != expected[i][j]) return false;
+    }
+    return true;
+}
+
 void ps2_combiner_constants(const RDPState* rdp, u32* prim, u32* env) {
     u32 primMask = 0, envMask = 0;
     unsigned cycleType = (rdp->otherMode.hi >> 20) & 3;
@@ -202,6 +213,9 @@ void ps2_combiner_constants(const RDPState* rdp, u32* prim, u32* env) {
         }
     }
     *prim = rdp->primColor & primMask;
+    /* This factor is applied between two GS texture passes, not baked
+     * into either texture. Changing it must retain both cache entries. */
+    if (ps2_combiner_texture_lerp(rdp)) envMask &= ~255u;
     *env = rdp->envColor & envMask;
 }
 

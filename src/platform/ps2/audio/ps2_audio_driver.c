@@ -92,6 +92,7 @@ static bool s_audioReady;
 static bool s_nativeOutput;
 static u64 s_pcmStart, s_pcmLast, s_pcmBytes;
 static unsigned s_pcmLate, s_pcmDropped;
+static unsigned s_iopQueued;
 extern u64 osGetTime(void);
 static s16         s_mixBuf[AUDIO_BUFFER_BYTES / sizeof(s16)]
                             __attribute__((aligned(64)));
@@ -114,6 +115,7 @@ void PS2Audio_Init(void) {
     s_nativeOutput = false;
     s_pcmStart = s_pcmLast = s_pcmBytes = 0;
     s_pcmLate = s_pcmDropped = 0;
+    s_iopQueued = 0;
 
     /* audsrv_init() ya NO se llama aquí: lo hace ps2_main.c una sola
      * vez, después de cargar audsrv.irx. Llamarla dos veces dejaba el
@@ -224,7 +226,13 @@ s32 osAiSetFrequency(u32 frequency) {
 u32 osAiGetLength(void) {
     if (!s_audioReady) return 0;
     int queued = audsrv_queued();
-    return queued > 0 ? (u32)queued : 0;
+    s_iopQueued = queued > 0 ? (u32)queued : 0;
+    /* AI reports the current N64 DMA, whereas audsrv includes its IOP
+     * playback reservoir. Exposing the entire reservoir makes the game's
+     * adaptive synthesizer choose its minimum block until it underruns.
+     * Keep 20 ms on the IOP and report only audio above that reserve. */
+    unsigned reserve = (unsigned)s_audfmt.freq * 4 / 50;
+    return s_iopQueued > reserve ? s_iopQueued - reserve : 0;
 }
 
 int PS2Audio_SubmitBuffer(void* buffer, unsigned int size) {
@@ -249,8 +257,9 @@ int PS2Audio_SubmitBuffer(void* buffer, unsigned int size) {
         }
         unsigned elapsed = (now - s_pcmStart) * 1000 / 46875000;
         unsigned duration = s_pcmBytes * 1000 / ((u64)s_audfmt.freq * 4);
-        printf("[PS2 PCM] buffer=%u bytes=%u peak=%u sent=%d elapsedMs=%u audioMs=%u late=%u dropped=%u\n",
-               buffers, size, peak, result, elapsed, duration, s_pcmLate, s_pcmDropped);
+        printf("[PS2 PCM] buffer=%u bytes=%u peak=%u sent=%d elapsedMs=%u audioMs=%u late=%u dropped=%u queueMs=%u\n",
+               buffers, size, peak, result, elapsed, duration, s_pcmLate, s_pcmDropped,
+               s_iopQueued * 1000 / ((unsigned)s_audfmt.freq * 4));
     }
     return result == (int)size ? 0 : -1;
 }

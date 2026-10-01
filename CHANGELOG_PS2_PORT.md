@@ -4,6 +4,24 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Mezcla de suelo y reserva de audio — 2026-10-01
+
+- El material del suelo de `spot04` mezcla TEXEL0 y TEXEL1 mediante
+  ENV_ALPHA y después aplica SHADE. El renderer antes sustituía TEXEL1
+  por TEXEL0. Ahora reconoce ese combinador opaco y dibuja dos pasadas GS,
+  cada una con su tile, coordenadas, profundidad y niebla. Otros combinadores
+  de dos texturas siguen pendientes. Cambiar ENV_ALPHA conserva ambas
+  texturas en caché; con alfa cero solo dibuja la primera pasada.
+- La longitud AI comunicada al motor excluye 20 ms de reserva de audsrv.
+  Antes incluía toda la cola IOP, lo que mantenía al sintetizador en bloques
+  mínimos. La prueba enlaza el driver real con un servidor simulado y verifica
+  32/48 kHz, reserva, errores y rechazo de bloques que no caben completos.
+- Pruebas EE nativas pasan mezcla de dos texturas, retención de caché al
+  cambiar el factor, exclusión de materiales recortados y driver de audio.
+  Compilación completa: 715 objetos. Registro:
+  `build/PS2/pcsx2-ground-audio-pass.log`. La verificación visual del suelo
+  y la continuidad del audio en el juego siguen pendientes.
+
 ## Recortes de alfa y coste de la caché — 2026-10-01
 
 - El test GS ahora reconoce CVG_X_ALPHA usado por materiales TEX_EDGE,

@@ -356,6 +356,58 @@ int ps2_renderer_smoke(void) {
     f3dex2_moveword(0xdb080000, (16000u << 16) | (u16)-15744, &fogState);
     if (ps2_fog_calculate_factor(0.98f, &fogState) != 255 ||
         ps2_fog_calculate_factor(1, &fogState) != 0) failures++;
+    /* Two ground textures must keep distinct VRAM and both draw; changing
+     * ENV_ALPHA must not reconvert their unchanged source pixels. */
+    static const u8 ground0[] = {0xf8,1,0xf8,1}, ground1[] = {0,0x3f,0,0x3f};
+    rdp_setothermode(1u << 20, 0xc8112078u, &g_rdpState);
+    rdp_setcombine(0xfc267e04, 0x1ffcfdf8, &g_rdpState);
+    rdp_setenvcolor(0, 128, &g_rdpState);
+    printf("[PS2 GROUND CHECK] before=%d recognized=%d\n", failures, ps2_combiner_texture_lerp(&g_rdpState));
+    if (!ps2_combiner_texture_lerp(&g_rdpState)) failures++;
+    u32 unusedPrim, unusedEnv;
+    ps2_combiner_constants(&g_rdpState, &unusedPrim, &unusedEnv);
+    if (unusedEnv || unusedPrim) failures++;
+    for (int i = 0; i < 2; i++) {
+        u32 tmem = i ? 256 : 0;
+        rdp_settile(0xf5100000 | tmem, (u32)i << 24, &g_rdpState);
+        rdp_settilesize(0xf2000000, ((u32)i << 24) | (4u << 12), &g_rdpState);
+        rdp_settimg(0xfd100001, (u32)(i ? ground1 : ground0), &g_rdpState);
+        rdp_loadtexture(0xf3, 0, (u32)i << 24, &g_rdpState);
+    }
+    reflection.geometryMode = 0;
+    reflection.texEnabled = true; reflection.texTile = 0;
+    reflection.texScaleS = reflection.texScaleT = 1;
+    for (int i = 0; i < 3; i++) reflection.vtx[i] = (RSPVertex){
+        .valid=true, .cw=1, .sz=0.5f, .sx=100 + i*10, .sy=100 + (i==1 ? 10 : 0),
+        .cr=255,.cg=255,.cb=255,.ca=255};
+    beforeDraw = g_rdpState.stats.submitted;
+    f3dex2_tri1(0x05000204, 0, &reflection, &g_rdpState);
+    printf("[PS2 GROUND CHECK] draws=%u vram=%08x,%08x fog=%d alpha=%016llx\n",
+        g_rdpState.stats.submitted-beforeDraw,g_rdpState.tile[0].gsTexture.Vram,g_rdpState.tile[1].gsTexture.Vram,
+        g_rdpState.gs->PrimFogEnable,(unsigned long long)g_rdpState.gs_alpha);
+    if (g_rdpState.stats.submitted != beforeDraw + 2 ||
+        g_rdpState.tile[0].gsTexture.Vram == g_rdpState.tile[1].gsTexture.Vram ||
+        g_rdpState.gs->PrimFogEnable ||
+        g_rdpState.gs_alpha != (GS_SETREG_ALPHA(0,2,2,2,0x80))) failures++;
+    printf("[PS2 GROUND CHECK] after first=%d expectedAlpha=%016llx\n", failures,
+           (unsigned long long)GS_SETREG_ALPHA(0,2,2,2,0x80));
+    u32 groundVram[2] = {g_rdpState.tile[0].gsTexture.Vram,g_rdpState.tile[1].gsTexture.Vram};
+    u32 groundUploads = g_rdpState.stats.textureUploads;
+    rdp_setenvcolor(0, 64, &g_rdpState);
+    f3dex2_tri1(0x05000204, 0, &reflection, &g_rdpState);
+    if (g_rdpState.stats.textureUploads != groundUploads ||
+        g_rdpState.tile[0].gsTexture.Vram != groundVram[0] ||
+        g_rdpState.tile[1].gsTexture.Vram != groundVram[1]) failures++;
+    printf("[PS2 GROUND CHECK] uploads=%u failures=%d constants=%08x,%08x\n",
+        g_rdpState.stats.textureUploads-groundUploads,failures,unusedPrim,unusedEnv);
+    printf("[PS2 GROUND CHECK] retained=%08x,%08x previous=%08x,%08x\n",
+        g_rdpState.tile[0].gsTexture.Vram,g_rdpState.tile[1].gsTexture.Vram,groundVram[0],groundVram[1]);
+    rdp_setenvcolor(0, 0, &g_rdpState);
+    beforeDraw = g_rdpState.stats.submitted;
+    f3dex2_tri1(0x05000204, 0, &reflection, &g_rdpState);
+    if (g_rdpState.stats.submitted != beforeDraw + 1) failures++;
+    rdp_setothermode(1u << 20, 0xc8113078u, &g_rdpState);
+    if (ps2_combiner_texture_lerp(&g_rdpState)) failures++;
     printf("[PS2 RENDER TEST] %s: matrices, viewport, othermode, textures and palettes (%d)\n",
            failures ? "FAIL" : "PASS", failures);
     return failures;

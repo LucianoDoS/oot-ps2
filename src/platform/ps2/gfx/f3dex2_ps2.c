@@ -347,6 +347,29 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
         gs->PrimFogEnable = fog;
         gsKit_prim_list_triangle_goraud_texture_stq_3d(gs, &tile->gsTexture, 3, points);
         gs->PrimFogEnable = previousFog;
+        /* Kokiri ground uses (TEXEL1-TEXEL0)*ENV_ALPHA+TEXEL0, then
+         * SHADE. Match that opaque material using a second GS pass with
+         * its own tile coordinates, and the same depth and fog factors. */
+        if (ps2_combiner_texture_lerp(rdp) && (rdp->envColor & 255)) {
+            TileDescriptor* second = &rdp->tile[(rsp->texTile + 1) & 7];
+            if (!second->gsTextureLoaded) ps2_texture_upload(second, rdp);
+            if (second->gsTextureLoaded) {
+                u32 depths[3] = {z0,z1,z2};
+                u32 alpha = ((rdp->envColor & 255) * 128 + 127) / 255;
+                ps2_texture_apply_tile(second, rdp);
+                for (int i = 0; i < 3; i++) {
+                    u32 color = ((u32)*colors[i] & 0xffffffu) | (alpha << 24);
+                    ps2_texture_build_vertex(second, rsp, rdp, vertices[i], color, depths[i], &points[i]);
+                    if (fog) ps2_fog_apply_xyz(&points[i].xyz2, vertices[i]->cz / vertices[i]->cw, rsp);
+                }
+                gsKit_set_primalpha(gs, GS_SETREG_ALPHA(0,1,0,1,0x80), 0);
+                gs->PrimFogEnable = fog;
+                gsKit_prim_list_triangle_goraud_texture_stq_3d(gs, &second->gsTexture, 3, points);
+                gs->PrimFogEnable = previousFog;
+                gsKit_set_primalpha(gs, rdp->gs_alpha, 0);
+                rdp->stats.submitted++;
+            } else rdp->stats.textureFailed++;
+        }
     } else if (fog) {
         GSPRIMPOINT points[3];
         u32 depths[3] = {z0,z1,z2};
