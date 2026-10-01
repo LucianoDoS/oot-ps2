@@ -6,6 +6,14 @@ trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
 ## Audio independiente del renderer y fondos JPEG — 2026-10-01
 
+- Conectada niebla nativa GS a triángulos con y sin textura, usando FGE,
+  XYZF2 y FOGCOL. Antes solo existía un cálculo genérico sin conexión al
+  dibujo. Ahora interpreta los parámetros reales G_MW_FOG sobre Z/W,
+  invierte el factor para GS y limita la activación a la etapa estándar
+  FOG_SHADE_A de dos ciclos. Conserva la profundidad de 24 bits y restaura
+  el estado de niebla antes de dibujar fondos/textos. Pruebas EE pasan
+  inicio, mitad, saturación, rango estrecho y desactivación por material.
+  Referencia de emisión STQ: [gsKit](https://github.com/ps2dev/gsKit/blob/master/ee/gs/src/gsTexture.c).
 - La traducción de gráficos pasa del scheduler a un hilo EE de prioridad
   libultra 10, inferior a Graph (11) y AudioMgr (12). Entrega SP al despachar
   y conserva DP ocupado hasta completar el dibujo y el cambio de pantalla.
@@ -28,6 +36,11 @@ trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 - Diagnóstico acotado de cámara y fondo en habitaciones de imagen única.
   Los recursos de la casa contienen polígonos verdes sin textura; aún falta
   comprobar en la cinemática cuándo deben cubrirlos el fondo y los fundidos.
+- El juego decodifica el JPEG real 320×240 de la casa y registra fondos
+  S2DEX dibujados. PCSX2 indica 20 FPS en la cinemática observada. Una prueba
+  larga continúa produciendo PCM cerca de tiempo real, aunque registra
+  algunos descartes adicionales; no confirma audio perfecto ni un benchmark
+  comparable de todas las escenas.
 - Compilación completa: 715 objetos. Registros locales de pruebas:
   `build/PS2/pcsx2-jpeg-background-pass.log`,
   `build/PS2/pcsx2-task-priority-pass.log` y

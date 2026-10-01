@@ -70,6 +70,7 @@ void rdp_setenvcolor(u32 w0, u32 w1, RDPState* rdp) {
 void rdp_setfogcolor(u32 w0, u32 w1, RDPState* rdp) {
     (void)w0;
     rdp->fogColor = w1;
+    ps2_fog_update(rdp);
 }
 
 /* ─────────────────────────────────────────────────────────── *

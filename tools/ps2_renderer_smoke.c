@@ -316,6 +316,33 @@ int ps2_renderer_smoke(void) {
     f3dex2_movemem(0xdc00000a, (u32)lookY, &reflection);
     f3dex2_vtx(0x01001002, (u32)&normal, &reflection);
     if (reflection.vtx[0].tc_s != 32767 || reflection.lookAt[0][1] != 1) failures++;
+    RSPState fogState = g_rspState;
+    fogState.geometryMode = 0x00010000;
+    /* gSPFogPosition(500,1000): Z/W=0 starts fog, 0.5 is half, 1 is full. */
+    f3dex2_moveword(0xdb080000, 256u << 16, &fogState);
+    if (ps2_fog_calculate_factor(-1, &fogState) != 255 ||
+        ps2_fog_calculate_factor(0, &fogState) != 255 ||
+        ps2_fog_calculate_factor(0.5f, &fogState) != 127 ||
+        ps2_fog_calculate_factor(1, &fogState) != 0) failures++;
+    gs_xyz2 fogVertex = point.xyz2;
+    u64 packedFog;
+    ps2_fog_apply_xyz(&fogVertex, 0.5f, &fogState);
+    memcpy(&packedFog, &fogVertex.xyz, 8);
+    if (fogVertex.tag != GS_XYZF2 || (packedFog >> 56) != 127 ||
+        (u32)(packedFog >> 32) % 0x1000000 != point.xyz2.xyz.z ||
+        fogVertex.xyz.x != point.xyz2.xyz.x || fogVertex.xyz.y != point.xyz2.xyz.y) failures++;
+    rdp_setothermode(1u << 20, 0xc8112078u, &g_rdpState); /* FOG_SHADE_A + opaque cycle 2 */
+    if (!ps2_fog_enabled(&g_rdpState, &fogState)) failures++;
+    fogState.geometryMode = 0;
+    if (ps2_fog_enabled(&g_rdpState, &fogState) ||
+        ps2_fog_calculate_factor(1, &fogState) != 255) failures++;
+    fogState.geometryMode = 0x00010000;
+    rdp_setothermode(0, 0xc8112078u, &g_rdpState);
+    if (ps2_fog_enabled(&g_rdpState, &fogState)) failures++;
+    /* A very narrow room fog range must not use the old generic 0.2..1 curve. */
+    f3dex2_moveword(0xdb080000, (16000u << 16) | (u16)-15744, &fogState);
+    if (ps2_fog_calculate_factor(0.98f, &fogState) != 255 ||
+        ps2_fog_calculate_factor(1, &fogState) != 0) failures++;
     printf("[PS2 RENDER TEST] %s: matrices, viewport, othermode, textures and palettes (%d)\n",
            failures ? "FAIL" : "PASS", failures);
     return failures;

@@ -5,7 +5,7 @@
  * based on depth, and then the RDP color combiner blends the pixel with 
  * the fog color.
  *
- * On PS2, the GS has native Fog support via the FOG register and FST vertex attribute.
+ * On PS2, the GS has native Fog support via FGE and XYZF2 vertices.
  * We map the N64 fog parameters to GS fog.
  */
 
@@ -33,14 +33,14 @@ void ps2_fog_update(RDPState* rdp) {
     packet[2] = (u64)r | ((u64)g << 8) | ((u64)b << 16);
     packet[3] = GS_FOGCOL;
 
-    /* 
-     * To fully enable GS fog, we also need to:
-     * 1. Enable FGE (Fog Enable) in PRIM register when drawing triangles.
-     * 2. Pass F (fog factor) for each vertex (0.0 = full fog, 255.0 = no fog).
-     * 
-     * This will be hooked into the f3dex2_tri1/tri2 submission logic
-     * when rsp->geometryMode & G_FOG is true.
-     */
+}
+
+bool ps2_fog_enabled(const RDPState* rdp, const RSPState* rsp) {
+    /* The standard two-cycle fog stage is fog * shadeAlpha + input *
+     * (1 - shadeAlpha). Geometry fog supplies that shade alpha. */
+    return (rsp->geometryMode & 0x00010000) &&
+           ((rdp->otherMode.hi >> 20) & 3) == 1 &&
+           (rdp->otherMode.lo & 0xcccc0000u) == 0xc8000000u;
 }
 
 /**
@@ -51,16 +51,19 @@ u8 ps2_fog_calculate_factor(float z, const RSPState* rsp) {
         return 255; /* No fog */
     }
 
-    /* Basic linear fog calculation based on screen Z */
-    /* OoT uses G_MW_FOG (moveword) to set fog min/max distances.
-       For now, we approximate a generic fog curve. */
-    
-    float fogStart = 0.2f;
-    float fogEnd = 1.0f;
-    
-    if (z <= fogStart) return 255;
-    if (z >= fogEnd) return 0;
-    
-    float factor = 1.0f - ((z - fogStart) / (fogEnd - fogStart));
-    return (u8)(factor * 255.0f);
+    /* gSPFogFactor uses projected Z/W in [-1,1], not normalized GS depth.
+     * N64 alpha grows with fog; GS F uses the opposite direction. */
+    float alpha = z * rsp->fogMul + rsp->fogOff;
+    if (alpha <= 0) return 255;
+    if (alpha >= 255) return 0;
+    return 255 - (u8)alpha;
+}
+
+void ps2_fog_apply_xyz(gs_xyz2* xyz, float z, const RSPState* rsp) {
+    u64 packed;
+    __builtin_memcpy(&packed, &xyz->xyz, sizeof(packed));
+    packed = (packed & 0x00ffffffffffffffull) |
+             ((u64)ps2_fog_calculate_factor(z, rsp) << 56);
+    __builtin_memcpy(&xyz->xyz, &packed, sizeof(packed));
+    xyz->tag = GS_XYZF2;
 }

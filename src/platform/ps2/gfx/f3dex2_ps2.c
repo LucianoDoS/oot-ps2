@@ -49,6 +49,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <gsKit.h>
+#include <gsInline.h>
 
 #include "ps2_types.h"
 #include "ps2_segment.h"
@@ -324,6 +325,7 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
     u32 z0 = (u32)((1.0f - v0->sz) * 16777215.0f);
     u32 z1 = (u32)((1.0f - v1->sz) * 16777215.0f);
     u32 z2 = (u32)((1.0f - v2->sz) * 16777215.0f);
+    bool fog = ps2_fog_enabled(rdp, rsp);
 
     if (rsp->texEnabled) {
         TileDescriptor* tile = &rdp->tile[rsp->texTile & 7];
@@ -337,7 +339,26 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
         ps2_texture_build_vertex(tile, rsp, rdp, v0, (u32)c0, z0, &points[0]);
         ps2_texture_build_vertex(tile, rsp, rdp, v1, (u32)c1, z1, &points[1]);
         ps2_texture_build_vertex(tile, rsp, rdp, v2, (u32)c2, z2, &points[2]);
+        if (fog) {
+            for (int i = 0; i < 3; i++)
+                ps2_fog_apply_xyz(&points[i].xyz2, vertices[i]->cz / vertices[i]->cw, rsp);
+        }
+        int previousFog = gs->PrimFogEnable;
+        gs->PrimFogEnable = fog;
         gsKit_prim_list_triangle_goraud_texture_stq_3d(gs, &tile->gsTexture, 3, points);
+        gs->PrimFogEnable = previousFog;
+    } else if (fog) {
+        GSPRIMPOINT points[3];
+        u32 depths[3] = {z0,z1,z2};
+        for (int i = 0; i < 3; i++) {
+            points[i].rgbaq = rgba_to_RGBAQ((u32)*colors[i], 1);
+            points[i].xyz2 = vertex_to_XYZ2(gs, vertices[i]->sx, vertices[i]->sy, depths[i]);
+            ps2_fog_apply_xyz(&points[i].xyz2, vertices[i]->cz / vertices[i]->cw, rsp);
+        }
+        int previousFog = gs->PrimFogEnable;
+        gs->PrimFogEnable = 1;
+        gsKit_prim_list_triangle_gouraud_3d(gs, 3, points);
+        gs->PrimFogEnable = previousFog;
     } else {
         gsKit_prim_triangle_gouraud_3d(
             gs,

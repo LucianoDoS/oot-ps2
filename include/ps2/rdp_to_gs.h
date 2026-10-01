@@ -240,6 +240,8 @@ void ps2_light_apply_vertex(RSPVertex* v, const RSPState* rsp);
 /* Niebla (ps2_fog.c) */
 void ps2_fog_update(RDPState* rdp);
 u8   ps2_fog_calculate_factor(float z, const RSPState* rsp);
+bool ps2_fog_enabled(const RDPState* rdp, const RSPState* rsp);
+void ps2_fog_apply_xyz(gs_xyz2* xyz, float z, const RSPState* rsp);
 
 /* Z-buffer (ps2_zbuffer.c) */
 void ps2_zbuffer_update_test(RDPState* rdp);

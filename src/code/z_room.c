@@ -434,7 +434,7 @@ void Room_DrawImageSingle(PlayState* play, Room* room, u32 flags) {
         static s16 lastSetting = -1;
         static u32 reports;
         if (lastSetting != activeCam->setting && reports < 12) {
-            PRINTF("[PS2 ROOM IMAGE] scene=%d camera=%d fixed=%u background=%u source=%p\n",
+            osSyncPrintf("[PS2 ROOM IMAGE] scene=%d camera=%d fixed=%u background=%u source=%p\n",
                    play->sceneId, activeCam->setting, isFixedCamera, drawBackground, roomShape->source);
             lastSetting = activeCam->setting;
             reports++;

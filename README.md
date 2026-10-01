@@ -38,6 +38,8 @@ paletas CI4 e IA4. Añadida generación esférica/lineal de coordenadas con Look
 La caché comparte 704 KiB de VRAM entre 256 entradas según su tamaño y reutiliza
 tablas del combinador; valida los bytes de fuentes y paletas para detectar
 texturas modificadas en RAM. Todavía faltan fidelidad visual y rendimiento.
+Los triángulos con la etapa estándar de niebla usan los parámetros reales
+del juego y niebla nativa del GS; las pruebas EE verifican factores y límites.
 Start abre el selector de partida y sus textos y botones se ven correctamente.
 Las operaciones SRAM ya usan
 una imagen de 32 KiB y el backend de memory card, conservando las escrituras
