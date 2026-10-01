@@ -4,6 +4,23 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Recortes de alfa y coste de la caché — 2026-10-01
+
+- El test GS ahora reconoce CVG_X_ALPHA usado por materiales TEX_EDGE,
+  aunque G_AC_THRESHOLD esté desactivado. Aproxima cobertura parcial con
+  umbral de medio alfa y descarta también color/profundidad en los huecos.
+  Para el test explícito utiliza el alfa del blend color y actualiza su
+  umbral al cambiarlo. Pruebas EE pasan modo de escalera, superficie opaca,
+  umbral variable y conservación del test/escritura de profundidad.
+- La elección de espacio VRAM usa edades por bloque y máximo deslizante,
+  conservando el criterio anterior de expulsión con una búsqueda lineal.
+  Evita esperar FINISH en regiones sin usos previos; mantiene la espera
+  al sobrescribir una región o eliminar un descriptor válido. Pasan las
+  pruebas de retención de 32 tiras, 128 glifos, textura grande y expulsión.
+- Añadidos contadores por fotograma de aciertos, cargas y esperas para medir
+  la presión de la caché. Aún falta verificar visualmente la escalera y
+  comparar rendimiento en una misma cámara del juego.
+
 ## Audio independiente del renderer y fondos JPEG — 2026-10-01
 
 - Conectada niebla nativa GS a triángulos con y sin textura, usando FGE,

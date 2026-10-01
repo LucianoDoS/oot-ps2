@@ -79,6 +79,8 @@ void rdp_setfogcolor(u32 w0, u32 w1, RDPState* rdp) {
 void rdp_setblendcolor(u32 w0, u32 w1, RDPState* rdp) {
     (void)w0;
     rdp->blendColor = w1;
+    /* The low byte is the threshold used by G_AC_THRESHOLD. */
+    if ((rdp->otherMode.lo & 3) == 1) rdp_apply_othermode(rdp);
 }
 
 /* ─────────────────────────────────────────────────────────── *
@@ -339,9 +341,14 @@ void rdp_apply_othermode(RDPState* rdp) {
     bool zCompare = (lo & 0x0010) != 0;
     (void)zmode;
 
-    int ate  = (alphaCompare == 1) ? 1 : 0;
+    /* TEX_EDGE materials discard zero coverage even with G_AC_NONE.
+     * GS has no RDP coverage buffer; approximate the alpha coverage edge
+     * with a half-alpha cutout, preserving color and Z outside its holes. */
+    bool alphaCoverage = (lo & 0x1000) != 0;
+    int ate  = alphaCompare == 1 || alphaCoverage;
     int atst = 6;      /* GEQUAL */
-    int aref = 0x40;   /* umbral típico de OoT */
+    int aref = alphaCoverage ? 0x40 : ((rdp->blendColor & 255) * 128 + 254) / 255;
+    if (alphaCompare == 1 && !aref) aref = 1;
     int zte  = 1;      /* el GS exige ZTE=1; para desactivar se usa ZTST=1 */
     int ztst = zCompare ? 2 : 1;   /* 2 = GEQUAL, 1 = ALWAYS */
 

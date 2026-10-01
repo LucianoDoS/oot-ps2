@@ -58,6 +58,33 @@ typedef struct TextureCacheEntry {
 #define TEXTURE_CACHE_BYTES (704u * 1024)
 static TextureCacheEntry s_cache[TEXTURE_CACHE_SLOTS];
 static u32 s_cacheClock;
+/* A linear sliding maximum selects the same oldest overlapping region as
+ * the old scan over every entry for each of 704 possible starting chunks. */
+static u32 s_chunkAge[TEXTURE_CACHE_BYTES / TEXTURE_CACHE_CHUNK];
+static unsigned s_ageDeque[TEXTURE_CACHE_BYTES / TEXTURE_CACHE_CHUNK];
+static u32 cache_region(u32 size, u32* costOut) {
+    memset(s_chunkAge, 0, sizeof(s_chunkAge));
+    for (int i = 0; i < TEXTURE_CACHE_SLOTS; i++) {
+        const TextureCacheEntry* entry = &s_cache[i];
+        if (!entry->valid) continue;
+        unsigned first = (entry->vram - s_textureVram) / TEXTURE_CACHE_CHUNK;
+        unsigned count = entry->size / TEXTURE_CACHE_CHUNK;
+        for (unsigned j = first; j < first + count; j++) s_chunkAge[j] = entry->used;
+    }
+    unsigned span = size / TEXTURE_CACHE_CHUNK, head = 0, tail = 0, best = 0;
+    u32 bestCost = ~0u;
+    for (unsigned i = 0; i < sizeof(s_chunkAge) / sizeof(s_chunkAge[0]); i++) {
+        while (head < tail && s_ageDeque[head] + span <= i) head++;
+        while (head < tail && s_chunkAge[s_ageDeque[tail - 1]] <= s_chunkAge[i]) tail--;
+        s_ageDeque[tail++] = i;
+        if (i + 1 < span) continue;
+        u32 cost = s_chunkAge[s_ageDeque[head]];
+        if (cost < bestCost) { bestCost = cost; best = i + 1 - span; }
+        if (!cost) break;
+    }
+    *costOut = bestCost;
+    return s_textureVram + best * TEXTURE_CACHE_CHUNK;
+}
 typedef struct CombinerLookup {
     u32 combine0, combine1, prim, env, cycle, used;
     u8 valid, values[4][256];
@@ -361,6 +388,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
             cached->used = ++s_cacheClock;
             texture_descriptor(tile, w, h, cached->vram);
             tile->gsTextureLoaded = true;
+            rdp->stats.textureHits++;
             return;
         }
     }
@@ -466,25 +494,19 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
             if (!s_cache[i].valid) break;
         }
     }
-    u32 vram = s_textureVram, bestCost = ~0u;
-    for (u32 offset = 0; offset + size <= TEXTURE_CACHE_BYTES; offset += TEXTURE_CACHE_CHUNK) {
-        u32 start = s_textureVram + offset, cost = 0;
-        for (int i = 0; i < TEXTURE_CACHE_SLOTS; i++) {
-            TextureCacheEntry* entry = &s_cache[i];
-            if (entry->valid && entry->vram < start + size && start < entry->vram + entry->size && entry->used > cost)
-                cost = entry->used;
-            if (cost >= bestCost) break;
-        }
-        if (cost < bestCost) { bestCost = cost; vram = start; }
-        if (!cost) break;
+    u32 bestCost, vram = cache_region(size, &bestCost);
+    /* Retire reads before overwriting VRAM or forgetting a live descriptor.
+     * Uploads into unused regions need only the normal ordered GIF DMA. */
+    if (bestCost || s_cache[slot].valid) {
+        rdp->stats.textureWaits++;
+        gsKit_set_finish(rdp->gs);
+        gPS2GfxTraceStage = 2;
+        if (trace) printf("[PS2 TEXTURE TRACE] converted, retire queue\n");
+        gsKit_queue_exec(rdp->gs);
+        gPS2GfxTraceStage = 3;
+        gsKit_finish();
+        if (trace) printf("[PS2 TEXTURE TRACE] finish returned\n");
     }
-    gsKit_set_finish(rdp->gs);
-    gPS2GfxTraceStage = 2;
-    if (trace) printf("[PS2 TEXTURE TRACE] converted, retire queue\n");
-    gsKit_queue_exec(rdp->gs);
-    gPS2GfxTraceStage = 3;
-    gsKit_finish();
-    if (trace) printf("[PS2 TEXTURE TRACE] finish returned\n");
     dmaKit_wait_fast();
     for (int i = 0; i < TEXTURE_CACHE_SLOTS; i++) {
         TextureCacheEntry* entry = &s_cache[i];
@@ -506,6 +528,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
     if (++uploads <= 3 || uploads % 1000 == 0)
         printf("[PS2 TEXTURE] uploads=%u size=%dx%d source=%p slot=%d\n", uploads, w, h, tile->addr, slot);
     tile->gsTextureLoaded = true;
+    rdp->stats.textureUploads++;
 }
 
 /* ─────────────────────────────────────────────────────────── *

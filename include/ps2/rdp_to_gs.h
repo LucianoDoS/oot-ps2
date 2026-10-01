@@ -121,6 +121,7 @@ typedef struct {
     u64            gs_test;
     struct {
         u32 triangles, clipped, culled, invalid, textureFailed, submitted, backgrounds;
+        u32 textureHits, textureUploads, textureWaits;
     } stats;
 } RDPState;
 

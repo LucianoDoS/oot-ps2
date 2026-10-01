@@ -90,6 +90,19 @@ int ps2_renderer_smoke(void) {
         (unsigned long long)GS_SETREG_ALPHA(0, 1, 0, 1, 0x80));
     if (g_rdpState.gs_alpha != (GS_SETREG_ALPHA(0, 1, 0, 1, 0x80))) failures++;
     if (g_rdpState.zWriteEnabled) failures++;
+    /* Cutout ladders/fences use alpha coverage, not G_AC_THRESHOLD. */
+    rdp_setothermode(1u << 20, 0xc8113078u, &g_rdpState);
+    if (!g_rdpState.gs->Test->ATE || g_rdpState.gs->Test->AREF != 64 ||
+        g_rdpState.gs->Test->ATST != 6 || g_rdpState.gs->Test->AFAIL != 0 ||
+        g_rdpState.gs->Test->ZTST != 2 || !g_rdpState.zWriteEnabled) failures++;
+    rdp_setothermode(1u << 20, 0xc8112078u, &g_rdpState);
+    if (g_rdpState.gs->Test->ATE) failures++;
+    rdp_setothermode(0, 1, &g_rdpState);
+    rdp_setblendcolor(0, 0x00000080, &g_rdpState);
+    if (!g_rdpState.gs->Test->ATE || g_rdpState.gs->Test->AREF != 65) failures++;
+    rdp_setblendcolor(0, 0, &g_rdpState);
+    if (g_rdpState.gs->Test->AREF != 1) failures++;
+    rdp_setothermode(0, 0, &g_rdpState);
     static const u8 texture[] = {255,255, 255,255, 255,255, 255,255};
     for (int i = 0; i < 2; i++) {
         TileDescriptor* tile = &g_rdpState.tile[i];
