@@ -83,21 +83,25 @@ static u32 save_checksum(const u8* data, u32 size) {
  *  mcInit() ya se hizo en ps2_main.c tras cargar MCMAN/MCSERV.
  * ───────────────────────────────────────────────────────────────── */
 void ps2_save_init(void) {
-    int cmd, result;
+    int result, cardType = MC_TYPE_NONE, freeSpace = 0, formatted = 0;
+    s_mcReady = false;
 
     /* ¿Hay tarjeta? */
-    mcGetInfo(SAVE_PORT, SAVE_SLOT, &cmd, &result, &result);
+    if (mcGetInfo(SAVE_PORT, SAVE_SLOT, &cardType, &freeSpace, &formatted) < 0) return;
     mcSync(MC_WAIT, NULL, &result);
 
-    if (result < -1) {
-        printf("[Save] No hay memory card en el puerto %d\n", SAVE_PORT);
-        s_mcReady = false;
+    if (result < -1 || cardType != MC_TYPE_PS2 || !formatted) {
+        printf("[Save] No hay memory card PS2 formateada en el puerto %d\n", SAVE_PORT);
         return;
     }
 
     /* Crear el directorio si no existe (-4 = ya existe, no es error) */
-    mcMkDir(SAVE_PORT, SAVE_SLOT, SAVE_DIR);
+    if (mcMkDir(SAVE_PORT, SAVE_SLOT, SAVE_DIR) < 0) return;
     mcSync(MC_WAIT, NULL, &result);
+    if (result < 0 && result != -4) {
+        printf("[Save] No se pudo preparar el directorio (%d)\n", result);
+        return;
+    }
 
     s_mcReady = true;
     printf("[Save] Memory card lista (%s)\n", SAVE_DIR);
@@ -169,7 +173,8 @@ int ps2_save_read(void* saveData, u32 size) {
         return -1;
     }
 
-    if (s_saveFile.magic != SAVE_MAGIC) {
+    if (s_saveFile.magic != SAVE_MAGIC || s_saveFile.version != SAVE_VERSION ||
+        s_saveFile.size > OOT_SRAM_SIZE) {
         printf("[Save] Fichero no reconocido (magic 0x%08X)\n",
                (unsigned)s_saveFile.magic);
         return -1;
@@ -195,11 +200,9 @@ int ps2_save_read(void* saveData, u32 size) {
  *  aparte (z_ss_sram.c). Estas dos funciones son el enganche para que
  *  ese camino acabe en la memory card.
  *
- *  PENDIENTE: llamar a estas desde SsSram_ReadWrite(). Está señalado
- *  aquí en lugar de tocarlo a ciegas, porque conviene decidir si se
- *  guarda en cada escritura (lento, la memory card es lenta) o sólo al
- *  salir del menú de guardado (mejor, pero hay que detectar ese
- *  momento).
+ *  ps2_sram.c conserva una imagen completa y SsSram_ReadWrite() aplica
+ *  cada lectura/escritura por su offset. Cada escritura completa el
+ *  guardado antes de regresar al juego.
  * ───────────────────────────────────────────────────────────────── */
 int ps2_sram_flush_to_card(const void* sram, u32 size) {
     return ps2_save_write(sram, size);

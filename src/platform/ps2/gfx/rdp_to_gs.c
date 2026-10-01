@@ -33,6 +33,8 @@
 #include <gsKit.h>
 #include <string.h>
 #include <stdio.h>
+#include <kernel.h>
+#include <unistd.h>
 
 #include "ps2_types.h"
 #include "ps2_segment.h"
@@ -155,6 +157,8 @@ void rdp_to_gs_init(GSGLOBAL* gs) {
     g_rspState.mvp[10] = g_rspState.mvp[15] = 1.0f;
 
     g_rspState.mtxStackDepth = 0;
+    g_rspState.lookAt[0][0] = 1.0f;
+    g_rspState.lookAt[1][1] = 1.0f;
 
     /* Viewport por defecto: si una display list dibuja antes de mandar
      * su gSPViewport, al menos sale algo en pantalla en lugar de
@@ -195,6 +199,11 @@ void rdp_to_gs_exec(const Gfx* dl) {
                    GUARD_MAX);
             return;
         }
+        /* This interpreter runs on the scheduler's EE thread. Unlike the
+         * original RSP, it can starve the lower-priority controller thread
+         * throughout a slow frame. Give it bounded opportunities to sample
+         * short button presses and service retrace callbacks. */
+        if ((guard & 127u) == 0) usleep(50);
 
         u32 w0 = GFX_READ_W0(pc);
         u32 w1 = GFX_READ_W1(pc);

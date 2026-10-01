@@ -2,7 +2,7 @@
 
 Port de **The Legend of Zelda: Ocarina of Time** a PlayStation 2, basado en la descompilación [zeldaret/oot](https://github.com/zeldaret/oot).
 
-## Estado comprobado — 30 de septiembre de 2026
+## Estado comprobado — 1 de octubre de 2026
 
 **Todavía no es un port jugable.** Ya se compila la capa PS2 con ps2dev real
 (GCC 15.2.0), y el ejecutable de diagnóstico arranca en PCSX2 2.8.0.
@@ -10,18 +10,32 @@ Las pruebas en el EE verifican matrices, trigonometría, formato de texto,
 secciones críticas, colas de mensajes y temporizadores. El renderer envía
 120 fotogramas; esto aún no constituye una validación visual del juego.
 
-El juego completo ya enlaza: 712 objetos generan `build/PS2-ntsc12/oot_ps2.elf`.
+El juego completo ya enlaza: 713 objetos generan `build/PS2-ntsc12/oot_ps2.elf`.
 En PCSX2 completa `Play_Init` y la ejecución de diagnóstico alcanzó 900
 fotogramas del estado `Play` en la secuencia del título sin excepciones registradas.
 Esto no confirma una imagen correcta ni jugabilidad. El conversor local adapta estructuras, vértices, matrices, listas
 gráficas y cinemáticas; las texturas conservan su secuencia de bytes original.
 La conversión cubre el título, escenas de demostración, dependencias de objetos,
-recursos del selector de partida y los 38 bancos de instrumentos. El intérprete
+recursos del selector de partida y los 38 bancos de instrumentos. El perfil
+`play` incluye 104 segmentos y las 573 tablas de animación del jugador,
+además de recursos iniciales de Kokiri y la casa de Link. Los JPEG conservan
+sus bytes comprimidos; esto aún no implementa su representación en pantalla. El intérprete
 DSP pasa pruebas de PCM, mezcla, estéreo, ADPCM y PCM de 8 bits. El juego ya
 envía PCM no silencioso a audsrv, pero falta verificar su fidelidad musical.
-Las capturas muestran el título, cielo, Link y Epona; todavía faltan geometría,
-texturas y rendimiento correctos (unos 4 FPS en la escena). Se alcanzó el estado
-del selector de partida; el control jugable y el guardado siguen pendientes.
+Las capturas muestran el título con sus colores, cielo, luna, terreno, murallas
+y Link montado en Epona. Corregida la matriz identidad nativa que deformaba el
+escenario y el caballo. El renderer usa STQ para conservar la repetición y
+perspectiva de las texturas; las pruebas EE verifican coordenadas, shifts,
+paletas CI4 e IA4. Añadida generación esférica/lineal de coordenadas con LookAt.
+La caché comparte 704 KiB de VRAM entre 64 entradas según su tamaño y reutiliza
+tablas del combinador; valida los bytes de fuentes y paletas para detectar
+texturas modificadas en RAM. Todavía faltan fidelidad visual y rendimiento.
+Start abre el selector de partida y sus textos y botones se ven correctamente.
+Las operaciones SRAM ya usan
+una imagen de 32 KiB y el backend de memory card, conservando las escrituras
+parciales; el diagnóstico pasa recarga, errores y límites. La configuración
+aislada no tiene tarjeta PS2 formateada: conserva los datos en RAM y avisa en
+el log; falta comprobar guardado persistente real y control durante la partida.
 Las instrucciones históricas de abajo describen la intención del port,
 no garantizan que el juego arranque.
 
@@ -48,19 +62,19 @@ El build del juego usa la extracción local US NTSC 1.2. La procedencia de las
 fuentes, versión del SDK y hash de ROM están en [UPSTREAM.md](UPSTREAM.md).
 ROMs, recursos extraídos y salidas de compilación quedan fuera de Git.
 
-Para la prueba actual de carga del título, después de extraer los recursos:
+Para la prueba actual de título y recursos iniciales, después de extraerlos:
 
 ```sh
 /home/lucia/oot-ps2-tools/oot-upstream/.venv/bin/python tools/prepare_ps2_rom.py \
   --upstream /home/lucia/oot-ps2-tools/oot-upstream \
-  --profile title --output build/PS2-ntsc12/oot.z64
+  --profile play --output build/PS2-ntsc12/oot.z64
 /home/lucia/oot-ps2-tools/oot-upstream/.venv/bin/python tools/check_ps2_cutscenes.py \
   --upstream /home/lucia/oot-ps2-tools/oot-upstream
 ```
 
 Desde PowerShell, `tools/run_ps2_game.ps1` inicia el ELF. El log queda en
-`build/PS2-ntsc12/pcsx2-game.log`. El perfil `title` es una selección de recursos
-para diagnóstico; no implica que la pantalla del título funcione completamente.
+`build/PS2-ntsc12/pcsx2-game.log`. Los perfiles `title` y `play` son selecciones
+para diagnóstico; `play` aún no contiene todos los recursos de una partida completa.
 
 ---
 

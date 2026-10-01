@@ -17,7 +17,7 @@ parser.add_argument('--upstream', type=Path, required=True)
 parser.add_argument('--output', type=Path, required=True)
 parser.add_argument('--version', default='ntsc-1.2')
 parser.add_argument('--segment', action='append', default=[])
-parser.add_argument('--profile', choices=('logo', 'title'), default='logo')
+parser.add_argument('--profile', choices=('logo', 'title', 'play'), default='logo')
 args = parser.parse_args()
 upstream = args.upstream.resolve()
 output = args.output.resolve()
@@ -67,10 +67,16 @@ profiles = {
     'title': ['nintendo_rogo_static', 'spot00_scene', 'spot00_room_0',
               'gameplay_keep', 'gameplay_field_keep', 'object_link_boy',
               'object_horse', 'object_mag', 'object_spot00_objects',
-              'object_spot00_break', 'object_wood02', 'title_static', 'parameter_static'],
+              'object_spot00_break', 'object_wood02', 'title_static', 'parameter_static',
+              'link_animetion'],
 }
+profiles['play'] = profiles['title'] + [
+    'object_link_child', 'icon_item_static', 'icon_item_24_static',
+    'icon_item_field_static', 'do_action_static', 'map_name_static',
+    'link_home_scene', 'link_home_room_0', 'spot04_scene', 'spot04_room_0',
+]
 selected = set(args.segment or profiles[args.profile])
-if not args.segment and args.profile == 'title':
+if not args.segment and args.profile in ('title', 'play'):
     for scene_prefix in ('jyasinboss', 'spot17', 'hiral_demo'):
         selected.update(name for name in entries_by_name
                         if name == scene_prefix + '_scene' or name.startswith(scene_prefix + '_room_'))
@@ -152,6 +158,10 @@ for name, resources in captured.items():
             groups = []  # The GS texture decoder consumes the original byte stream.
             # Unreferenced byte blobs retain their exact contents; the manifest
             # identifies them explicitly, without guessing a scalar layout.
+        elif kind == 'JFIFResource':
+            if data[start:start + 2] != b'\xff\xd8':
+                raise ValueError(f'Invalid JPEG signature: {resource.symbol_name}')
+            groups = []  # Compressed JPEG markers and bitstream remain big-endian bytes.
         elif kind == 'SceneCommandsResource':
             if (end - start) % 8:
                 raise ValueError(f'Invalid scene commands: {resource.symbol_name}')

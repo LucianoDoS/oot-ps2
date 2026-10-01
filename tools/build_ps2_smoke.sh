@@ -8,7 +8,7 @@ flags=(-D_EE -DPLATFORM_PS2=1 -G0 -O2 -std=gnu11 -Wall -Wextra -Wno-unused-param
        -fno-strict-aliasing '-DPS2_ROM_TEST_PATH="host:ps2-rom-smoke.bin"' -Iinclude/ps2 -I"$PS2SDK/ee/include"
        -I"$PS2SDK/common/include" -I"$GSKIT/include")
 objects=()
-for src in tools/ps2_smoke.c tools/ps2_os_smoke.c tools/ps2_rom_threads_smoke.c tools/ps2_renderer_smoke.c tools/ps2_audio_smoke.c src/platform/ps2/gfx/*.c \
+for src in tools/ps2_smoke.c tools/ps2_os_smoke.c tools/ps2_rom_threads_smoke.c tools/ps2_renderer_smoke.c tools/ps2_audio_smoke.c tools/ps2_sram_smoke.c src/platform/ps2/io/ps2_sram.c src/platform/ps2/gfx/*.c \
     src/platform/ps2/audio/ps2_rsp_audio.c src/platform/ps2/audio/rsp_hle/*.c \
     src/platform/ps2/libultra_stub/osMessage.c src/platform/ps2/libultra_stub/osTimer.c \
     src/platform/ps2/libultra_stub/osInterrupt.c src/platform/ps2/libultra_stub/osPrintf.c \
@@ -17,7 +17,7 @@ for src in tools/ps2_smoke.c tools/ps2_os_smoke.c tools/ps2_rom_threads_smoke.c 
     "$cc" "${flags[@]}" -c "$src" -o "$obj"
     objects+=("$obj")
 done
-for src in tools/ps2_math_smoke.c tools/ps2_printf_smoke.c tools/ps2_rom_smoke.c tools/ps2_audio_heap_smoke.c src/audio/internal/heap.c src/libultra/gu/mtxutil.c src/libultra/gu/sins.c src/libultra/gu/coss.c; do
+for src in tools/ps2_queue_heap_smoke.c src/libc64/__osMalloc_gc.c tools/ps2_math_smoke.c tools/ps2_printf_smoke.c tools/ps2_rom_smoke.c tools/ps2_audio_heap_smoke.c src/code/sys_matrix.c src/audio/internal/heap.c src/libultra/gu/mtxutil.c src/libultra/gu/sins.c src/libultra/gu/coss.c; do
     obj="build/PS2/smoke/$(basename "${src%.c}").o"
     "$cc" "${flags[@]}" -D_LANGUAGE_C=1 -DF3DEX_GBI_2 -DNON_MATCHING=1 \
         -ffunction-sections -fdata-sections -DPLATFORM_N64=0 -DPLATFORM_GC=0 -DPLATFORM_IQUE=0 \

@@ -4,6 +4,70 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Caché, reflejos y pruebas del selector — 2026-10-01
+
+La captura del título muestra a Link montado en Epona, terreno, murallas y
+el logo Zelda con sus colores. Start abre el selector y se ven sus textos,
+botones y fondo. **Aún no se ha validado una partida jugable completa.**
+
+- Caché de texturas con 64 entradas y asignación según tamaño sobre los mismos
+  704 KiB de VRAM. Retira los dibujos antes de sobreescribir regiones y anula
+  todos los descriptores que se solapan. El diagnóstico comprueba retención
+  de 32 texturas medianas y carga de una textura de 256×256 dentro del límite.
+- Caché de tablas del combinador: reutiliza sus 512 evaluaciones por estado.
+  Las claves incluyen solo componentes prim/env que el combinador utiliza.
+  Pruebas de cambios de color, expulsión y colores irrelevantes en ciclo COPY.
+- Hash de los bytes de fuente y paleta conserva la caché entre fotogramas
+  sin dejar obsoletas las texturas modificadas en la misma dirección RAM.
+- Coordenadas esféricas y lineales de reflexión desde la normal transformada
+  por modelview y los dos vectores LookAt de MOVEMEM. Pruebas con identidad,
+  giro, modo lineal y un vector LookAt personalizado.
+- El renderer cede brevemente el hilo cada 128 comandos para permitir muestreo
+  del mando durante fotogramas lentos. Start se ha comprobado en el emulador.
+- Perfil `play`: 104 segmentos, incluidas 573 tablas de animación del jugador
+  en orden nativo y recursos iniciales. Se conservan JPEG comprimidos intactos;
+  su decodificación y dibujo de fondos prerenderizados siguen pendientes.
+- La prueba prolongada anterior agotaba la tabla lateral de colas al cambiar
+  de escena. Al liberar una asignación o destruir una arena PS2 se eliminan
+  sus semáforos. El diagnóstico enlaza el asignador real y pasa 768 ciclos,
+  limpieza de arenas y preservación de una cola ajena.
+- Logs privados: `build/PS2/pcsx2-smoke-cache-final.log` y
+  `build/PS2-ntsc12/pcsx2-lut-filechoose.log`. En la versión intermedia se
+  observaron 4–10 FPS en el título y 20 en el selector; no son un benchmark
+  definitivo ni una validación de rendimiento en hardware PS2.
+
+## Matriz del escenario, texturas y SRAM — 2026-09-30
+
+El juego enlaza con 713 objetos. Las capturas posteriores a corregir la matriz
+identidad muestran terreno, luna, murallas y el título Zelda con sus colores.
+**Todavía no es jugable:** siguen pendientes fidelidad visual, rendimiento y
+validación de la partida. La escena ronda 4 FPS.
+
+- `gIdentityMtx` usaba `gdSPDefMtx`, que empaqueta los componentes en palabras
+  big-endian. En el EE intercambiaba mitades contiguas, incluida la componente
+  homogénea: muchos vértices del escenario quedaban detrás de la cámara. PS2
+  inicializa la constante con mitades nativas. La prueba de matemáticas enlaza
+  `sys_matrix.c` y comprueba la constante real, además de los conversores.
+- Paletas CI4 cargadas en su posición TMEM, preservando otras paletas; se
+  invalidan los descriptores CI afectados. Añadido el decoder IA4 de tres bits
+  de intensidad y uno de alfa. Ambos pasan pruebas de píxeles en el EE.
+- Coordenadas de triángulos enviadas mediante STQ, evitando el clamp de UV
+  de los helpers de gsKit. Se conservan coordenadas negativas, repetición,
+  shifts y perspectiva cuando el RDP la activa. Clamp regional excluye el
+  relleno de las tiras que no son potencia de dos. Espejo, TEXEL1 y generación
+  de coordenadas de reflexión siguen pendientes.
+- `SsSram_ReadWrite` conectado a un shadow SRAM de 32 KiB con semáforo y
+  acceso por offset. Una escritura parcial guarda la imagen completa para
+  conservar opciones y otras partidas. Una tarjeta ausente deja SRAM vacía;
+  una escritura fallida conserva los cambios en RAM y registra el error.
+- El backend de memory card comprueba tipo/formato, creación del directorio,
+  versión y tamaño del archivo antes de calcular su checksum. No se formatea
+  ninguna tarjeta. La configuración aislada actual no tiene una tarjeta PS2
+  formateada; falta validar persistencia real en ella.
+- Diagnóstico PCSX2: SRAM vacía, escrituras parciales, recarga, error de backend,
+  límites, identidad real, IA4, paletas, STQ y pruebas anteriores pasan. Logs
+  privados: `build/PS2/pcsx2-smoke-stq.log`, `build/PS2-ntsc12/pcsx2-identity.log`.
+
 ## Renderer y síntesis nativa — 2026-09-30
 
 El diagnóstico ejecutado en PCSX2 pasa PCM, mezcla, intercalado estéreo,

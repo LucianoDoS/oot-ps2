@@ -4,6 +4,9 @@
 
 #include "ultra64.h"
 #include <stddef.h>
+#if PLATFORM_PS2
+#include "ps2_sram.h"
+#endif
 
 typedef struct SsSramContext {
     /* 0x00 */ OSPiHandle piHandle;
@@ -54,7 +57,11 @@ void SsSram_Dma(void* dramAddr, size_t size, s32 direction) {
 }
 
 void SsSram_ReadWrite(s32 addr, void* dramAddr, size_t size, s32 direction) {
+#if PLATFORM_PS2
+    ps2_sram_transfer((u32)addr, dramAddr, size, direction == OS_WRITE);
+#else
     PRINTF("ssSRAMReadWrite:%08x %08x %08x %d\n", addr, dramAddr, size, direction);
     SsSram_Init(addr, DEVICE_TYPE_SRAM, PI_DOMAIN2, 5, 0xD, 2, 0xC, 0);
     SsSram_Dma(dramAddr, size, direction);
+#endif
 }

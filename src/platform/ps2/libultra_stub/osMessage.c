@@ -31,6 +31,7 @@
 #include <stdio.h>
 
 #include "ps2_os_internal.h"
+#include "ps2_queue.h"
 
 typedef void* OSMesg;
 struct OSThread;
@@ -89,6 +90,18 @@ static void queue_release(PS2QueueEntry* e) {
     if (e->sem_mutex >= 0) DeleteSema(e->sem_mutex);
     e->sem_space = e->sem_items = e->sem_mutex = -1;
     e->key = NULL;
+}
+
+void ps2_os_release_queues(const void* start, unsigned int size) {
+    uintptr_t base = (uintptr_t)start;
+    if (!start || !size) return;
+    int lock = ps2_os_lock();
+    for (int i = 0; i < PS2_OS_MAX_QUEUES; i++) {
+        uintptr_t address = (uintptr_t)s_queues[i].key;
+        if (s_queues[i].key && address >= base && address - base < size)
+            queue_release(&s_queues[i]);
+    }
+    ps2_os_unlock(lock);
 }
 
 static PS2QueueEntry* queue_alloc(OSMesgQueue* mq, int count) {

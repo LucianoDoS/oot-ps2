@@ -11,12 +11,20 @@
 #include "skin_matrix.h"
 
 // clang-format off
+#if PLATFORM_PS2
+/* gdSPDefMtx packs adjacent halfwords into big-endian u32 constants.
+ * The native renderer and runtime matrix writers use consecutive u16s. */
+Mtx gIdentityMtx = {
+    .intPart = {{1,0,0,0}, {0,1,0,0}, {0,0,1,0}, {0,0,0,1}},
+};
+#else
 Mtx gIdentityMtx = gdSPDefMtx(
     1.0f, 0.0f, 0.0f, 0.0f,
     0.0f, 1.0f, 0.0f, 0.0f,
     0.0f, 0.0f, 1.0f, 0.0f,
     0.0f, 0.0f, 0.0f, 1.0f
 );
+#endif
 
 MtxF gIdentityMtxF = {
     1.0f, 0.0f, 0.0f, 0.0f,

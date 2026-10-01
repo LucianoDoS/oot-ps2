@@ -3,6 +3,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "ps2_types.h"
 #include "rdp_to_gs.h"
 #include "ps2_texture.h"
@@ -127,7 +128,122 @@ int ps2_renderer_smoke(void) {
     rdp_loadtexture(0xF3, 0, 7u << 24, &g_rdpState);
     if (g_rdpState.textureLoads[0].source != nextRows + 4 ||
         g_rdpState.textureLoads[256].source != rows) failures++;
-    printf("[PS2 RENDER TEST] %s: matrices, viewport, othermode, texture VRAM (%d)\n",
+    /* IA4 endpoints and nonzero CI4 palette placement. Use COPY so that
+     * color-combiner state cannot hide incorrect decoder output. */
+    rdp_setothermode(2u << 20, 0, &g_rdpState);
+    static const u8 ia4[] = {0xf0};
+    rdp_settile(0xf5600000, 0, &g_rdpState);
+    rdp_settilesize(0xf2000000, 4u << 12, &g_rdpState);
+    rdp_settimg(0xfd600001, (u32)ia4, &g_rdpState);
+    rdp_loadtexture(0xf3, 0, 0, &g_rdpState);
+    ps2_texture_upload(&g_rdpState.tile[0], &g_rdpState);
+    pixels = (u8*)g_rdpState.tile[0].gsTexture.Mem;
+    if (pixels[0] != 255 || pixels[3] != 128 || pixels[4] != 0 || pixels[7] != 0) failures++;
+    static const u8 palette0[] = {0xf8,0x01};
+    static const u8 palette3[] = {0x07,0xc1};
+    static const u8 ci4[] = {0};
+    ps2_texture_load_tlut(palette0, 1);
+    rdp_settile(0xf5100130, 7u << 24, &g_rdpState); /* TLUT entry 48. */
+    rdp_settimg(0xfd100000, (u32)palette3, &g_rdpState);
+    rdp_loadtlut(0xf0000000, 7u << 24, &g_rdpState);
+    rdp_settile(0xf5400000, 3u << 20, &g_rdpState);
+    rdp_settilesize(0xf2000000, 4u << 12, &g_rdpState);
+    rdp_settimg(0xfd400001, (u32)ci4, &g_rdpState);
+    rdp_loadtexture(0xf3, 0, 0, &g_rdpState);
+    ps2_texture_upload(&g_rdpState.tile[0], &g_rdpState);
+    pixels = (u8*)g_rdpState.tile[0].gsTexture.Mem;
+    if (pixels[0] != 0 || pixels[1] != 255 || pixels[2] != 0 || pixels[3] != 128) failures++;
+    rdp_settile(0xf5400000, 0, &g_rdpState);
+    ps2_texture_upload(&g_rdpState.tile[0], &g_rdpState);
+    if (pixels[0] != 255 || pixels[1] != 0) failures++;
+    static u8 animated[] = {10,20,30,255, 10,20,30,255};
+    rdp_settile(0xf5180000, 0, &g_rdpState);
+    rdp_settimg(0xfd180001, (u32)animated, &g_rdpState);
+    rdp_loadtexture(0xf3, 0, 0, &g_rdpState);
+    ps2_texture_upload(&g_rdpState.tile[0], &g_rdpState);
+    ps2_texture_end_frame(&g_rdpState);
+    animated[0] = 77;
+    ps2_texture_upload(&g_rdpState.tile[0], &g_rdpState);
+    pixels = (u8*)g_rdpState.tile[0].gsTexture.Mem;
+    if (pixels[0] != 77 || pixels[1] != 20) failures++;
+    u32 unchangedVram = g_rdpState.tile[0].gsTexture.Vram;
+    rdp_setprimcolor(0, 0x12345678, &g_rdpState);
+    rdp_setenvcolor(0, 0x87654321, &g_rdpState);
+    ps2_texture_upload(&g_rdpState.tile[0], &g_rdpState);
+    if (g_rdpState.tile[0].gsTexture.Vram != unchangedVram) failures++;
+    /* More tint states than LUT slots, then revisit old states with distinct
+     * source pointers so a VRAM hit cannot hide a stale combiner lookup. */
+    static u8 whites[48][8];
+    memset(whites, 255, sizeof(whites));
+    rdp_setothermode(0, 0, &g_rdpState);
+    rdp_setcombine(0xfcffffff, 0xfffdf6fb, &g_rdpState); /* PRIMITIVE */
+    for (int i = 0; i < 48; i++) {
+        unsigned tint = 16 + i % 24;
+        rdp_setprimcolor(0, (tint << 24) | 0x2030ff, &g_rdpState);
+        rdp_settimg(0xfd180001, (u32)whites[i], &g_rdpState);
+        rdp_loadtexture(0xf3, 0, 0, &g_rdpState);
+        ps2_texture_upload(&g_rdpState.tile[0], &g_rdpState);
+        pixels = (u8*)g_rdpState.tile[0].gsTexture.Mem;
+        if (pixels[0] != tint || pixels[1] != 32 || pixels[2] != 48 || pixels[3] != 128) failures++;
+    }
+    static u8 strips[32][4096];
+    u32 stripVram[32];
+    memset(strips, 255, sizeof(strips));
+    rdp_setothermode(2u << 20, 0, &g_rdpState);
+    rdp_settile(0xf5100000, 0, &g_rdpState);
+    rdp_settilesize(0xf2000000, (124u << 12) | 252u, &g_rdpState);
+    for (int pass = 0; pass < 2; pass++) for (int i = 0; i < 32; i++) {
+        rdp_settimg(0xfd10001f, (u32)strips[i], &g_rdpState);
+        rdp_loadtexture(0xf3, 0, 0, &g_rdpState);
+        ps2_texture_upload(&g_rdpState.tile[0], &g_rdpState);
+        u32 address = g_rdpState.tile[0].gsTexture.Vram;
+        if (!pass) stripVram[i] = address;
+        else if (address != stripVram[i]) failures++;
+    }
+    /* A large upload may evict several strips, but must fit the same budget. */
+    rdp_settilesize(0xf2000000, (1020u << 12) | 1020u, &g_rdpState);
+    rdp_settimg(0xfd1000ff, (u32)strips, &g_rdpState);
+    rdp_loadtexture(0xf3, 0, 0, &g_rdpState);
+    ps2_texture_upload(&g_rdpState.tile[0], &g_rdpState);
+    if (g_rdpState.tile[0].gsTexture.Vram + 262144 > 0x400000) failures++;
+    TileDescriptor repeating = {.width=32, .height=16, .masks=5, .cmt=2};
+    RSPVertex mapped = {.cw=2, .tc_s=4096, .tc_t=-512, .sx=10, .sy=20};
+    GSPRIMSTQPOINT point;
+    g_rspState.texScaleS = g_rspState.texScaleT = 1;
+    rdp_setothermode(1u << 19, 0, &g_rdpState);
+    ps2_texture_apply_tile(&repeating, &g_rdpState);
+    ps2_texture_build_vertex(&repeating, &g_rspState, &g_rdpState, &mapped, 0x80706050, 123, &point);
+    if (g_rdpState.gs->Clamp->WMS != 3 || g_rdpState.gs->Clamp->MINU != 31 ||
+        g_rdpState.gs->Clamp->WMT != 2 || g_rdpState.gs->Clamp->MAXV != 15 ||
+        point.rgbaq.color.q != 0.5f || point.stq.st.s != 2.0f || point.stq.st.t != -0.5f ||
+        point.xyz2.xyz.z != 123 || point.rgbaq.color.components.r != 0x50) failures++;
+    repeating.shifts = 2; repeating.shiftt = 11;
+    ps2_texture_build_vertex(&repeating, &g_rspState, &g_rdpState, &mapped, 0, 0, &point);
+    if (point.stq.st.s != 0.5f || point.stq.st.t != -16.0f) failures++;
+    rdp_setothermode(0, 0, &g_rdpState);
+    ps2_texture_build_vertex(&repeating, &g_rspState, &g_rdpState, &mapped, 0, 0, &point);
+    if (point.rgbaq.color.q != 1.0f || point.stq.st.s != 1.0f) failures++;
+    RSPState reflection = g_rspState;
+    memset(reflection.modelview, 0, sizeof(reflection.modelview));
+    reflection.modelview[0] = reflection.modelview[5] = reflection.modelview[10] = reflection.modelview[15] = 1;
+    reflection.geometryMode = 0x00060000; /* lighting + spherical texture generation */
+    static const struct { s16 position[3]; u16 flag; s16 uv[2]; u8 normal[4]; } normal =
+        {{0,0,0}, 0, {123,456}, {127,0,0,255}};
+    f3dex2_vtx(0x01001002, (u32)&normal, &reflection);
+    if (reflection.vtx[0].tc_s != 32767 || reflection.vtx[0].tc_t != 16383) failures++;
+    reflection.geometryMode |= 0x00080000; /* linear generation */
+    f3dex2_vtx(0x01001002, (u32)&normal, &reflection);
+    if (reflection.vtx[0].tc_s != 0 || abs(reflection.vtx[0].tc_t - 16383) > 1) failures++;
+    reflection.geometryMode = 0x00060000;
+    reflection.modelview[0] = reflection.modelview[5] = 0;
+    reflection.modelview[1] = 1; reflection.modelview[4] = -1;
+    f3dex2_vtx(0x01001002, (u32)&normal, &reflection);
+    if (reflection.vtx[0].tc_s != 16383 || reflection.vtx[0].tc_t != 32767) failures++;
+    static const u8 lookY[16] = {0,0,0,0,0,0,0,0,0,127,0};
+    f3dex2_movemem(0xdc00000a, (u32)lookY, &reflection);
+    f3dex2_vtx(0x01001002, (u32)&normal, &reflection);
+    if (reflection.vtx[0].tc_s != 32767 || reflection.lookAt[0][1] != 1) failures++;
+    printf("[PS2 RENDER TEST] %s: matrices, viewport, othermode, textures and palettes (%d)\n",
            failures ? "FAIL" : "PASS", failures);
     return failures;
 }

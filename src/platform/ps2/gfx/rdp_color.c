@@ -178,6 +178,30 @@ bool ps2_combiner_uses_shade(const RDPState* rdp, bool alpha) {
     return false;
 }
 
+void ps2_combiner_constants(const RDPState* rdp, u32* prim, u32* env) {
+    u32 primMask = 0, envMask = 0;
+    unsigned cycleType = (rdp->otherMode.hi >> 20) & 3;
+    if (cycleType != 2 && (rdp->combiner.w0 || rdp->combiner.w1)) {
+        int cycles = cycleType == 1 ? 2 : 1;
+        for (int cycle = 0; cycle < cycles; cycle++) for (int alpha = 0; alpha < 2; alpha++) {
+            u8 sources[4]; combiner_sources(rdp, cycle, alpha, sources);
+            for (int slot = 0; slot < 4; slot++) {
+                u8 source = sources[slot];
+                u32 mask = alpha ? 255u : 0xffffff00u;
+                if (!alpha && slot == 2 && source >= 7 && source <= 12) {
+                    if (source == 10) primMask |= 255;
+                    if (source == 12) envMask |= 255;
+                } else {
+                    if (source == 3) primMask |= mask;
+                    if (source == 5) envMask |= mask;
+                }
+            }
+        }
+    }
+    *prim = rdp->primColor & primMask;
+    *env = rdp->envColor & envMask;
+}
+
 static int combiner_input(const RDPState* rdp, int source, int slot, bool alpha, int component,
                           const u8 texel[4], const u8 shade[4], const u8 combined[4]) {
     if (!alpha && slot == 2 && source >= 7 && source <= 12) {
@@ -499,6 +523,7 @@ void rdp_texrect(u8 op, u32 w0, u32 w1, const Gfx* pc, RDPState* rdp) {
     }
 
     if (!tile->gsTextureLoaded) return;
+    ps2_texture_apply_tile(tile, rdp);
     /* TEXRECTFLIP exchanges screen axes for the texture derivatives. */
     float s1 = s0 + ((op == 0xE5) ? (y1 - y0) : (x1 - x0)) * ds;
     float t1 = t0 + ((op == 0xE5) ? (x1 - x0) : (y1 - y0)) * dt;

@@ -8,6 +8,10 @@
 #include "terminal.h"
 #include "translation.h"
 
+#if PLATFORM_PS2
+#include "ps2/ps2_queue.h"
+#endif
+
 #define FILL_ALLOC_BLOCK_FLAG (1 << 0)
 #define FILL_FREE_BLOCK_FLAG (1 << 1)
 #define CHECK_FREE_BLOCK_FLAG (1 << 2)
@@ -233,8 +237,17 @@ void ArenaImpl_RemoveAllBlocks(Arena* arena) {
 #endif
 
 void __osMallocCleanup(Arena* arena) {
+#if PLATFORM_PS2
+    /* Scene heaps contain embedded DMA queues at changing addresses. Their
+     * EE semaphores must not outlive the heap, unlike N64's inline queues. */
+    for (ArenaNode* node = arena->head; NODE_IS_VALID(node); node = NODE_GET_NEXT(node))
+        ps2_os_release_queues(node + 1, node->size);
+#endif
 #if DEBUG_FEATURES
     ArenaImpl_RemoveAllBlocks(arena);
+#endif
+#if PLATFORM_PS2
+    ps2_os_release_queues(arena, sizeof(*arena));
 #endif
     bzero(arena, sizeof(*arena));
 }
@@ -510,6 +523,9 @@ void __osFree_NoLock(UNUSED_NDEBUG Arena* arena, void* ptr) {
     }
 #endif
 
+#if PLATFORM_PS2
+    ps2_os_release_queues(ptr, node->size);
+#endif
     next = NODE_GET_NEXT(node);
     prev = NODE_GET_PREV(node);
     node->isFree = true;
@@ -577,6 +593,9 @@ void __osFree_NoLockDebug(Arena* arena, void* ptr, const char* file, int line) {
         return;
     }
 
+#if PLATFORM_PS2
+    ps2_os_release_queues(ptr, node->size);
+#endif
     next = NODE_GET_NEXT(node);
     prev = NODE_GET_PREV(node);
     node->isFree = true;

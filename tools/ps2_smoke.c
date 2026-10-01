@@ -10,6 +10,7 @@
 
 uintptr_t gSegments[16];
 extern int ps2_os_smoke(void);
+extern int ps2_queue_heap_smoke(void);
 extern int ps2_math_smoke(void);
 extern int ps2_printf_smoke(void);
 extern int ps2_rom_smoke(void);
@@ -17,6 +18,7 @@ extern int ps2_rom_threads_smoke(void);
 extern int ps2_renderer_smoke(void);
 extern int ps2_audio_smoke(void);
 extern int ps2_audio_heap_smoke(void);
+extern int ps2_sram_smoke(void);
 
 typedef struct {
     s16 x, y, z;
@@ -36,6 +38,11 @@ int main(void) {
     printf("[PS2 SMOKE] Entered main\n");
     fflush(stdout);
     SifInitRpc(0);
+    if (ps2_sram_smoke()) {
+        fflush(stdout);
+        SleepThread();
+        return 1;
+    }
     if (ps2_audio_heap_smoke()) {
         fflush(stdout);
         SleepThread();
@@ -63,6 +70,10 @@ int main(void) {
         return 1;
     }
     if (ps2_os_smoke() != 0) {
+        SleepThread();
+        return 1;
+    }
+    if (ps2_queue_heap_smoke() != 0) {
         SleepThread();
         return 1;
     }

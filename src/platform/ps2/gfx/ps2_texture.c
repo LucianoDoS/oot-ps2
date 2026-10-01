@@ -27,6 +27,7 @@
 #include <gsKit.h>
 #include <gsTexture.h>
 #include <dmaKit.h>
+#include <gsInline.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -42,23 +43,105 @@
 static u8 s_convBuf[256 * 256 * 4] __attribute__((aligned(128)));
 static u32 s_textureVram = GSKIT_ALLOC_ERROR;
 static u8 s_sourceRows[sizeof(s_convBuf)] __attribute__((aligned(128)));
-static u32 s_paletteGeneration;
+static u32 s_clut[256] __attribute__((aligned(128)));
 typedef struct TextureCacheEntry {
     uintptr_t source;
-    u32 stride, combine0, combine1, prim, env, cycle, paletteGeneration;
-    u32 vram, used;
+    u32 stride, combine0, combine1, prim, env, cycle, paletteHash, contentHash;
+    u32 vram, size, used;
     u16 width, height;
     u8 fmt, siz, palette, valid;
 } TextureCacheEntry;
-/* Seven 64 KiB slots plus one 256 KiB slot fit above the two framebuffers
- * and Z buffer. Cached draws retain their own VRAM until that slot is retired. */
-static TextureCacheEntry s_cache[8];
+/* Share the entire 704 KiB budget between actual texture sizes. Fixed size
+ * classes stranded most of VRAM while menu strips evicted one another. */
+#define TEXTURE_CACHE_SLOTS 64
+#define TEXTURE_CACHE_BYTES (704u * 1024)
+static TextureCacheEntry s_cache[TEXTURE_CACHE_SLOTS];
 static u32 s_cacheClock;
+typedef struct CombinerLookup {
+    u32 combine0, combine1, prim, env, cycle, used;
+    u8 valid, values[4][256];
+} CombinerLookup;
+static CombinerLookup s_lookups[16];
+static u32 s_lookupClock;
 extern volatile unsigned gPS2GfxTraceStage;
 
+/* Many tiles share a combiner. Build its 512 evaluations once rather than
+ * repeating them on every texture upload. Preserve the exact old mapping. */
+static const u8 (*combiner_lookup(const RDPState* rdp))[256] {
+    u32 cycle = (rdp->otherMode.hi >> 20) & 3;
+    u32 prim, env;
+    ps2_combiner_constants(rdp, &prim, &env);
+    int slot = 0;
+    for (int i = 0; i < 16; i++) {
+        CombinerLookup* entry = &s_lookups[i];
+        if (entry->valid && entry->combine0 == rdp->combiner.w0 &&
+            entry->combine1 == rdp->combiner.w1 && entry->prim == prim &&
+            entry->env == env && entry->cycle == cycle) {
+            entry->used = ++s_lookupClock;
+            return entry->values;
+        }
+        if (!entry->valid || (s_lookups[slot].valid && entry->used < s_lookups[slot].used)) slot = i;
+    }
+    CombinerLookup* entry = &s_lookups[slot];
+    entry->combine0 = rdp->combiner.w0; entry->combine1 = rdp->combiner.w1;
+    entry->prim = prim; entry->env = env; entry->cycle = cycle;
+    const u8 fullShade[4] = {255, 255, 255, 255};
+    for (int value = 0; value < 256; value++) {
+        u8 texel[4] = {value, value, value, 255}, color[4];
+        ps2_combiner_color(rdp, texel, fullShade, color);
+        for (int channel = 0; channel < 3; channel++) entry->values[channel][value] = color[channel];
+        texel[0] = texel[1] = texel[2] = 255;
+        texel[3] = value;
+        ps2_combiner_color(rdp, texel, fullShade, color);
+        entry->values[3][value] = color[3] * 128u / 255;
+    }
+    entry->used = ++s_lookupClock;
+    entry->valid = 1;
+    return entry->values;
+}
+
+void ps2_texture_apply_tile(TileDescriptor* tile, RDPState* rdp) {
+    GSGLOBAL* gs = rdp->gs;
+    if (!gs) return;
+    /* Region clamp also excludes uninitialized padding in non-power-of-two
+     * strips. Region repeat uses the N64 mask without clamping CPU vertices. */
+    unsigned modeS = (tile->cms & 2) || !tile->masks ? 2 : 3;
+    unsigned modeT = (tile->cmt & 2) || !tile->maskt ? 2 : 3;
+    unsigned minS = modeS == 3 ? (1u << (tile->masks > 10 ? 10 : tile->masks)) - 1 : 0;
+    unsigned minT = modeT == 3 ? (1u << (tile->maskt > 10 ? 10 : tile->maskt)) - 1 : 0;
+    unsigned maxS = modeS == 2 && tile->width ? tile->width - 1 : 0;
+    unsigned maxT = modeT == 2 && tile->height ? tile->height - 1 : 0;
+    gs->Clamp->WMS = modeS; gs->Clamp->WMT = modeT;
+    gs->Clamp->MINU = minS; gs->Clamp->MAXU = maxS;
+    gs->Clamp->MINV = minT; gs->Clamp->MAXV = maxT;
+    u64* packet = gsKit_heap_alloc(gs, 1, 16, GIF_AD);
+    packet[0] = GIF_TAG_AD(1); packet[1] = GIF_AD;
+    packet[2] = GS_SETREG_CLAMP(modeS, modeT, minS, maxS, minT, maxT);
+    packet[3] = GS_CLAMP_1 + gs->PrimContext;
+    tile->gsTexture.Filter = ((rdp->otherMode.hi >> 12) & 3) ? GS_FILTER_LINEAR : GS_FILTER_NEAREST;
+}
+
+static float texture_shift(float coordinate, u8 shift) {
+    return shift <= 10 ? coordinate / (1u << shift) : coordinate * (1u << (16 - shift));
+}
+
+void ps2_texture_build_vertex(const TileDescriptor* tile, const RSPState* rsp,
+    const RDPState* rdp, const RSPVertex* vertex, u32 color, u32 depth,
+    GSPRIMSTQPOINT* output) {
+    unsigned width = 1, height = 1;
+    while (width < tile->width) width <<= 1;
+    while (height < tile->height) height <<= 1;
+    float u = texture_shift(vertex->tc_s * rsp->texScaleS / 32.0f, tile->shifts) - tile->uls / 4.0f;
+    float v = texture_shift(vertex->tc_t * rsp->texScaleT / 32.0f, tile->shiftt) - tile->ult / 4.0f;
+    float q = (rdp->otherMode.hi & (1u << 19)) && vertex->cw > 0.0001f ? 1.0f / vertex->cw : 1.0f;
+    output->rgbaq = rgba_to_RGBAQ(color, q);
+    output->stq = vertex_to_STQ(u * q / width, v * q / height);
+    output->xyz2 = vertex_to_XYZ2(rdp->gs, vertex->sx, vertex->sy, depth);
+}
+
 void ps2_texture_end_frame(RDPState* rdp) {
-    /* Source buffers may be animated or reused by the next scene. */
-    for (int i = 0; i < 8; i++) s_cache[i].valid = 0;
+    /* Recheck source bytes next frame: animated/reused RAM cannot retain an
+     * old texture just because its address is unchanged. VRAM stays cached. */
     for (int i = 0; i < MAX_TILES; i++) rdp->tile[i].gsTextureLoaded = false;
 }
 
@@ -133,6 +216,17 @@ static void convert_ia8_to_rgba32(const u8* src, u8* dst, int w, int h) {
     }
 }
 
+/* IA4: three intensity bits and one alpha bit, two texels per byte. */
+static void convert_ia4_to_rgba32(const u8* src, u8* dst, int w, int h) {
+    for (int i = 0; i < w * h; i++) {
+        u8 value = (i & 1) ? src[i / 2] & 15 : src[i / 2] >> 4;
+        u8 intensity = value >> 1;
+        intensity = (intensity << 5) | (intensity << 2) | (intensity >> 1);
+        dst[i * 4] = dst[i * 4 + 1] = dst[i * 4 + 2] = intensity;
+        dst[i * 4 + 3] = (value & 1) ? 128 : 0;
+    }
+}
+
 /* ─────────────────────────────────────────────────────────── *
  *  IA16 (N64: 8-bit I + 8-bit A) → RGBA32
  * ─────────────────────────────────────────────────────────── */
@@ -181,11 +275,8 @@ static void convert_i4_to_rgba32(const u8* src, u8* dst, int w, int h) {
 /* ─────────────────────────────────────────────────────────── *
  *  CI4/CI8 palette conversion (TLUT RGBA16 → RGBA32 CLUT)
  * ─────────────────────────────────────────────────────────── */
-static u32 s_clut[256] __attribute__((aligned(128)));
-
-void ps2_texture_load_tlut(const u8* tlut_src, int count) {
-    if (count < 0 || count > 256) return;
-    s_paletteGeneration++;
+void ps2_texture_load_tlut_at(const u8* tlut_src, int first, int count) {
+    if (!tlut_src || first < 0 || count < 0 || first > 256 || count > 256 - first) return;
     /* TLUT is RGBA16 on N64 */
     for (int i = 0; i < count; i++) {
         u16 px = read_be16(tlut_src + i * 2);
@@ -193,9 +284,13 @@ void ps2_texture_load_tlut(const u8* tlut_src, int count) {
         u8 g = (px >>  6) & 0x1F;  g = (g << 3) | (g >> 2);
         u8 b = (px >>  1) & 0x1F;  b = (b << 3) | (b >> 2);
         u8 a = (px & 1) ? 0x80 : 0;
-        s_clut[i] = ((u32)a << 24) | ((u32)b << 16) |
+        s_clut[first + i] = ((u32)a << 24) | ((u32)b << 16) |
                     ((u32)g <<  8) |  (u32)r;
     }
+}
+
+void ps2_texture_load_tlut(const u8* tlut_src, int count) {
+    ps2_texture_load_tlut_at(tlut_src, 0, count);
 }
 
 /* ─────────────────────────────────────────────────────────── *
@@ -229,17 +324,28 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
     key.width = w; key.height = h; key.fmt = tile->fmt; key.siz = tile->siz;
     key.palette = tile->palette;
     key.combine0 = rdp->combiner.w0; key.combine1 = rdp->combiner.w1;
-    key.prim = rdp->primColor; key.env = rdp->envColor;
+    ps2_combiner_constants(rdp, &key.prim, &key.env);
     key.cycle = (rdp->otherMode.hi >> 20) & 3;
-    key.paletteGeneration = tile->fmt == G_IM_FMT_CI ? s_paletteGeneration : 0;
-    for (int i = 0; i < 8; i++) {
+    if (tile->fmt == G_IM_FMT_CI) {
+        unsigned first = tile->siz == G_IM_SIZ_4b ? tile->palette * 16 : 0;
+        unsigned count = tile->siz == G_IM_SIZ_4b ? 16 : 256;
+        key.paletteHash = 2166136261u;
+        for (unsigned i = 0; i < count; i++) key.paletteHash = (key.paletteHash ^ s_clut[first + i]) * 16777619u;
+    }
+    u32 hash = 2166136261u;
+    for (int y = 0; y < h; y++) {
+        const u8* row = src + y * (sourceStride ? sourceStride : rowBytes);
+        for (u32 x = 0; x < rowBytes; x++) hash = (hash ^ row[x]) * 16777619u;
+    }
+    key.contentHash = hash;
+    for (int i = 0; i < TEXTURE_CACHE_SLOTS; i++) {
         TextureCacheEntry* cached = &s_cache[i];
         if (cached->valid && cached->source == key.source &&
             cached->stride == key.stride && cached->width == w && cached->height == h &&
             cached->fmt == key.fmt && cached->siz == key.siz && cached->palette == key.palette &&
             cached->combine0 == key.combine0 && cached->combine1 == key.combine1 &&
             cached->prim == key.prim && cached->env == key.env && cached->cycle == key.cycle &&
-            cached->paletteGeneration == key.paletteGeneration) {
+            cached->paletteHash == key.paletteHash && cached->contentHash == key.contentHash) {
             cached->used = ++s_cacheClock;
             texture_descriptor(tile, w, h, cached->vram);
             tile->gsTextureLoaded = true;
@@ -264,7 +370,9 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
             break;
 
         case G_IM_FMT_IA:
-            if (tile->siz == G_IM_SIZ_8b)
+            if (tile->siz == G_IM_SIZ_4b)
+                convert_ia4_to_rgba32(src, s_convBuf, w, h);
+            else if (tile->siz == G_IM_SIZ_8b)
                 convert_ia8_to_rgba32(src, s_convBuf, w, h);
             else if (tile->siz == G_IM_SIZ_16b)
                 convert_ia16_to_rgba32(src, s_convBuf, w, h);
@@ -305,23 +413,19 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
 
     /* Bake constant RDP inputs into texels. Shade modulation remains on the
      * GS vertices; full multitexture and additive shade terms need more passes. */
-    const u8 fullShade[4] = {255, 255, 255, 255};
-    u8 lookup[4][256];
-    for (int value = 0; value < 256; value++) {
-        u8 texel[4] = {value, value, value, 255}, color[4];
-        ps2_combiner_color(rdp, texel, fullShade, color);
-        for (int channel = 0; channel < 3; channel++) lookup[channel][value] = color[channel];
-        texel[0] = texel[1] = texel[2] = 255;
-        texel[3] = value;
-        ps2_combiner_color(rdp, texel, fullShade, color);
-        lookup[3][value] = color[3] * 128u / 255;
-    }
+    const u8 (*lookup)[256] = combiner_lookup(rdp);
     for (int i = 0; i < w * h; i++) {
         u8* pixel = s_convBuf + i * 4;
         pixel[0] = lookup[0][pixel[0]];
         pixel[1] = lookup[1][pixel[1]];
         pixel[2] = lookup[2][pixel[2]];
         pixel[3] = lookup[3][pixel[3] == 128 ? 255 : pixel[3] * 2];
+    }
+    static unsigned logoTrace;
+    if (tile->fmt == G_IM_FMT_RGBA && tile->siz == G_IM_SIZ_32b && w == 160 && logoTrace++ < 3) {
+        printf("[PS2 LOGO TEX] ptr=%p stride=%u size=%dx%d combine=%08x,%08x mode=%08x prim=%08x raw=%02x%02x%02x%02x pixel=%02x%02x%02x%02x\n",
+            src, sourceStride, w, h, rdp->combiner.w0, rdp->combiner.w1, rdp->otherMode.hi,
+            rdp->primColor, src[0], src[1], src[2], src[3], s_convBuf[0], s_convBuf[1], s_convBuf[2], s_convBuf[3]);
     }
     /* ── Upload to GS VRAM ──────────────────────────────── */
     GSTEXTURE* gt = &tile->gsTexture;
@@ -335,23 +439,32 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
     /* A zero-initialized GSTEXTURE points at the first framebuffer in VRAM.
      * Reserve a texture-only region and retire draws before reusing it. */
     if (s_textureVram == GSKIT_ALLOC_ERROR) {
-        s_textureVram = gsKit_vram_alloc(rdp->gs, 7 * 65536 + sizeof(s_convBuf), GSKIT_ALLOC_USERBUFFER);
+        s_textureVram = gsKit_vram_alloc(rdp->gs, TEXTURE_CACHE_BYTES, GSKIT_ALLOC_USERBUFFER);
         if (s_textureVram == GSKIT_ALLOC_ERROR) return;
-        for (int i = 0; i < 8; i++) s_cache[i].vram = s_textureVram + i * 65536;
         printf("[PS2 TEXTURE] VRAM cache reserved at 0x%08x (%u bytes)\n",
-               (unsigned)s_textureVram, (unsigned)(7 * 65536 + sizeof(s_convBuf)));
+               (unsigned)s_textureVram, (unsigned)TEXTURE_CACHE_BYTES);
     }
-    int slot = 7;
     u32 size = gsKit_texture_size(w, h, GS_PSM_CT32);
-    if (size <= 65536) {
-        slot = 0;
-        for (int i = 0; i < 7; i++)
-            if (!s_cache[i].valid || s_cache[i].used < s_cache[slot].used) {
-                slot = i;
-                if (!s_cache[i].valid) break;
-            }
-    }
     if (size > sizeof(s_convBuf)) return;
+    size = (size + 4095) & ~4095u;
+    int slot = 0;
+    for (int i = 0; i < TEXTURE_CACHE_SLOTS; i++) {
+        if (!s_cache[i].valid || s_cache[i].used < s_cache[slot].used) {
+            slot = i;
+            if (!s_cache[i].valid) break;
+        }
+    }
+    u32 vram = s_textureVram, bestCost = ~0u;
+    for (u32 offset = 0; offset + size <= TEXTURE_CACHE_BYTES; offset += 4096) {
+        u32 start = s_textureVram + offset, cost = 0;
+        for (int i = 0; i < TEXTURE_CACHE_SLOTS; i++) {
+            TextureCacheEntry* entry = &s_cache[i];
+            if (entry->valid && entry->vram < start + size && start < entry->vram + entry->size && entry->used > cost)
+                cost = entry->used;
+        }
+        if (cost < bestCost) { bestCost = cost; vram = start; }
+        if (!cost) break;
+    }
     gsKit_set_finish(rdp->gs);
     gPS2GfxTraceStage = 2;
     if (trace) printf("[PS2 TEXTURE TRACE] converted, retire queue\n");
@@ -360,16 +473,21 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
     gsKit_finish();
     if (trace) printf("[PS2 TEXTURE TRACE] finish returned\n");
     dmaKit_wait_fast();
-    u32 vram = s_cache[slot].vram;
-    for (int i = 0; i < MAX_TILES; i++)
-        if (rdp->tile[i].gsTexture.Vram == vram) rdp->tile[i].gsTextureLoaded = false;
+    for (int i = 0; i < TEXTURE_CACHE_SLOTS; i++) {
+        TextureCacheEntry* entry = &s_cache[i];
+        if (entry->valid && (i == slot || (entry->vram < vram + size && vram < entry->vram + entry->size))) {
+            for (int tileIndex = 0; tileIndex < MAX_TILES; tileIndex++)
+                if (rdp->tile[tileIndex].gsTexture.Vram == entry->vram) rdp->tile[tileIndex].gsTextureLoaded = false;
+            entry->valid = 0;
+        }
+    }
     gt->Vram = vram;
     gPS2GfxTraceStage = 4;
     gsKit_texture_upload(rdp->gs, gt);
     gPS2GfxTraceStage = 5;
     dmaKit_wait_fast();
     gPS2GfxTraceStage = 6;
-    key.vram = vram; key.used = ++s_cacheClock; key.valid = 1;
+    key.vram = vram; key.size = size; key.used = ++s_cacheClock; key.valid = 1;
     s_cache[slot] = key;
     static unsigned uploads;
     if (++uploads <= 3 || uploads % 1000 == 0)
@@ -457,10 +575,12 @@ void rdp_loadtexture(u8 op, u32 w0, u32 w1, RDPState* rdp) {
 void rdp_loadtlut(u32 w0, u32 w1, RDPState* rdp) {
     u8  tile_idx = (w1 >> 24) & 0x7;
     u16 count    = ((w1 >> 14) & 0x3FF) + 1;
-    (void)tile_idx;
-
-    /* Load TLUT from the current texture image pointer */
-    if (rdp->textureImage) {
-        ps2_texture_load_tlut((const u8*)rdp->textureImage, count);
+    /* Each palette entry occupies one 64-bit TMEM word (replicated lanes).
+     * CI4 palettes are loaded at 256 + palette * 16, not always at zero. */
+    u16 tmem = rdp->tile[tile_idx].tmem;
+    if (rdp->textureImage && tmem >= 256 && count <= 512 - tmem) {
+        ps2_texture_load_tlut_at((const u8*)rdp->textureImage, tmem - 256, count);
+        for (int i = 0; i < MAX_TILES; i++)
+            if (rdp->tile[i].fmt == G_IM_FMT_CI) rdp->tile[i].gsTextureLoaded = false;
     }
 }

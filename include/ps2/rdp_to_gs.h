@@ -183,6 +183,7 @@ typedef struct {
     /* ── Iluminación ───────────────────────────────────────────── */
     RSPLight     lights[8];
     u32          numLights;
+    float        lookAt[2][3];
 } RSPState;
 
 /* ─────────────────────────────────────────────────────────── *
@@ -207,6 +208,7 @@ void rdp_loadtlut(u32 w0, u32 w1, RDPState* rdp);
 void rdp_setcombine(u32 w0, u32 w1, RDPState* rdp);
 void ps2_combiner_color(const RDPState* rdp, const u8 texel[4], const u8 shade[4], u8 output[4]);
 bool ps2_combiner_uses_shade(const RDPState* rdp, bool alpha);
+void ps2_combiner_constants(const RDPState* rdp, u32* prim, u32* env);
 void rdp_setprimcolor(u32 w0, u32 w1, RDPState* rdp);
 void rdp_setenvcolor(u32 w0, u32 w1, RDPState* rdp);
 void rdp_setfogcolor(u32 w0, u32 w1, RDPState* rdp);

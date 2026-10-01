@@ -192,6 +192,25 @@ static void transform_vertex(RSPVertex* v, const RSPState* rsp) {
     project_vertex(v, rsp);
 }
 
+static void generate_texture_coordinates(RSPVertex* v, const RSPState* rsp) {
+    if ((rsp->geometryMode & (G_LIGHTING | G_TEXTURE_GEN)) != (G_LIGHTING | G_TEXTURE_GEN)) return;
+    const float* m = rsp->modelview;
+    float x = (s8)v->cr, y = (s8)v->cg, z = (s8)v->cb;
+    float n[3] = {x*m[0] + y*m[4] + z*m[8],
+                  x*m[1] + y*m[5] + z*m[9],
+                  x*m[2] + y*m[6] + z*m[10]};
+    float length = sqrtf(n[0]*n[0] + n[1]*n[1] + n[2]*n[2]);
+    if (length > 0.0f) for (int i = 0; i < 3; i++) n[i] /= length;
+    float coords[2];
+    for (int axis = 0; axis < 2; axis++) {
+        float dot = n[0]*rsp->lookAt[axis][0] + n[1]*rsp->lookAt[axis][1] + n[2]*rsp->lookAt[axis][2];
+        dot = fmaxf(-1.0f, fminf(1.0f, dot));
+        coords[axis] = rsp->geometryMode & G_TEXTURE_GEN_LINEAR ? acosf(dot) / 3.14159265358979323846f : (dot + 1.0f) * 0.5f;
+    }
+    v->tc_s = (s16)(coords[0] * 32767.0f);
+    v->tc_t = (s16)(coords[1] * 32767.0f);
+}
+
 /* ───────────────────────────────────────────────────────────────── *
  *  G_VTX — carga vértices en la caché del RSP
  *
@@ -233,7 +252,21 @@ void f3dex2_vtx(u32 w0, u32 w1, RSPState* rsp) {
         v->valid = true;
 
         transform_vertex(v, rsp);
+        generate_texture_coordinates(v, rsp);
         ps2_light_apply_vertex(v, rsp);
+
+        /* Bounded diagnostics for room geometry, independent of actor vertices. */
+        static unsigned roomTrace;
+        if (i == 0 && (w1 >> 24) == 3 && roomTrace++ < 8) {
+            printf("[PS2 ROOM VTX] addr=%08x pos=%d,%d,%d clip=%f,%f,%f,%f screen=%f,%f mode=%08x\n",
+                w1, v->ox, v->oy, v->oz, v->cx, v->cy, v->cz, v->cw,
+                v->sx, v->sy, rsp->geometryMode);
+            printf("[PS2 ROOM MVP] %f,%f,%f,%f / %f,%f,%f,%f / %f,%f,%f,%f / %f,%f,%f,%f\n",
+                rsp->mvp[0], rsp->mvp[1], rsp->mvp[2], rsp->mvp[3],
+                rsp->mvp[4], rsp->mvp[5], rsp->mvp[6], rsp->mvp[7],
+                rsp->mvp[8], rsp->mvp[9], rsp->mvp[10], rsp->mvp[11],
+                rsp->mvp[12], rsp->mvp[13], rsp->mvp[14], rsp->mvp[15]);
+        }
 
         src += 16;
     }
@@ -299,31 +332,12 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
         }
         if (!tile->gsTextureLoaded) { rdp->stats.textureFailed++; return; }
 
-        float tw = (float)(tile->width  ? tile->width  : 1);
-        float th = (float)(tile->height ? tile->height : 1);
-
-        /* Coordenadas S/T en 10.5 fijo → texel, aplicando la escala
-         * de G_TEXTURE. */
-        float su = rsp->texScaleS / 32.0f;
-        float sv = rsp->texScaleT / 32.0f;
-
-        float u0 = (float)v0->tc_s * su, t0 = (float)v0->tc_t * sv;
-        float u1 = (float)v1->tc_s * su, t1 = (float)v1->tc_t * sv;
-        float u2 = (float)v2->tc_s * su, t2 = (float)v2->tc_t * sv;
-
-        /* El origen del tile desplaza las coordenadas */
-        float offU = (float)(tile->uls >> 2);
-        float offV = (float)(tile->ult >> 2);
-        u0 -= offU; u1 -= offU; u2 -= offU;
-        t0 -= offV; t1 -= offV; t2 -= offV;
-
-        (void)tw; (void)th;
-
-        gsKit_prim_triangle_goraud_texture_3d(
-            gs, &tile->gsTexture,
-            v0->sx, v0->sy, z0, u0, t0,
-            v1->sx, v1->sy, z1, u1, t1,
-            v2->sx, v2->sy, z2, u2, t2, c0, c1, c2);
+        GSPRIMSTQPOINT points[3];
+        ps2_texture_apply_tile(tile, rdp);
+        ps2_texture_build_vertex(tile, rsp, rdp, v0, (u32)c0, z0, &points[0]);
+        ps2_texture_build_vertex(tile, rsp, rdp, v1, (u32)c1, z1, &points[1]);
+        ps2_texture_build_vertex(tile, rsp, rdp, v2, (u32)c2, z2, &points[2]);
+        gsKit_prim_list_triangle_goraud_texture_stq_3d(gs, &tile->gsTexture, 3, points);
     } else {
         gsKit_prim_triangle_gouraud_3d(
             gs,
@@ -623,8 +637,14 @@ void f3dex2_movemem(u32 w0, u32 w1, RSPState* rsp) {
                 ps2_light_load(li, src, rsp);
             }
         } else {
-            /* lookat: sólo hace falta para texture-gen (reflejos).
-             * Pendiente. */
+            u32 axis = offset / 24;
+            if (axis < 2) {
+                float x = (s8)src[8], y = (s8)src[9], z = (s8)src[10];
+                float length = sqrtf(x*x + y*y + z*z);
+                rsp->lookAt[axis][0] = length > 0.0f ? x / length : 0.0f;
+                rsp->lookAt[axis][1] = length > 0.0f ? y / length : 0.0f;
+                rsp->lookAt[axis][2] = length > 0.0f ? z / length : 0.0f;
+            }
         }
     }
 }

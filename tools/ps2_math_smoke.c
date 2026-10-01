@@ -1,5 +1,6 @@
 /* Compiled with the game's actual types, and run on the EE. */
 #include "ultra64.h"
+extern Mtx gIdentityMtx;
 
 int ps2_math_smoke(void) {
     Mtx matrix;
@@ -10,6 +11,10 @@ int ps2_math_smoke(void) {
         { 100.25f, -200.5f, 0.0f, 1.0f },
     };
     f32 result[4][4];
+    guMtxL2F(result, &gIdentityMtx);
+    for (int i = 0; i < 4; i++)
+        for (int j = 0; j < 4; j++)
+            if (result[i][j] != (i == j ? 1.0f : 0.0f)) return 4;
     guMtxF2L(source, &matrix);
     // Check storage independently of the inverse (two wrong functions can round-trip).
     if (matrix.intPart[0][0] != 1 || matrix.intPart[0][1] != (u16)-3 ||
