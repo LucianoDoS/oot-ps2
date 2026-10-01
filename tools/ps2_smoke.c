@@ -19,6 +19,7 @@ extern int ps2_renderer_smoke(void);
 extern int ps2_audio_smoke(void);
 extern int ps2_audio_heap_smoke(void);
 extern int ps2_sram_smoke(void);
+extern int ps2_font_smoke(void);
 
 typedef struct {
     s16 x, y, z;
@@ -38,6 +39,11 @@ int main(void) {
     printf("[PS2 SMOKE] Entered main\n");
     fflush(stdout);
     SifInitRpc(0);
+    if (ps2_font_smoke()) {
+        fflush(stdout);
+        SleepThread();
+        return 1;
+    }
     if (ps2_sram_smoke()) {
         fflush(stdout);
         SleepThread();

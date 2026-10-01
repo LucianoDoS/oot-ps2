@@ -53,7 +53,8 @@ typedef struct TextureCacheEntry {
 } TextureCacheEntry;
 /* Share the entire 704 KiB budget between actual texture sizes. Fixed size
  * classes stranded most of VRAM while menu strips evicted one another. */
-#define TEXTURE_CACHE_SLOTS 64
+#define TEXTURE_CACHE_SLOTS 256
+#define TEXTURE_CACHE_CHUNK 1024u
 #define TEXTURE_CACHE_BYTES (704u * 1024)
 static TextureCacheEntry s_cache[TEXTURE_CACHE_SLOTS];
 static u32 s_cacheClock;
@@ -71,6 +72,8 @@ static const u8 (*combiner_lookup(const RDPState* rdp))[256] {
     u32 cycle = (rdp->otherMode.hi >> 20) & 3;
     u32 prim, env;
     ps2_combiner_constants(rdp, &prim, &env);
+    bool dynamicAlpha = ps2_combiner_dynamic_alpha(rdp);
+    if (dynamicAlpha) prim &= 0xffffff00u;
     int slot = 0;
     for (int i = 0; i < 16; i++) {
         CombinerLookup* entry = &s_lookups[i];
@@ -90,10 +93,14 @@ static const u8 (*combiner_lookup(const RDPState* rdp))[256] {
         u8 texel[4] = {value, value, value, 255}, color[4];
         ps2_combiner_color(rdp, texel, fullShade, color);
         for (int channel = 0; channel < 3; channel++) entry->values[channel][value] = color[channel];
-        texel[0] = texel[1] = texel[2] = 255;
-        texel[3] = value;
-        ps2_combiner_color(rdp, texel, fullShade, color);
-        entry->values[3][value] = color[3] * 128u / 255;
+        if (dynamicAlpha) {
+            entry->values[3][value] = value * 128u / 255;
+        } else {
+            texel[0] = texel[1] = texel[2] = 255;
+            texel[3] = value;
+            ps2_combiner_color(rdp, texel, fullShade, color);
+            entry->values[3][value] = color[3] * 128u / 255;
+        }
     }
     entry->used = ++s_lookupClock;
     entry->valid = 1;
@@ -134,6 +141,10 @@ void ps2_texture_build_vertex(const TileDescriptor* tile, const RSPState* rsp,
     float u = texture_shift(vertex->tc_s * rsp->texScaleS / 32.0f, tile->shifts) - tile->uls / 4.0f;
     float v = texture_shift(vertex->tc_t * rsp->texScaleT / 32.0f, tile->shiftt) - tile->ult / 4.0f;
     float q = (rdp->otherMode.hi & (1u << 19)) && vertex->cw > 0.0001f ? 1.0f / vertex->cw : 1.0f;
+    if (ps2_combiner_dynamic_alpha(rdp)) {
+        u32 alpha = (color >> 24) * (rdp->primColor & 255) / 255;
+        color = (color & 0xffffffu) | (alpha << 24);
+    }
     output->rgbaq = rgba_to_RGBAQ(color, q);
     output->stq = vertex_to_STQ(u * q / width, v * q / height);
     output->xyz2 = vertex_to_XYZ2(rdp->gs, vertex->sx, vertex->sy, depth);
@@ -190,7 +201,7 @@ static void convert_rgba32_to_rgba32(const u8* src, u8* dst,
         u8 g = (px >> 16) & 0xFF;
         u8 b = (px >>  8) & 0xFF;
         u8 a = (px      ) & 0xFF;
-        a = (a >> 1);  /* PS2 GS uses 0-128 alpha (divide by 2) */
+        a = (u32)a * 128 / 255; /* 255 must map to fully opaque GS alpha. */
 
         dst[i * 4 + 0] = r;
         dst[i * 4 + 1] = g;
@@ -208,7 +219,7 @@ static void convert_ia8_to_rgba32(const u8* src, u8* dst, int w, int h) {
         u8 byte = src[i];
         u8 intensity = (byte >> 4) & 0x0F;  intensity = (intensity << 4) | intensity;
         u8 alpha     = (byte     ) & 0x0F;  alpha     = (alpha     << 4) | alpha;
-        alpha >>= 1;  /* GS alpha 0-128 */
+        alpha = (u32)alpha * 128 / 255;
         dst[i*4+0] = intensity;
         dst[i*4+1] = intensity;
         dst[i*4+2] = intensity;
@@ -234,7 +245,7 @@ static void convert_ia16_to_rgba32(const u8* src, u8* dst, int w, int h) {
     int pixels = w * h;
     for (int i = 0; i < pixels; i++) {
         u8 intensity = src[i * 2 + 0];
-        u8 alpha     = src[i * 2 + 1] >> 1;
+        u8 alpha     = (u32)src[i * 2 + 1] * 128 / 255;
         dst[i*4+0] = intensity;
         dst[i*4+1] = intensity;
         dst[i*4+2] = intensity;
@@ -325,6 +336,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
     key.palette = tile->palette;
     key.combine0 = rdp->combiner.w0; key.combine1 = rdp->combiner.w1;
     ps2_combiner_constants(rdp, &key.prim, &key.env);
+    if (ps2_combiner_dynamic_alpha(rdp)) key.prim &= 0xffffff00u;
     key.cycle = (rdp->otherMode.hi >> 20) & 3;
     if (tile->fmt == G_IM_FMT_CI) {
         unsigned first = tile->siz == G_IM_SIZ_4b ? tile->palette * 16 : 0;
@@ -446,7 +458,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
     }
     u32 size = gsKit_texture_size(w, h, GS_PSM_CT32);
     if (size > sizeof(s_convBuf)) return;
-    size = (size + 4095) & ~4095u;
+    size = (size + TEXTURE_CACHE_CHUNK - 1) & ~(TEXTURE_CACHE_CHUNK - 1);
     int slot = 0;
     for (int i = 0; i < TEXTURE_CACHE_SLOTS; i++) {
         if (!s_cache[i].valid || s_cache[i].used < s_cache[slot].used) {
@@ -455,12 +467,13 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         }
     }
     u32 vram = s_textureVram, bestCost = ~0u;
-    for (u32 offset = 0; offset + size <= TEXTURE_CACHE_BYTES; offset += 4096) {
+    for (u32 offset = 0; offset + size <= TEXTURE_CACHE_BYTES; offset += TEXTURE_CACHE_CHUNK) {
         u32 start = s_textureVram + offset, cost = 0;
         for (int i = 0; i < TEXTURE_CACHE_SLOTS; i++) {
             TextureCacheEntry* entry = &s_cache[i];
             if (entry->valid && entry->vram < start + size && start < entry->vram + entry->size && entry->used > cost)
                 cost = entry->used;
+            if (cost >= bestCost) break;
         }
         if (cost < bestCost) { bestCost = cost; vram = start; }
         if (!cost) break;

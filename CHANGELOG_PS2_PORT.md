@@ -4,6 +4,40 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Letras del nombre, caché del teclado y memory card — 2026-10-01
+
+- `Font_LoadOrderedFont` interpreta las mitades big-endian del mensaje que
+  ordena las letras NTSC. Antes se intercambiaban los bytes de los códigos
+  SHIFT-JIS y se cargaban otros glifos. PS2 también limita longitud y destino.
+  La prueba EE enlaza el cargador real, comprueba letras latinas, salto de línea
+  y un mensaje sin terminador, sin leer fuera de su longitud.
+- Caché ampliada de 64 a 256 entradas, con bloques de 1 KiB en los mismos
+  704 KiB de VRAM. El teclado provocaba conversiones repetidas al superar
+  64 combinaciones de letra/color. La prueba conserva 128 glifos entre pasadas,
+  además de tiras medianas, texturas grandes, expulsión y colores del combinador.
+  Esto evita trabajo repetido; aún falta un benchmark comparable de FPS.
+- Fundidos `TEXEL_ALPHA * PRIMITIVE_ALPHA` compatibles pasan el factor variable
+  al vértice GS. Las claves de textura/LUT excluyen ese factor. La prueba cambia
+  el alfa sin recargar VRAM y rechaza los estados que necesitan la ruta CPU.
+  RGBA32, IA8 e IA16 convierten alfa 255 a 128, evitando el máximo 127 anterior.
+- `libmc` recibe flags IOP directamente: sustituidos los flags newlib por
+  `FIO_O_*`. La lectura antes devolvía -5. Verificado contra el código de
+  [PS2SDK](https://github.com/ps2dev/ps2sdk/blob/master/ee/rpc/memorycard/src/libmc.c).
+- Guardado alterno `save.dat`/`save.bak`, revisión y checksum, comprobación del
+  cierre y relectura antes de declarar éxito. Lee también el formato anterior.
+  Un error conserva la copia previa y permite reintentar la inicialización.
+- Diagnóstico con MCMAN/MCSERV y una tarjeta virtual nueva: pasan dos escrituras,
+  selección de la revisión reciente, daño de la copia nueva y recuperación
+  de la anterior. Tras cerrar y reiniciar PCSX2 pasan los 32768 bytes persistidos.
+  La prueba usa `OOT_PS2_TEST`, separada del guardado del juego `OOT_PS2`.
+- Activada la nueva `oot-port.ps2` en la configuración aislada; la tarjeta que
+  estaba configurada se conserva. El juego registra guardados verificados hasta
+  la revisión 5 y entra en la escena 52. Esto no valida una partida completa.
+- Logs privados: `build/PS2/pcsx2-smoke-glyph-cache.log`,
+  `build/PS2/pcsx2-memorycard-write-recovery.log`,
+  `build/PS2/pcsx2-memorycard-cold-restart.log` y
+  `build/PS2-ntsc12/pcsx2-font-card-first-game.log`.
+
 ## Caché, reflejos y pruebas del selector — 2026-10-01
 
 La captura del título muestra a Link montado en Epona, terreno, murallas y

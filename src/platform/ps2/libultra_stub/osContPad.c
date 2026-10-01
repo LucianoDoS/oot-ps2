@@ -258,6 +258,11 @@ void osContGetReadData(OSContPad* pad) {
          * hacían que pulsar los sticks disparase acciones. */
 
         pad[port].button = n64;
+        static u16 previousButtons[PS2_PORTS];
+        static unsigned buttonTraces;
+        if (n64 != previousButtons[port] && buttonTraces++ < 64)
+            printf("[PS2 INPUT] port=%d ps2=%04x n64=%04x\n", port, (unsigned)btns, n64);
+        previousButtons[port] = n64;
 
         /* ── Stick izquierdo ────────────────────────────────── */
         /* PS2: 0..255, centro 128. N64: -128..127, Y hacia arriba. */

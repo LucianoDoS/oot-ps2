@@ -27,15 +27,22 @@ y Link montado en Epona. Corregida la matriz identidad nativa que deformaba el
 escenario y el caballo. El renderer usa STQ para conservar la repetición y
 perspectiva de las texturas; las pruebas EE verifican coordenadas, shifts,
 paletas CI4 e IA4. Añadida generación esférica/lineal de coordenadas con LookAt.
-La caché comparte 704 KiB de VRAM entre 64 entradas según su tamaño y reutiliza
+La caché comparte 704 KiB de VRAM entre 256 entradas según su tamaño y reutiliza
 tablas del combinador; valida los bytes de fuentes y paletas para detectar
 texturas modificadas en RAM. Todavía faltan fidelidad visual y rendimiento.
 Start abre el selector de partida y sus textos y botones se ven correctamente.
 Las operaciones SRAM ya usan
 una imagen de 32 KiB y el backend de memory card, conservando las escrituras
-parciales; el diagnóstico pasa recarga, errores y límites. La configuración
-aislada no tiene tarjeta PS2 formateada: conserva los datos en RAM y avisa en
-el log; falta comprobar guardado persistente real y control durante la partida.
+parciales. Una tarjeta virtual nueva `oot-port.ps2` está activa en la configuración
+aislada; la tarjeta anterior se conserva. El diagnóstico real con libmc pasa
+escritura, recarga tras cerrar PCSX2 y recuperación de una copia dañada.
+El juego escribe imágenes verificadas en esa tarjeta. Dos archivos alternos,
+con revisión y checksum, preservan el último guardado completo. Falta validar
+la progresión de una partida completa. Corregida la lectura big-endian de la
+tabla de letras del nombre; la prueba enlaza el cargador de fuentes real.
+Las letras de 16×16 reservan 1 KiB en la caché; el diagnóstico conserva 128
+texturas pequeñas entre pasadas. Los fundidos compatibles aplican alfa en GS
+sin volver a convertir ni subir la textura.
 Las instrucciones históricas de abajo describen la intención del port,
 no garantizan que el juego arranque.
 
@@ -57,6 +64,23 @@ en `build/PCSX2-diagnostic`; requiere una BIOS y configuración ya disponibles.
 Activa `HostFs` en esa configuración aislada para la prueba de lectura; usa
 `ps2-rom-smoke.bin`, un archivo de 4 KiB generado por el script, sin ROM del juego.
 El log se guarda en `build/PS2/pcsx2-smoke.log`.
+
+El diagnóstico de fuentes necesita las cabeceras de texto de la extracción
+NTSC 1.2 local; `OOT_UPSTREAM` permite indicar otra ruta. No lee la ROM al ejecutarse.
+
+Para comprobar la tarjeta real con el backend del port:
+
+```sh
+bash tools/build_ps2_memorycard_smoke.sh
+```
+
+Desde PowerShell 7, `tools/run_ps2_memorycard_smoke.ps1 -InitializeNewCard`
+crea una tarjeta nueva en `build/PCSX2-memorycard` y rechaza sobrescribir una
+existente. Usa la BIOS/configuración local ya disponible. El diagnóstico escribe
+solo en `OOT_PS2_TEST`; el juego usa `OOT_PS2`. Ejecuta el script una segunda vez
+sin ese parámetro para verificar persistencia tras un reinicio completo.
+Solo el diagnóstico, con el token explícito creado para la tarjeta nueva,
+puede formatearla; el juego exige una tarjeta PS2 ya formateada en el puerto 1.
 
 El build del juego usa la extracción local US NTSC 1.2. La procedencia de las
 fuentes, versión del SDK y hash de ROM están en [UPSTREAM.md](UPSTREAM.md).

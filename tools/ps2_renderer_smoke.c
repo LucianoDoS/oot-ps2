@@ -201,11 +201,63 @@ int ps2_renderer_smoke(void) {
         else if (address != stripVram[i]) failures++;
     }
     /* A large upload may evict several strips, but must fit the same budget. */
+    /* A keyboard needs more than 64 small glyph/color combinations. They
+     * occupy 1 KiB each, rather than wasting a 4 KiB allocation per letter. */
+    static u8 glyphs[128][128];
+    u32 glyphVram[128];
+    memset(glyphs, 255, sizeof(glyphs));
+    rdp_settile(0xf5800000, 0, &g_rdpState); /* I4 */
+    rdp_settilesize(0xf2000000, (60u << 12) | 60u, &g_rdpState);
+    printf("[PS2 RENDER CHECK] glyph allocation=%u\n", (unsigned)gsKit_texture_size(16,16,GS_PSM_CT32));
+    for (int pass = 0; pass < 2; pass++) for (int i = 0; i < 128; i++) {
+        rdp_settimg(0xfd80000f, (u32)glyphs[i], &g_rdpState);
+        rdp_loadtexture(0xf3, 0, 0, &g_rdpState);
+        ps2_texture_upload(&g_rdpState.tile[0], &g_rdpState);
+        u32 address = g_rdpState.tile[0].gsTexture.Vram;
+        if (!pass) glyphVram[i] = address;
+        else if (address != glyphVram[i]) failures++;
+    }
+    rdp_settile(0xf5100000, 0, &g_rdpState);
     rdp_settilesize(0xf2000000, (1020u << 12) | 1020u, &g_rdpState);
     rdp_settimg(0xfd1000ff, (u32)strips, &g_rdpState);
     rdp_loadtexture(0xf3, 0, 0, &g_rdpState);
     ps2_texture_upload(&g_rdpState.tile[0], &g_rdpState);
     if (g_rdpState.tile[0].gsTexture.Vram + 262144 > 0x400000) failures++;
+    /* A logo fade changes vertex alpha while retaining its uploaded texels. */
+    printf("[PS2 RENDER CHECK] failures before fade=%d\n", failures);
+    rdp_setothermode(0, 0, &g_rdpState);
+    rdp_setcombine(0xfc119623, 0xff2fffff, &g_rdpState);
+    rdp_setprimcolor(0, 0xffffff80, &g_rdpState);
+    if (!ps2_combiner_dynamic_alpha(&g_rdpState)) failures++;
+    rdp_settile(0xf5180000, 0, &g_rdpState);
+    rdp_settilesize(0xf2000000, 4u << 12, &g_rdpState);
+    rdp_settimg(0xfd180001, (u32)animated, &g_rdpState);
+    rdp_loadtexture(0xf3, 0, 0, &g_rdpState);
+    ps2_texture_upload(&g_rdpState.tile[0], &g_rdpState);
+    pixels = (u8*)g_rdpState.tile[0].gsTexture.Mem;
+    if (pixels[3] != 128) failures++;
+    printf("[PS2 RENDER CHECK] fade dynamic=%d texalpha=%u\n", ps2_combiner_dynamic_alpha(&g_rdpState), pixels[3]);
+    u32 fadeVram = g_rdpState.tile[0].gsTexture.Vram;
+    RSPVertex fading = {.cw=1};
+    GSPRIMSTQPOINT fadedPoint;
+    ps2_texture_build_vertex(&g_rdpState.tile[0], &g_rspState, &g_rdpState,
+        &fading, 0x80808080, 0, &fadedPoint);
+    if (fadedPoint.rgbaq.color.components.a != 64) failures++;
+    printf("[PS2 RENDER CHECK] fade vertex alpha=%u\n", fadedPoint.rgbaq.color.components.a);
+    rdp_setprimcolor(0, 0xffffff00, &g_rdpState);
+    ps2_texture_upload(&g_rdpState.tile[0], &g_rdpState);
+    if (g_rdpState.tile[0].gsTexture.Vram != fadeVram) failures++;
+    ps2_texture_build_vertex(&g_rdpState.tile[0], &g_rspState, &g_rdpState,
+        &fading, 0x80808080, 0, &fadedPoint);
+    if (fadedPoint.rgbaq.color.components.a != 0) failures++;
+    /* Primitive alpha used in RGB, or a second cycle, stays on the CPU path. */
+    rdp_setcombine((0xfc119623 & ~(31u << 15)) | (10u << 15), 0xff2fffff, &g_rdpState);
+    if (ps2_combiner_dynamic_alpha(&g_rdpState)) failures++;
+    rdp_setcombine(0xfc119623, 0xff2fffff, &g_rdpState);
+    rdp_setothermode(1u << 20, 0, &g_rdpState);
+    if (ps2_combiner_dynamic_alpha(&g_rdpState)) failures++;
+    rdp_setcombine(0, 0, &g_rdpState);
+    printf("[PS2 RENDER CHECK] failures after fade=%d\n", failures);
     TileDescriptor repeating = {.width=32, .height=16, .masks=5, .cmt=2};
     RSPVertex mapped = {.cw=2, .tc_s=4096, .tc_t=-512, .sx=10, .sy=20};
     GSPRIMSTQPOINT point;

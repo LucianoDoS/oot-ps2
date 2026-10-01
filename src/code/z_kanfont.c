@@ -72,19 +72,44 @@ void Font_LoadOrderedFont(Font* font) {
     font->msgOffset = _message_0xFFFC_jpn - messageDataStart;
     size = font->msgLength = _message_0xFFFD_jpn - _message_0xFFFC_jpn;
     len = (u32)size / 2;
+#if PLATFORM_PS2
+    /* Message bytes stay in N64 order in the ROM. This is the one caller
+     * that treats the ordered-font message as an array of native halfwords. */
+    if (size < 2 || (size & 1) || (u32)size > sizeof(font->msgBufWide)) {
+        PRINTF("[PS2 FONT] Invalid ordered-font message size\n");
+        return;
+    }
+#endif
     DMA_REQUEST_SYNC(font->msgBufWide, (uintptr_t)_jpn_message_data_staticSegmentRomStart + font->msgOffset, size,
                      "../z_kanfont.c", UNK_LINE);
+
+#if PLATFORM_PS2
+    for (codePointIndex = 0; codePointIndex < len; codePointIndex++) {
+        u8* bytes = &font->msgBuf[codePointIndex * 2];
+        font->msgBufWide[codePointIndex] = (bytes[0] << 8) | bytes[1];
+    }
+#endif
 
     PRINTF("msg_data=%x,  msg_data0=%x   jj=%x\n", font->msgOffset, font->msgLength, len);
 
     fontBufIndex = 0;
-    for (codePointIndex = 0; font->msgBufWide[codePointIndex] != MESSAGE_WIDE_END; codePointIndex++) {
+    for (codePointIndex = 0;
+#if PLATFORM_PS2
+         codePointIndex < len &&
+#endif
+         font->msgBufWide[codePointIndex] != MESSAGE_WIDE_END; codePointIndex++) {
         if (len < codePointIndex) {
             PRINTF(T("ＥＲＲＯＲ！！  エラー！！！  error───！！！！\n", "ERROR!!  Error!!!  error───!!!!\n"));
             return;
         }
 
         if (font->msgBufWide[codePointIndex] != MESSAGE_WIDE_NEWLINE) {
+#if PLATFORM_PS2
+            if ((u32)fontBufIndex * 8 > sizeof(font->fontBuf) - FONT_CHAR_TEX_SIZE) {
+                PRINTF("[PS2 FONT] Ordered-font buffer full\n");
+                return;
+            }
+#endif
             offset = KanjiTex_CodepointToOffset(font->msgBufWide[codePointIndex]);
             DMA_REQUEST_SYNC(&font->fontBuf[fontBufIndex * 8], (uintptr_t)_kanjiSegmentRomStart + offset,
                              FONT_CHAR_TEX_SIZE, "../z_kanfont.c", UNK_LINE);

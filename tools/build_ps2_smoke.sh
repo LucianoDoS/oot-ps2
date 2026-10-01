@@ -2,6 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source tools/ps2_env.sh
+upstream="${OOT_UPSTREAM:-$HOME/oot-ps2-tools/oot-upstream}"
 mkdir -p build/PS2/smoke
 cc="$PS2DEV/ee/bin/mips64r5900el-ps2-elf-gcc"
 flags=(-D_EE -DPLATFORM_PS2=1 -G0 -O2 -std=gnu11 -Wall -Wextra -Wno-unused-parameter
@@ -17,12 +18,13 @@ for src in tools/ps2_smoke.c tools/ps2_os_smoke.c tools/ps2_rom_threads_smoke.c 
     "$cc" "${flags[@]}" -c "$src" -o "$obj"
     objects+=("$obj")
 done
-for src in tools/ps2_queue_heap_smoke.c src/libc64/__osMalloc_gc.c tools/ps2_math_smoke.c tools/ps2_printf_smoke.c tools/ps2_rom_smoke.c tools/ps2_audio_heap_smoke.c src/code/sys_matrix.c src/audio/internal/heap.c src/libultra/gu/mtxutil.c src/libultra/gu/sins.c src/libultra/gu/coss.c; do
+for src in tools/ps2_font_smoke.c src/code/z_kanfont.c src/code/kanji_tex.c tools/ps2_queue_heap_smoke.c src/libc64/__osMalloc_gc.c tools/ps2_math_smoke.c tools/ps2_printf_smoke.c tools/ps2_rom_smoke.c tools/ps2_audio_heap_smoke.c src/code/sys_matrix.c src/audio/internal/heap.c src/libultra/gu/mtxutil.c src/libultra/gu/sins.c src/libultra/gu/coss.c; do
     obj="build/PS2/smoke/$(basename "${src%.c}").o"
-    "$cc" "${flags[@]}" -D_LANGUAGE_C=1 -DF3DEX_GBI_2 -DNON_MATCHING=1 \
+    "$cc" -Iinclude -Iinclude/libc "${flags[@]}" -D_LANGUAGE_C=1 -DF3DEX_GBI_2 -DNON_MATCHING=1 \
         -ffunction-sections -fdata-sections -DPLATFORM_N64=0 -DPLATFORM_GC=0 -DPLATFORM_IQUE=0 \
         -DOOT_VERSION=NTSC_1_2 -DMML_VERSION=MML_VERSION_OOT \
-        -Iinclude -Iinclude/libc -c "$src" -o "$obj"
+        -Iinclude -Iinclude/libc -I"$upstream" -I"$upstream/extracted/ntsc-1.2" \
+        -I"$upstream/build/ntsc-1.2" -c "$src" -o "$obj"
     objects+=("$obj")
 done
 "$cc" -G0 -T"$PS2SDK/ee/startup/linkfile" -Wl,-zmax-page-size=128 \

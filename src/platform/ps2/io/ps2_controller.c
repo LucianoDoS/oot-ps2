@@ -1,213 +1,146 @@
-/**
- * ps2_controller.c — Guardado de partida en Memory Card
- *
- * ══════════════════════════════════════════════════════════════════════
- *  QUÉ ESTABA MAL
- * ══════════════════════════════════════════════════════════════════════
- *
- * 1. NADIE LLAMABA A NADA DE ESTE ARCHIVO.
- *    Exponía ps2_controller_set_rumble(), ps2_apply_deadzone(),
- *    ps2_controller_init_actuators(), ps2_save_init/read/write()... y
- *    ninguna de ellas aparecía en el resto del proyecto. Código escrito
- *    pero desconectado, que en la tabla del README figuraba como
- *    "Saves (MemCard) ✅ Estructura".
- *
- *    Ahora:
- *      · la vibración se conecta por osMotorStart/Stop (osMisc.c), que
- *        es lo que el juego llama de verdad;
- *      · la zona muerta se aplica dentro de osContGetReadData;
- *      · el guardado se engancha a las funciones de SRAM del juego.
- *
- * 2. USABA open/read/write/close SIN INCLUIR <fcntl.h> ni <unistd.h>,
- *    y en PS2 esas funciones sobre "mc0:" ni siquiera son las de la
- *    libc estándar: hay que usar la API de libmc (mcOpen, mcRead...)
- *    con su patrón de mcSync() para esperar el resultado. Tal como
- *    estaba, no habría compilado.
- *
- * 3. mcInit() se llamaba aquí, pero MCMAN/MCSERV no se cargaban en
- *    ningún sitio, así que habría fallado igualmente.
- *    Ahora mcInit() vive en ps2_main.c, después de cargar los módulos.
- *
- * 4. NO HABÍA VERIFICACIÓN DE INTEGRIDAD más allá de un número mágico.
- *    Se añade checksum, porque una memory card a medio escribir es un
- *    clásico y OoT guarda mucho.
- */
-
+/* Alternate validated SRAM files preserve the last complete image if a write
+ * is interrupted. The game never formats memory cards. */
 #include <kernel.h>
 #include <libmc.h>
-#include <fcntl.h>
+/* libmc is an RPC API, not a newlib file descriptor API. */
+#define NEWLIB_PORT_AWARE
+#include <io_common.h>
 #include <string.h>
 #include <stdio.h>
-
 #include "ps2_types.h"
 
-/* ───────────────────────────────────────────────────────────────── *
- *  Configuración del fichero de guardado
- * ───────────────────────────────────────────────────────────────── */
-#define SAVE_PORT      0
-#define SAVE_SLOT      0
-#define SAVE_DIR       "OOT_PS2"
-#define SAVE_PATH      "/OOT_PS2/save.dat"
-#define SAVE_MAGIC     0x4F4F5432u    /* 'OOT2' */
-#define SAVE_VERSION   1
-
-/* Tamaño de la SRAM de OoT */
-#define OOT_SRAM_SIZE  0x8000
-
+#define SAVE_PORT 0
+#define SAVE_SLOT 0
+#ifndef PS2_SAVE_DIR
+#define PS2_SAVE_DIR "OOT_PS2"
+#endif
+#define SAVE_DIR PS2_SAVE_DIR
+#define SAVE_MAGIC 0x4F4F5432u
+#define SAVE_VERSION 2
+#define OOT_SRAM_SIZE 0x8000
+static const char* s_paths[] = {"/" SAVE_DIR "/save.dat", "/" SAVE_DIR "/save.bak"};
 typedef struct {
-    u32 magic;
-    u32 version;
-    u32 size;
-    u32 checksum;
-    u8  data[OOT_SRAM_SIZE];
+    u32 magic, version, size, checksum, generation;
+    u8 data[OOT_SRAM_SIZE];
 } PS2SaveFile;
+static PS2SaveFile s_file __attribute__((aligned(64)));
+static u8 s_latestData[OOT_SRAM_SIZE];
+static u32 s_generation, s_latestSize;
+static int s_latestSlot = -1;
+static bool s_mcReady, s_scanned;
 
-static PS2SaveFile s_saveFile __attribute__((aligned(64)));
-static bool s_mcReady = false;
-
-/* ───────────────────────────────────────────────────────────────── *
- *  Checksum sencillo pero suficiente para detectar corrupción
- * ───────────────────────────────────────────────────────────────── */
 static u32 save_checksum(const u8* data, u32 size) {
     u32 sum = 0x12345678u;
-    for (u32 i = 0; i < size; i++) {
-        sum = (sum << 3) ^ (sum >> 29) ^ data[i];
-    }
+    for (u32 i = 0; i < size; i++) sum = (sum << 3) ^ (sum >> 29) ^ data[i];
     return sum;
 }
-
-/* ───────────────────────────────────────────────────────────────── *
- *  ps2_save_init()
- *
- *  Se llama desde ps2_boot_game(). ANTES no se llamaba nunca.
- *  mcInit() ya se hizo en ps2_main.c tras cargar MCMAN/MCSERV.
- * ───────────────────────────────────────────────────────────────── */
+static int wait_result(int submitted) {
+    int result;
+    if (submitted < 0 || mcSync(MC_WAIT, NULL, &result) < 0) return -1;
+    return result;
+}
 void ps2_save_init(void) {
-    int result, cardType = MC_TYPE_NONE, freeSpace = 0, formatted = 0;
-    s_mcReady = false;
-
-    /* ¿Hay tarjeta? */
-    if (mcGetInfo(SAVE_PORT, SAVE_SLOT, &cardType, &freeSpace, &formatted) < 0) return;
-    mcSync(MC_WAIT, NULL, &result);
-
-    if (result < -1 || cardType != MC_TYPE_PS2 || !formatted) {
+    int type = MC_TYPE_NONE, freeSpace = 0, formatted = 0;
+    s_mcReady = s_scanned = false;
+    s_latestSlot = -1;
+    int result = wait_result(mcGetInfo(SAVE_PORT, SAVE_SLOT, &type, &freeSpace, &formatted));
+    if (result < -1 || type != MC_TYPE_PS2 || !formatted) {
         printf("[Save] No hay memory card PS2 formateada en el puerto %d\n", SAVE_PORT);
         return;
     }
-
-    /* Crear el directorio si no existe (-4 = ya existe, no es error) */
-    if (mcMkDir(SAVE_PORT, SAVE_SLOT, SAVE_DIR) < 0) return;
-    mcSync(MC_WAIT, NULL, &result);
+    result = wait_result(mcMkDir(SAVE_PORT, SAVE_SLOT, SAVE_DIR));
     if (result < 0 && result != -4) {
         printf("[Save] No se pudo preparar el directorio (%d)\n", result);
         return;
     }
-
     s_mcReady = true;
     printf("[Save] Memory card lista (%s)\n", SAVE_DIR);
 }
-
-/* ───────────────────────────────────────────────────────────────── *
- *  ps2_save_write()
- * ───────────────────────────────────────────────────────────────── */
-int ps2_save_write(const void* saveData, u32 size) {
-    int fd, result;
-
-    if (!s_mcReady || !saveData) return -1;
-    if (size > OOT_SRAM_SIZE) size = OOT_SRAM_SIZE;
-
-    memset(&s_saveFile, 0, sizeof(s_saveFile));
-    s_saveFile.magic    = SAVE_MAGIC;
-    s_saveFile.version  = SAVE_VERSION;
-    s_saveFile.size     = size;
-    memcpy(s_saveFile.data, saveData, size);
-    s_saveFile.checksum = save_checksum(s_saveFile.data, size);
-
-    mcOpen(SAVE_PORT, SAVE_SLOT, SAVE_PATH, O_WRONLY | O_CREAT);
-    mcSync(MC_WAIT, NULL, &fd);
-    if (fd < 0) {
-        printf("[Save] No se pudo abrir %s para escribir (%d)\n",
-               SAVE_PATH, fd);
+/* Read the original 16-byte v1 header as well as the new revision header. */
+static int read_file(int slot) {
+    /* libmc forwards IOP flags unchanged; newlib's O_RDONLY is zero. */
+    int fd = wait_result(mcOpen(SAVE_PORT, SAVE_SLOT, s_paths[slot], FIO_O_RDONLY));
+    if (fd < 0) return -1;
+    memset(&s_file, 0, sizeof(s_file));
+    int bytes = wait_result(mcRead(fd, &s_file, sizeof(s_file)));
+    int closed = wait_result(mcClose(fd));
+    if (closed < 0 || s_file.magic != SAVE_MAGIC || s_file.size > OOT_SRAM_SIZE) {
+        printf("[Save] Read bytes=%d close=%d magic=%08x size=%u\n", bytes, closed,
+               (unsigned)s_file.magic, (unsigned)s_file.size);
         return -1;
     }
-
-    mcWrite(fd, &s_saveFile, (int)sizeof(s_saveFile));
-    mcSync(MC_WAIT, NULL, &result);
-
-    mcClose(fd);
-    mcSync(MC_WAIT, NULL, NULL);
-
-    if (result != (int)sizeof(s_saveFile)) {
-        printf("[Save] Escritura incompleta (%d de %d bytes)\n",
-               result, (int)sizeof(s_saveFile));
+    if (s_file.version == 1 && bytes == sizeof(s_file) - 4) {
+        memmove(s_file.data, &s_file.generation, OOT_SRAM_SIZE);
+        s_file.generation = 0;
+    } else if (s_file.version != SAVE_VERSION || bytes != sizeof(s_file)) {
+        printf("[Save] Read header version=%u bytes=%d\n", (unsigned)s_file.version, bytes);
         return -1;
     }
-
-    printf("[Save] Guardados %u bytes\n", (unsigned)size);
+    u32 expected = save_checksum(s_file.data, s_file.size);
+    if (s_file.version == SAVE_VERSION) expected ^= s_file.generation;
+    if (expected != s_file.checksum) printf("[Save] Read checksum=%08x expected=%08x\n", (unsigned)s_file.checksum, (unsigned)expected);
+    return expected == s_file.checksum ? 0 : -1;
+}
+static int scan_card(void) {
+    if (!s_mcReady) ps2_save_init();
+    if (!s_mcReady) return -1;
+    if (s_scanned) return 0;
+    s_latestSlot = -1;
+    for (int slot = 0; slot < 2; slot++) {
+        if (read_file(slot)) continue;
+        if (s_latestSlot < 0 || (s32)(s_file.generation - s_generation) > 0) {
+            s_latestSlot = slot;
+            s_generation = s_file.generation;
+            s_latestSize = s_file.size;
+            memcpy(s_latestData, s_file.data, OOT_SRAM_SIZE);
+        }
+    }
+    if (s_latestSlot < 0) { s_generation = 0; s_latestSize = 0; }
+    s_scanned = true;
     return 0;
 }
-
-/* ───────────────────────────────────────────────────────────────── *
- *  ps2_save_read()
- * ───────────────────────────────────────────────────────────────── */
-int ps2_save_read(void* saveData, u32 size) {
-    int fd, result;
-
-    if (!s_mcReady || !saveData) return -1;
-
-    mcOpen(SAVE_PORT, SAVE_SLOT, SAVE_PATH, O_RDONLY);
-    mcSync(MC_WAIT, NULL, &fd);
-    if (fd < 0) {
-        printf("[Save] No hay partida guardada todavia\n");
-        return -1;
+int ps2_save_write(const void* data, u32 size) {
+    if (!data || !size || size > OOT_SRAM_SIZE || scan_card()) return -1;
+    int slot = s_latestSlot == 0 ? 1 : 0;
+    u32 generation = s_generation + 1;
+    memset(&s_file, 0, sizeof(s_file));
+    s_file.magic = SAVE_MAGIC;
+    s_file.version = SAVE_VERSION;
+    s_file.size = size;
+    s_file.generation = generation;
+    memcpy(s_file.data, data, size);
+    s_file.checksum = save_checksum(s_file.data, size) ^ generation;
+    int fd = wait_result(mcOpen(SAVE_PORT, SAVE_SLOT, s_paths[slot], FIO_O_WRONLY | FIO_O_CREAT | FIO_O_TRUNC));
+    if (fd < 0) { printf("[Save] Open error %d\n", fd); goto failed; }
+    int bytes = wait_result(mcWrite(fd, &s_file, sizeof(s_file)));
+    int closed = wait_result(mcClose(fd));
+    if (bytes != sizeof(s_file) || closed < 0) {
+        printf("[Save] Write bytes=%d expected=%u close=%d\n", bytes, (unsigned)sizeof(s_file), closed);
+        goto failed;
     }
-
-    mcRead(fd, &s_saveFile, (int)sizeof(s_saveFile));
-    mcSync(MC_WAIT, NULL, &result);
-
-    mcClose(fd);
-    mcSync(MC_WAIT, NULL, NULL);
-
-    if (result != (int)sizeof(s_saveFile)) {
-        printf("[Save] Lectura incompleta\n");
-        return -1;
+    if (read_file(slot) || s_file.generation != generation || s_file.size != size || memcmp(s_file.data, data, size)) {
+        printf("[Save] Readback validation failed\n");
+        goto failed;
     }
-
-    if (s_saveFile.magic != SAVE_MAGIC || s_saveFile.version != SAVE_VERSION ||
-        s_saveFile.size > OOT_SRAM_SIZE) {
-        printf("[Save] Fichero no reconocido (magic 0x%08X)\n",
-               (unsigned)s_saveFile.magic);
-        return -1;
-    }
-
-    u32 expected = save_checksum(s_saveFile.data, s_saveFile.size);
-    if (expected != s_saveFile.checksum) {
-        printf("[Save] CHECKSUM INCORRECTO: la partida esta corrupta.\n");
-        return -1;
-    }
-
-    if (size > s_saveFile.size) size = s_saveFile.size;
-    memcpy(saveData, s_saveFile.data, size);
-
-    printf("[Save] Cargados %u bytes\n", (unsigned)size);
+    s_generation = generation;
+    s_latestSlot = slot;
+    s_latestSize = size;
+    memcpy(s_latestData, s_file.data, OOT_SRAM_SIZE);
+    printf("[Save] Guardados y verificados %u bytes (copia %d, revision %u)\n",
+           (unsigned)size, slot, (unsigned)generation);
+    return 0;
+failed:
+    s_mcReady = s_scanned = false;
+    printf("[Save] Escritura fallida; se conserva la copia anterior\n");
+    return -1;
+}
+int ps2_save_read(void* data, u32 size) {
+    if (!data || size > OOT_SRAM_SIZE || scan_card() || s_latestSlot < 0) return -1;
+    memset(data, 0, size);
+    memcpy(data, s_latestData, size < s_latestSize ? size : s_latestSize);
+    printf("[Save] Cargados %u bytes (copia %d, revision %u)\n",
+           (unsigned)size, s_latestSlot, (unsigned)s_generation);
     return 0;
 }
-
-/* ───────────────────────────────────────────────────────────────── *
- *  Puente con el sistema de SRAM del juego
- *
- *  OoT lee y escribe la SRAM con osEPiStartDma sobre un OSPiHandle
- *  aparte (z_ss_sram.c). Estas dos funciones son el enganche para que
- *  ese camino acabe en la memory card.
- *
- *  ps2_sram.c conserva una imagen completa y SsSram_ReadWrite() aplica
- *  cada lectura/escritura por su offset. Cada escritura completa el
- *  guardado antes de regresar al juego.
- * ───────────────────────────────────────────────────────────────── */
-int ps2_sram_flush_to_card(const void* sram, u32 size) {
-    return ps2_save_write(sram, size);
-}
-
-int ps2_sram_load_from_card(void* sram, u32 size) {
-    return ps2_save_read(sram, size);
-}
+int ps2_sram_flush_to_card(const void* sram, u32 size) { return ps2_save_write(sram, size); }
+int ps2_sram_load_from_card(void* sram, u32 size) { return ps2_save_read(sram, size); }

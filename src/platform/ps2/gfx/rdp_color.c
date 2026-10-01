@@ -202,6 +202,17 @@ void ps2_combiner_constants(const RDPState* rdp, u32* prim, u32* env) {
     *env = rdp->envColor & envMask;
 }
 
+bool ps2_combiner_dynamic_alpha(const RDPState* rdp) {
+    /* Lift TEXEL_ALPHA * PRIMITIVE_ALPHA into GS vertex modulation only
+     * when that alpha cannot feed the RGB calculation or a second cycle. */
+    if (((rdp->otherMode.hi >> 20) & 3) != 0) return false;
+    u8 alpha[4], rgb[4];
+    combiner_sources(rdp, 0, true, alpha);
+    combiner_sources(rdp, 0, false, rgb);
+    return (alpha[0] == 1 || alpha[0] == 2) && alpha[1] == 7 &&
+           alpha[2] == 3 && alpha[3] == 7 && rgb[2] != 10;
+}
+
 static int combiner_input(const RDPState* rdp, int source, int slot, bool alpha, int component,
                           const u8 texel[4], const u8 shade[4], const u8 combined[4]) {
     if (!alpha && slot == 2 && source >= 7 && source <= 12) {
@@ -524,6 +535,7 @@ void rdp_texrect(u8 op, u32 w0, u32 w1, const Gfx* pc, RDPState* rdp) {
 
     if (!tile->gsTextureLoaded) return;
     ps2_texture_apply_tile(tile, rdp);
+    u8 alpha = ps2_combiner_dynamic_alpha(rdp) ? n64_alpha_to_gs(rdp->primColor & 255) : 128;
     /* TEXRECTFLIP exchanges screen axes for the texture derivatives. */
     float s1 = s0 + ((op == 0xE5) ? (y1 - y0) : (x1 - x0)) * ds;
     float t1 = t0 + ((op == 0xE5) ? (x1 - x0) : (y1 - y0)) * dt;
@@ -533,7 +545,7 @@ void rdp_texrect(u8 op, u32 w0, u32 w1, const Gfx* pc, RDPState* rdp) {
     y1 *= rdp->gs->Height / 240.0f;
 
     if (op == 0xE5) {
-        u64 color = GS_SETREG_RGBAQ(0x80, 0x80, 0x80, 0x80, 1.0f);
+        u64 color = GS_SETREG_RGBAQ(0x80, 0x80, 0x80, alpha, 1.0f);
         gsKit_prim_triangle_goraud_texture_3d(rdp->gs, &tile->gsTexture,
             x0, y0, 1, s0, t0, x1, y0, 1, s0, t1,
             x0, y1, 1, s1, t0, color, color, color);
@@ -547,7 +559,7 @@ void rdp_texrect(u8 op, u32 w0, u32 w1, const Gfx* pc, RDPState* rdp) {
         x0, y0,   s0, t0,
         x1, y1,   s1, t1,
         1,
-        GS_SETREG_RGBA(0x80, 0x80, 0x80, 0x80));
+        GS_SETREG_RGBA(0x80, 0x80, 0x80, alpha));
 }
 
 /* ─────────────────────────────────────────────────────────── *
