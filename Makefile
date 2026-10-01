@@ -101,6 +101,7 @@ ifeq ($(PLATFORM), PS2)
     -lpad \
     -lmc \
     -lpatches \
+    -ljpeg \
     -lm \
     -lc \
     -lkernel

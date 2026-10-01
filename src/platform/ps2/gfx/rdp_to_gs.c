@@ -42,6 +42,10 @@
 #include "rdp_to_gs.h"
 #include "f3dex2_ps2.h"
 #include "ps2_texture.h"
+#include "ps2_background.h"
+extern const u64 gspS2DEX2d_fifoTextStart[] __attribute__((weak));
+extern void ps2_background_draw(const PS2Background*, int, RDPState*);
+static bool s_s2dex;
 
 uintptr_t gRspSegments[PS2_NUM_SEGMENTS];
 volatile unsigned gPS2GfxTraceStage;
@@ -134,6 +138,7 @@ RSPState g_rspState;
  *  rdp_to_gs_init
  * ═══════════════════════════════════════════════════════════════════ */
 void rdp_to_gs_init(GSGLOBAL* gs) {
+    s_s2dex = false;
     memset(gRspSegments, 0, sizeof(gRspSegments));
     memset(&g_rdpState, 0, sizeof(g_rdpState));
     memset(&g_rspState, 0, sizeof(g_rspState));
@@ -183,6 +188,7 @@ void rdp_to_gs_init(GSGLOBAL* gs) {
  * ═══════════════════════════════════════════════════════════════════ */
 void rdp_to_gs_exec(const Gfx* dl) {
     if (!dl) return;
+    s_s2dex = false;
 
     const Gfx* pc = dl;
     const Gfx* callStack[DL_STACK_DEPTH];
@@ -199,18 +205,23 @@ void rdp_to_gs_exec(const Gfx* dl) {
                    GUARD_MAX);
             return;
         }
-        /* This interpreter runs on the scheduler's EE thread. Unlike the
-         * original RSP, it can starve the lower-priority controller thread
-         * throughout a slow frame. Give it bounded opportunities to sample
-         * short button presses and service retrace callbacks. */
-        if ((guard & 127u) == 0) usleep(50);
+        /* The graphics worker is below audio, scheduler and controller.
+         * Retrace wakes those threads directly; no per-command alarm needed. */
 
         u32 w0 = GFX_READ_W0(pc);
         u32 w1 = GFX_READ_W1(pc);
         u8  op = (u8)(w0 >> 24);
+        if (s_s2dex && (op == 0x09 || op == 0x0a)) {
+            ps2_background_draw(ps2_segmented_to_virtual(w1), op == 0x09, &g_rdpState);
+            pc++;
+            continue;
+        }
+        if (s_s2dex && op == 0x0b) { pc++; continue; } /* OBJ_RENDERMODE */
         s_tracePc = pc; s_traceW0 = w0; s_traceW1 = w1; gPS2GfxTraceStage = 0;
+#ifdef RDP_GS_DEBUG
         if (guard % 10000 == 0)
             printf("[PS2 DL TRACE] commands=%lu pc=%p op=%02x depth=%d\n", guard, pc, op, depth);
+#endif
 
 #ifdef RDP_GS_DEBUG
         printf("[DL] @%p op=0x%02X w0=%08X w1=%08X\n",
@@ -320,8 +331,10 @@ void rdp_to_gs_exec(const Gfx* dl) {
                     return;
 
                 case G_LOAD_UCODE:
-                    /* Cambio de microcódigo: en PS2 sólo interpretamos
-                     * F3DEX2, así que se ignora. */
+                    s_s2dex = gspS2DEX2d_fifoTextStart &&
+                        (w1 & 0x1fffffffu) == ((u32)gspS2DEX2d_fifoTextStart & 0x1fffffffu);
+                    { static unsigned reports;
+                      if (reports++ < 6) printf("[PS2 UCODE] address=%08x s2dex=%p active=%d\n", w1, gspS2DEX2d_fifoTextStart, s_s2dex); }
                     break;
 
                 default:
@@ -410,10 +423,10 @@ void rdp_to_gs_flip(void) {
     if (!gs) return;          /* antes esto reventaba con NULL */
     static u32 frames;
     if (++frames <= 3 || frames % 300 == 0) {
-        printf("[PS2 GEOMETRY] frame=%u tri=%u clipped=%u culled=%u invalid=%u textureFail=%u draw=%u mode=%08x,%08x\n",
+        printf("[PS2 GEOMETRY] frame=%u tri=%u clipped=%u culled=%u invalid=%u textureFail=%u draw=%u bg=%u mode=%08x,%08x\n",
             frames, g_rdpState.stats.triangles, g_rdpState.stats.clipped,
             g_rdpState.stats.culled, g_rdpState.stats.invalid,
-            g_rdpState.stats.textureFailed, g_rdpState.stats.submitted,
+            g_rdpState.stats.textureFailed, g_rdpState.stats.submitted, g_rdpState.stats.backgrounds,
             g_rdpState.otherMode.hi, g_rdpState.otherMode.lo);
     }
     memset(&g_rdpState.stats, 0, sizeof(g_rdpState.stats));

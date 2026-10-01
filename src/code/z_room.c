@@ -300,6 +300,10 @@ void Room_DrawCullable(PlayState* play, Room* room, u32 flags) {
  * Uses the depth frame buffer as temporary storage.
  */
 s32 Room_DecodeJpeg(void* data) {
+#if PLATFORM_PS2
+    extern int ps2_jpeg_decode(void*, unsigned int, unsigned int, unsigned int);
+    return ps2_jpeg_decode(data, sizeof(u16[SCREEN_HEIGHT][SCREEN_WIDTH]), SCREEN_WIDTH, SCREEN_HEIGHT);
+#else
     OSTime time;
 
     if (*(u32*)data == JPEG_MARKER) {
@@ -325,6 +329,7 @@ s32 Room_DecodeJpeg(void* data) {
     }
 
     return 0;
+#endif
 }
 
 void Room_DrawBackground2D(Gfx** gfxP, void* tex, void* tlut, u16 width, u16 height, u8 fmt, u8 siz, u16 tlutMode,
@@ -332,7 +337,7 @@ void Room_DrawBackground2D(Gfx** gfxP, void* tex, void* tlut, u16 width, u16 hei
     Gfx* gfx = *gfxP;
     uObjBg* bg;
 
-    Room_DecodeJpeg(SEGMENTED_TO_VIRTUAL(tex));
+    if (Room_DecodeJpeg(SEGMENTED_TO_VIRTUAL(tex)) != 0) return;
 
     bg = (uObjBg*)(gfx + 1);
     gSPBranchList(gfx, (Gfx*)(bg + 1));
@@ -423,6 +428,19 @@ void Room_DrawImageSingle(PlayState* play, Room* room, u32 flags) {
                      !(R_ROOM_IMAGE_NODRAW_FLAGS & ROOM_IMAGE_NODRAW_BACKGROUND);
     drawOpa = (flags & ROOM_DRAW_OPA) && (entry->opa != NULL) && !(R_ROOM_IMAGE_NODRAW_FLAGS & ROOM_IMAGE_NODRAW_OPA);
     drawXlu = (flags & ROOM_DRAW_XLU) && (entry->xlu != NULL) && !(R_ROOM_IMAGE_NODRAW_FLAGS & ROOM_IMAGE_NODRAW_XLU);
+
+#if PLATFORM_PS2
+    {
+        static s16 lastSetting = -1;
+        static u32 reports;
+        if (lastSetting != activeCam->setting && reports < 12) {
+            PRINTF("[PS2 ROOM IMAGE] scene=%d camera=%d fixed=%u background=%u source=%p\n",
+                   play->sceneId, activeCam->setting, isFixedCamera, drawBackground, roomShape->source);
+            lastSetting = activeCam->setting;
+            reports++;
+        }
+    }
+#endif
 
     if (drawOpa || drawBackground) {
         gSPSegment(POLY_OPA_DISP++, 0x03, room->segment);

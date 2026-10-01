@@ -4,6 +4,35 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Audio independiente del renderer y fondos JPEG — 2026-10-01
+
+- La traducción de gráficos pasa del scheduler a un hilo EE de prioridad
+  libultra 10, inferior a Graph (11) y AudioMgr (12). Entrega SP al despachar
+  y conserva DP ocupado hasta completar el dibujo y el cambio de pantalla.
+  Retiradas las alarmas cada 128 comandos. La prueba nativa pasa 64 tareas
+  lentas, con audio antes de DP y orden correcto de los avisos.
+- Corregida durante las pruebas la prioridad inicial 13 del nuevo hilo:
+  impedía atender AudioMgr a tiempo. Con prioridad 10, el juego envía
+  14,939 segundos de PCM en 15 segundos, sin descartes ni intervalos mayores
+  que dos bloques. El intento anterior enviaba 9,920 segundos en 68,251
+  segundos, con 577 intervalos tardíos y 148 descartes. Las métricas miden
+  entrega a audsrv; no confirman todavía fidelidad musical ni FPS sostenidos.
+- Decodificador nativo con libjpeg ya instalado en el SDK: dimensiones y
+  capacidad limitadas a 320×240, salida RGBA5551 big-endian y copia únicamente
+  después de terminar. Entrada dañada conserva el JPEG original. Las pruebas
+  EE pasan colores conocidos, repetición, dimensiones y corrupción.
+- Reconocimiento de cambios F3DEX2/S2DEX y rectángulos de fondo COPY/1CYCLE.
+  Fondos RGBA16 sin giro ni origen desplazado se dibujan en tiras de hasta
+  32 filas. La prueba verifica ocho tiras para 320×240 y sus píxeles, incluso
+  después de cargar otras texturas. Otros formatos/orígenes siguen pendientes.
+- Diagnóstico acotado de cámara y fondo en habitaciones de imagen única.
+  Los recursos de la casa contienen polígonos verdes sin textura; aún falta
+  comprobar en la cinemática cuándo deben cubrirlos el fondo y los fundidos.
+- Compilación completa: 715 objetos. Registros locales de pruebas:
+  `build/PS2/pcsx2-jpeg-background-pass.log`,
+  `build/PS2/pcsx2-task-priority-pass.log` y
+  `build/PS2-ntsc12/pcsx2-game.log`.
+
 ## Letras del nombre, caché del teclado y memory card — 2026-10-01
 
 - `Font_LoadOrderedFont` interpreta las mitades big-endian del mensaje que

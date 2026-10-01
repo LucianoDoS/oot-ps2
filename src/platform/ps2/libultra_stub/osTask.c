@@ -30,6 +30,7 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <kernel.h>
 
 #include "ps2_types.h"
 #include "ps2_os_internal.h"
@@ -71,8 +72,55 @@ typedef union OSTask {
 #define M_AUDTASK   2
 
 static OSTask* s_currentTask = NULL;
-static u32 s_spStatus = 1; // HALT; tasks execute synchronously on the EE.
-static u32 s_dpStatus;
+static volatile u32 s_spStatus = 1;
+static volatile u32 s_dpStatus;
+static OSTask s_graphicsTask;
+static int s_gfxThread = -1, s_gfxWake = -1, s_gfxFree = -1;
+static u8 s_gfxStack[32 * 1024] __attribute__((aligned(64)));
+
+static void graphics_worker(void* arg) {
+    (void)arg;
+    for (;;) {
+        WaitSema(s_gfxWake);
+        rdp_to_gs_exec((const Gfx*)s_graphicsTask.t.data_ptr);
+        rdp_to_gs_flip();
+        s_dpStatus &= ~(1u << 5);
+        SignalSema(s_gfxFree);
+        ps2_os_fire_event(PS2_OS_EVENT_DP);
+    }
+}
+
+static int start_graphics_worker(void) {
+    if (s_gfxThread >= 0) return 0;
+    ee_sema_t sema = {0};
+    sema.max_count = 1;
+    s_gfxWake = CreateSema(&sema);
+    sema.init_count = 1;
+    s_gfxFree = CreateSema(&sema);
+    if (s_gfxWake < 0 || s_gfxFree < 0) goto failed;
+    ee_thread_t thread = {0};
+    thread.func = (void*)graphics_worker;
+    thread.stack = s_gfxStack;
+    thread.stack_size = sizeof(s_gfxStack);
+    thread.gp_reg = &_gp;
+    /* Graph=11, AudioMgr=12: both must preempt translation. EE priorities
+     * run in the opposite order to libultra priorities. */
+    thread.initial_priority = ps2_os_map_priority(10);
+    s_gfxThread = CreateThread(&thread);
+    if (s_gfxThread < 0) goto failed;
+    if (StartThread(s_gfxThread, NULL) < 0) {
+        DeleteThread(s_gfxThread);
+        s_gfxThread = -1;
+        goto failed;
+    }
+    printf("[PS2 TASK] Graphics worker ready; audio can run while DP is busy\n");
+    return 0;
+failed:
+    if (s_gfxWake >= 0) DeleteSema(s_gfxWake);
+    if (s_gfxFree >= 0) DeleteSema(s_gfxFree);
+    s_gfxWake = s_gfxFree = -1;
+    return -1;
+}
 
 u32 __osSpGetStatus(void) { return s_spStatus; }
 u32 osDpGetStatus(void) { return s_dpStatus; }
@@ -117,6 +165,19 @@ void osSpTaskStartGo(OSTask* task) {
     u32 type = t->t.type;      /* el tipo real vive en t.type */
 
     if (type == M_GFXTASK) {
+        if (start_graphics_worker() == 0) {
+            WaitSema(s_gfxFree);
+            s_graphicsTask = *t;
+            s_currentTask = NULL;
+            s_dpStatus |= 1u << 5;
+            /* The worker owns the display list until DP_DONE. The scheduler
+             * keeps the task/buffers alive while permitting audio on SP. */
+            s_spStatus |= 1u | (1u << 9);
+            ps2_os_fire_event(PS2_OS_EVENT_SP);
+            SignalSema(s_gfxWake);
+            return;
+        }
+        printf("[PS2 TASK] Worker unavailable; synchronous fallback\n");
         s_dpStatus |= 1u << 5; // PIPE_BUSY while translating/submitting work
         rdp_to_gs_exec((const Gfx*)t->t.data_ptr);
         rdp_to_gs_flip();
@@ -147,8 +208,8 @@ void osSpTaskStartGo(OSTask* task) {
 /* ───────────────────────────────────────────────────────────────── *
  *  osSpTaskYield / osSpTaskYielded
  *
- *  En PS2 las tareas son síncronas: para cuando alguien podría pedir un
- *  yield, la tarea ya terminó. Devolvemos 0 = "no se quedó a medias".
+ *  Graphics release SP after handoff and retain DP until worker completion.
+ *  Audio tasks run to completion on the scheduler. Neither needs SP yield.
  * ───────────────────────────────────────────────────────────────── */
 void osSpTaskYield(void) {
 }

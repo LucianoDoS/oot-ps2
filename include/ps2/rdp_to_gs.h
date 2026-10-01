@@ -120,7 +120,7 @@ typedef struct {
     u64            gs_alpha;
     u64            gs_test;
     struct {
-        u32 triangles, clipped, culled, invalid, textureFailed, submitted;
+        u32 triangles, clipped, culled, invalid, textureFailed, submitted, backgrounds;
     } stats;
 } RDPState;
 

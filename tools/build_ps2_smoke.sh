@@ -7,9 +7,9 @@ mkdir -p build/PS2/smoke
 cc="$PS2DEV/ee/bin/mips64r5900el-ps2-elf-gcc"
 flags=(-D_EE -DPLATFORM_PS2=1 -G0 -O2 -std=gnu11 -Wall -Wextra -Wno-unused-parameter
        -fno-strict-aliasing '-DPS2_ROM_TEST_PATH="host:ps2-rom-smoke.bin"' -Iinclude/ps2 -I"$PS2SDK/ee/include"
-       -I"$PS2SDK/common/include" -I"$GSKIT/include")
+       -I"$PS2SDK/common/include" -I"$PS2SDK/ports/include" -I"$GSKIT/include")
 objects=()
-for src in tools/ps2_smoke.c tools/ps2_os_smoke.c tools/ps2_rom_threads_smoke.c tools/ps2_renderer_smoke.c tools/ps2_audio_smoke.c tools/ps2_sram_smoke.c src/platform/ps2/io/ps2_sram.c src/platform/ps2/gfx/*.c \
+for src in tools/ps2_jpeg_smoke.c tools/ps2_smoke.c tools/ps2_os_smoke.c tools/ps2_rom_threads_smoke.c tools/ps2_renderer_smoke.c tools/ps2_audio_smoke.c tools/ps2_sram_smoke.c src/platform/ps2/io/ps2_sram.c src/platform/ps2/gfx/*.c \
     src/platform/ps2/audio/ps2_rsp_audio.c src/platform/ps2/audio/rsp_hle/*.c \
     src/platform/ps2/libultra_stub/osMessage.c src/platform/ps2/libultra_stub/osTimer.c \
     src/platform/ps2/libultra_stub/osInterrupt.c src/platform/ps2/libultra_stub/osPrintf.c \
@@ -29,7 +29,7 @@ for src in tools/ps2_font_smoke.c src/code/z_kanfont.c src/code/kanji_tex.c tool
 done
 "$cc" -G0 -T"$PS2SDK/ee/startup/linkfile" -Wl,-zmax-page-size=128 \
     -Wl,--gc-sections -o build/PS2/oot_ps2_smoke.elf "${objects[@]}" \
-    -L"$PS2SDK/ee/lib" -L"$GSKIT/lib" -lgskit -ldmakit -lm \
+    -L"$PS2SDK/ee/lib" -L"$PS2SDK/ports/lib" -L"$GSKIT/lib" -lgskit -ldmakit -ljpeg -lm \
     -Wl,-Map=build/PS2/oot_ps2_smoke.map
 "$PS2DEV/ee/bin/mips64r5900el-ps2-elf-readelf" -h build/PS2/oot_ps2_smoke.elf
 python3 -c 'from pathlib import Path; Path("build/PS2/ps2-rom-smoke.bin").write_bytes(bytes(range(256)) * 16)'

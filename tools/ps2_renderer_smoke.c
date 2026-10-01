@@ -7,6 +7,8 @@
 #include "ps2_types.h"
 #include "rdp_to_gs.h"
 #include "ps2_texture.h"
+#include "ps2_background.h"
+const u64 gspS2DEX2d_fifoTextStart[1] = {0};
 #include "f3dex2_ps2.h"
 
 static void matrix(short* out, float scale, float translate) {
@@ -258,6 +260,25 @@ int ps2_renderer_smoke(void) {
     if (ps2_combiner_dynamic_alpha(&g_rdpState)) failures++;
     rdp_setcombine(0, 0, &g_rdpState);
     printf("[PS2 RENDER CHECK] failures after fade=%d\n", failures);
+    /* Runtime S2DEX rectangles have native layout and retain RDP command
+     * dispatch. A 320x240 background must not exceed the conversion scratch. */
+    static u8 roomImage[320 * 240 * 2];
+    for (unsigned i = 0; i < sizeof(roomImage); i += 2) { roomImage[i] = 0xf8; roomImage[i + 1] = 1; }
+    static PS2Background background = {.imageW=320*4, .imageH=240*4, .frameW=320*4, .frameH=240*4,
+        .imagePtr=roomImage, .imageSiz=G_IM_SIZ_16b, .imageFmt=G_IM_FMT_RGBA, .scaleW=1024, .scaleH=1024};
+    u32 backgroundList[][2] = {
+        {0xdd00038f, (u32)gspS2DEX2d_fifoTextStart},
+        {0xef200000, 0}, {0x0a000000, (u32)&background},
+        {0xdd000fff, 0x123456}, {0xdf000000, 0}
+    };
+    u32 beforeDraw = g_rdpState.stats.submitted, beforeBackground = g_rdpState.stats.backgrounds;
+    rdp_to_gs_exec((const Gfx*)backgroundList);
+    printf("[PS2 RENDER CHECK] background delta=%u draws=%u source=%p\n",
+           g_rdpState.stats.backgrounds - beforeBackground, g_rdpState.stats.submitted - beforeDraw, roomImage);
+    if (g_rdpState.stats.backgrounds != beforeBackground + 1 ||
+        g_rdpState.stats.submitted != beforeDraw + 8) failures++;
+    pixels = (u8*)g_rdpState.tile[0].gsTexture.Mem;
+    if (pixels[0] != 255 || pixels[1] != 0 || pixels[2] != 0 || pixels[3] != 128) failures++;
     TileDescriptor repeating = {.width=32, .height=16, .masks=5, .cmt=2};
     RSPVertex mapped = {.cw=2, .tc_s=4096, .tc_t=-512, .sx=10, .sy=20};
     GSPRIMSTQPOINT point;

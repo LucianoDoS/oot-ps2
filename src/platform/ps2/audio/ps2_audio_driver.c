@@ -90,6 +90,9 @@ typedef struct {
 static AudioVoice  s_voices[MAX_AUDIO_VOICES];
 static bool s_audioReady;
 static bool s_nativeOutput;
+static u64 s_pcmStart, s_pcmLast, s_pcmBytes;
+static unsigned s_pcmLate, s_pcmDropped;
+extern u64 osGetTime(void);
 static s16         s_mixBuf[AUDIO_BUFFER_BYTES / sizeof(s16)]
                             __attribute__((aligned(64)));
 
@@ -109,6 +112,8 @@ void PS2Audio_Init(void) {
     int ret;
     s_audioReady = false;
     s_nativeOutput = false;
+    s_pcmStart = s_pcmLast = s_pcmBytes = 0;
+    s_pcmLate = s_pcmDropped = 0;
 
     /* audsrv_init() ya NO se llama aquí: lo hace ps2_main.c una sola
      * vez, después de cargar audsrv.irx. Llamarla dos veces dejaba el
@@ -224,9 +229,16 @@ u32 osAiGetLength(void) {
 
 int PS2Audio_SubmitBuffer(void* buffer, unsigned int size) {
     if (!s_audioReady || !buffer || (size & 3) || size > 0x40000) return -1;
-    if (audsrv_available() < (int)size) return -1;
+    if (audsrv_available() < (int)size) { s_pcmDropped++; return -1; }
     s_nativeOutput = true;
     int result = audsrv_play_audio((const char*)buffer, size);
+    u64 now = osGetTime();
+    if (!s_pcmStart) s_pcmStart = now;
+    if (s_pcmLast && (now - s_pcmLast) * (u64)s_audfmt.freq * 4 > (u64)size * 46875000 * 2)
+        s_pcmLate++;
+    s_pcmLast = now;
+    if (result == (int)size) s_pcmBytes += size;
+    else s_pcmDropped++;
     static unsigned buffers;
     if (++buffers <= 3 || buffers % 300 == 0) {
         unsigned peak = 0;
@@ -235,7 +247,10 @@ int PS2Audio_SubmitBuffer(void* buffer, unsigned int size) {
             unsigned amplitude = pcm[i] < 0 ? -(int)pcm[i] : pcm[i];
             if (amplitude > peak) peak = amplitude;
         }
-        printf("[PS2 PCM] buffer=%u bytes=%u peak=%u sent=%d\n", buffers, size, peak, result);
+        unsigned elapsed = (now - s_pcmStart) * 1000 / 46875000;
+        unsigned duration = s_pcmBytes * 1000 / ((u64)s_audfmt.freq * 4);
+        printf("[PS2 PCM] buffer=%u bytes=%u peak=%u sent=%d elapsedMs=%u audioMs=%u late=%u dropped=%u\n",
+               buffers, size, peak, result, elapsed, duration, s_pcmLate, s_pcmDropped);
     }
     return result == (int)size ? 0 : -1;
 }

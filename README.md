@@ -10,7 +10,7 @@ Las pruebas en el EE verifican matrices, trigonometría, formato de texto,
 secciones críticas, colas de mensajes y temporizadores. El renderer envía
 120 fotogramas; esto aún no constituye una validación visual del juego.
 
-El juego completo ya enlaza: 713 objetos generan `build/PS2-ntsc12/oot_ps2.elf`.
+El juego completo ya enlaza: 715 objetos generan `build/PS2-ntsc12/oot_ps2.elf`.
 En PCSX2 completa `Play_Init` y la ejecución de diagnóstico alcanzó 900
 fotogramas del estado `Play` en la secuencia del título sin excepciones registradas.
 Esto no confirma una imagen correcta ni jugabilidad. El conversor local adapta estructuras, vértices, matrices, listas
@@ -19,9 +19,17 @@ La conversión cubre el título, escenas de demostración, dependencias de objet
 recursos del selector de partida y los 38 bancos de instrumentos. El perfil
 `play` incluye 104 segmentos y las 573 tablas de animación del jugador,
 además de recursos iniciales de Kokiri y la casa de Link. Los JPEG conservan
-sus bytes comprimidos; esto aún no implementa su representación en pantalla. El intérprete
+sus bytes comprimidos; PS2 ahora decodifica los fondos de 320×240 a RGBA16 con
+libjpeg y reconoce los rectángulos S2DEX, dibujados en tiras mediante la caché.
+Las pruebas EE verifican píxeles, límites, entrada dañada y despacho del fondo;
+queda comprobar su composición en las cámaras del juego. El intérprete
 DSP pasa pruebas de PCM, mezcla, estéreo, ADPCM y PCM de 8 bits. El juego ya
 envía PCM no silencioso a audsrv, pero falta verificar su fidelidad musical.
+La traducción gráfica se ejecuta en un hilo con prioridad inferior a AudioMgr,
+conservando el aviso DP hasta terminar el fotograma. El primer registro de la
+nueva compilación produce 14,939 segundos de PCM en 15 segundos, sin bloques
+descartados ni intervalos superiores a dos bloques. Esto verifica continuidad
+de producción, no la calidad musical ni un objetivo de FPS.
 Las capturas muestran el título con sus colores, cielo, luna, terreno, murallas
 y Link montado en Epona. Corregida la matriz identidad nativa que deformaba el
 escenario y el caballo. El renderer usa STQ para conservar la repetición y
