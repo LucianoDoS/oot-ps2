@@ -42,6 +42,8 @@ typedef struct {
     u8         cms, cmt;    /* wrap/mirror flags S/T               */
     u8         masks, maskt;/* mask (log2 of tile dimension)       */
     u8         shifts, shiftt;
+    u16        tmem;        /* N64 texture-memory address, in 64-bit words */
+    u16        line;
 
     /* PS2-specific: converted GS texture (uploaded to VRAM) */
     GSTEXTURE  gsTexture;
@@ -87,6 +89,10 @@ typedef struct {
     N64TexFmt      textureImageFmt;
     N64TexSiz      textureImageSiz;
     u32            textureImageWidth;
+    struct {
+        const u8* source;
+        u32 stride; /* source bytes per row; zero for packed LOADBLOCK */
+    } textureLoads[512];
 
     /* Colors */
     u32            primColor;     /* RGBA packed */
@@ -113,6 +119,9 @@ typedef struct {
     u64            gs_tex1;
     u64            gs_alpha;
     u64            gs_test;
+    struct {
+        u32 triangles, clipped, culled, invalid, textureFailed, submitted;
+    } stats;
 } RDPState;
 
 /* ─────────────────────────────────────────────────────────── *
@@ -196,6 +205,8 @@ void rdp_settilesize(u32 w0, u32 w1, RDPState* rdp);
 void rdp_loadtexture(u8 op, u32 w0, u32 w1, RDPState* rdp);
 void rdp_loadtlut(u32 w0, u32 w1, RDPState* rdp);
 void rdp_setcombine(u32 w0, u32 w1, RDPState* rdp);
+void ps2_combiner_color(const RDPState* rdp, const u8 texel[4], const u8 shade[4], u8 output[4]);
+bool ps2_combiner_uses_shade(const RDPState* rdp, bool alpha);
 void rdp_setprimcolor(u32 w0, u32 w1, RDPState* rdp);
 void rdp_setenvcolor(u32 w0, u32 w1, RDPState* rdp);
 void rdp_setfogcolor(u32 w0, u32 w1, RDPState* rdp);

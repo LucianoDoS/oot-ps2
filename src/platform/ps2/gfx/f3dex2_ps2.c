@@ -146,12 +146,28 @@ static void mat4_mul(float* dst, const float* a, const float* b) {
 }
 
 static void rsp_update_mvp(RSPState* rsp) {
-    mat4_mul(rsp->mvp, rsp->projection, rsp->modelview);
+    /* libultra stores row-vector matrices: vertex * model * projection. */
+    mat4_mul(rsp->mvp, rsp->modelview, rsp->projection);
 }
 
 /* ───────────────────────────────────────────────────────────────── *
  *  Transformación de vértice
  * ───────────────────────────────────────────────────────────────── */
+static void project_vertex(RSPVertex* v, const RSPState* rsp) {
+    if (v->cw > 0.0001f || v->cw < -0.0001f) {
+        float invW = 1.0f / v->cw;
+        v->sx = v->cx * invW * rsp->vpScaleX + rsp->vpTransX;
+        v->sy = v->cy * invW * rsp->vpScaleY + rsp->vpTransY;
+        v->sz = v->cz * invW * 0.5f + 0.5f;
+        if (v->sz < 0) v->sz = 0;
+        if (v->sz > 1) v->sz = 1;
+    } else {
+        v->clipFlags = 0xFF;
+        v->sx = v->sy = 0;
+        v->sz = 1;
+    }
+}
+
 static void transform_vertex(RSPVertex* v, const RSPState* rsp) {
     const float* mvp = rsp->mvp;
     float x = (float)v->ox, y = (float)v->oy, z = (float)v->oz;
@@ -173,21 +189,7 @@ static void transform_vertex(RSPVertex* v, const RSPState* rsp) {
     /* División perspectiva + viewport.
      * El viewport llega en formato 2.10 fijo: scale y trans van
      * multiplicados por 4 (de ahí el /4 al guardarlos). */
-    if (v->cw > 0.0001f || v->cw < -0.0001f) {
-        float invW = 1.0f / v->cw;
-
-        v->sx = (v->cx * invW) * rsp->vpScaleX + rsp->vpTransX;
-        v->sy = (v->cy * invW) * rsp->vpScaleY + rsp->vpTransY;
-        v->sz =  v->cz * invW * 0.5f + 0.5f;    /* a rango 0..1 */
-
-        if (v->sz < 0.0f) v->sz = 0.0f;
-        if (v->sz > 1.0f) v->sz = 1.0f;
-    } else {
-        /* w degenerado: marcamos el vértice como recortado */
-        v->clipFlags = 0xFF;
-        v->sx = v->sy = 0.0f;
-        v->sz = 1.0f;
-    }
+    project_vertex(v, rsp);
 }
 
 /* ───────────────────────────────────────────────────────────────── *
@@ -240,22 +242,8 @@ void f3dex2_vtx(u32 w0, u32 w1, RSPState* rsp) {
 /* ───────────────────────────────────────────────────────────────── *
  *  Envío de un triángulo al GS
  * ───────────────────────────────────────────────────────────────── */
-static void submit_triangle(int i0, int i1, int i2,
+static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
                             RSPState* rsp, RDPState* rdp) {
-    if (i0 >= RSP_VTX_CACHE_SIZE || i1 >= RSP_VTX_CACHE_SIZE ||
-        i2 >= RSP_VTX_CACHE_SIZE) {
-        return;
-    }
-
-    RSPVertex* v0 = &rsp->vtx[i0];
-    RSPVertex* v1 = &rsp->vtx[i1];
-    RSPVertex* v2 = &rsp->vtx[i2];
-
-    if (!v0->valid || !v1->valid || !v2->valid) return;
-
-    /* Rechazo trivial: los tres fuera del mismo plano */
-    if ((v0->clipFlags & v1->clipFlags & v2->clipFlags) != 0) return;
-
     GSGLOBAL* gs = rdp->gs;
     if (!gs) return;
 
@@ -269,23 +257,31 @@ static void submit_triangle(int i0, int i1, int i2,
     float area = ex * fy - ey * fx;
 
     u32 cull = rsp->geometryMode & G_CULL_BOTH;
-    if (cull == G_CULL_BOTH) return;               /* nada que dibujar */
-    if (cull == G_CULL_BACK  && area < 0.0f) return;
-    if (cull == G_CULL_FRONT && area > 0.0f) return;
+    if (cull == G_CULL_BOTH) { rdp->stats.culled++; return; }
+    /* N64 front faces are CCW before the viewport's Y inversion. */
+    if ((cull == G_CULL_BACK && area >= 0.0f) ||
+        (cull == G_CULL_FRONT && area <= 0.0f)) { rdp->stats.culled++; return; }
 
     /* ── Color ────────────────────────────────────────────────────── */
     u64 c0, c1, c2;
-    if (rsp->geometryMode & G_SHADE) {
-        c0 = GS_SETREG_RGBAQ(v0->cr, v0->cg, v0->cb, v0->ca >> 1, 1.0f);
-        c1 = GS_SETREG_RGBAQ(v1->cr, v1->cg, v1->cb, v1->ca >> 1, 1.0f);
-        c2 = GS_SETREG_RGBAQ(v2->cr, v2->cg, v2->cb, v2->ca >> 1, 1.0f);
-    } else {
-        /* Sin sombreado: color primitivo constante.
-         * Nota: el GS usa alfa 0..128, no 0..255, de ahí el >>1. */
-        u32 pc = rdp->primColor;
-        u8 pr = (pc >> 24) & 0xFF, pg = (pc >> 16) & 0xFF;
-        u8 pb = (pc >>  8) & 0xFF, pa = (pc      ) & 0xFF;
-        c0 = c1 = c2 = GS_SETREG_RGBAQ(pr, pg, pb, pa >> 1, 1.0f);
+    u64* colors[3] = {&c0, &c1, &c2};
+    RSPVertex* vertices[3] = {v0, v1, v2};
+    for (int i = 0; i < 3; i++) {
+        RSPVertex* v = vertices[i];
+        u8 shade[4] = {v->cr, v->cg, v->cb, v->ca}, color[4];
+        if (rsp->texEnabled) {
+            bool rgbShade = ps2_combiner_uses_shade(rdp, false);
+            bool alphaShade = ps2_combiner_uses_shade(rdp, true);
+            color[0] = rgbShade ? (shade[0] * 128u / 255) : 128;
+            color[1] = rgbShade ? (shade[1] * 128u / 255) : 128;
+            color[2] = rgbShade ? (shade[2] * 128u / 255) : 128;
+            color[3] = alphaShade ? (shade[3] * 128u / 255) : 128;
+        } else {
+            const u8 texel[4] = {255,255,255,255};
+            ps2_combiner_color(rdp, texel, shade, color);
+            color[3] = color[3] * 128u / 255;
+        }
+        *colors[i] = GS_SETREG_RGBAQ(color[0], color[1], color[2], color[3], 1.0f);
     }
 
     /* ── Profundidad ──────────────────────────────────────────────
@@ -301,7 +297,7 @@ static void submit_triangle(int i0, int i1, int i2,
         if (!tile->gsTextureLoaded) {
             ps2_texture_upload(tile, rdp);
         }
-        if (!tile->gsTextureLoaded) return;   /* la subida falló */
+        if (!tile->gsTextureLoaded) { rdp->stats.textureFailed++; return; }
 
         float tw = (float)(tile->width  ? tile->width  : 1);
         float th = (float)(tile->height ? tile->height : 1);
@@ -325,16 +321,82 @@ static void submit_triangle(int i0, int i1, int i2,
 
         gsKit_prim_triangle_goraud_texture_3d(
             gs, &tile->gsTexture,
-            v0->sx, v0->sy, z0, u0, t0, c0,
-            v1->sx, v1->sy, z1, u1, t1, c1,
-            v2->sx, v2->sy, z2, u2, t2, c2);
+            v0->sx, v0->sy, z0, u0, t0,
+            v1->sx, v1->sy, z1, u1, t1,
+            v2->sx, v2->sy, z2, u2, t2, c0, c1, c2);
     } else {
         gsKit_prim_triangle_gouraud_3d(
             gs,
-            v0->sx, v0->sy, z0, c0,
-            v1->sx, v1->sy, z1, c1,
-            v2->sx, v2->sy, z2, c2);
+            v0->sx, v0->sy, z0,
+            v1->sx, v1->sy, z1,
+            v2->sx, v2->sy, z2, c0, c1, c2);
     }
+    rdp->stats.submitted++;
+}
+
+static float clip_distance(const RSPVertex* v, int plane) {
+    switch (plane) {
+        case 0: return v->cw + v->cx;
+        case 1: return v->cw - v->cx;
+        case 2: return v->cw + v->cy;
+        case 3: return v->cw - v->cy;
+        case 4: return v->cw + v->cz;
+        default: return v->cw - v->cz;
+    }
+}
+
+/* Clip before dividing by W. Projecting a vertex behind the camera directly
+ * produces enormous inverted polygons even when the GS scissor is correct. */
+int ps2_clip_triangle(const RSPVertex* a, const RSPVertex* b, const RSPVertex* c,
+                      RSPVertex* output) {
+    RSPVertex polygons[2][12];
+    polygons[0][0] = *a; polygons[0][1] = *b; polygons[0][2] = *c;
+    int count = 3, current = 0;
+    for (int plane = 0; plane < 6 && count; plane++) {
+        RSPVertex* src = polygons[current];
+        RSPVertex* dst = polygons[current ^ 1];
+        int nextCount = 0;
+        for (int i = 0; i < count; i++) {
+            const RSPVertex* first = &src[i];
+            const RSPVertex* last = &src[(i + 1) % count];
+            float d0 = clip_distance(first, plane), d1 = clip_distance(last, plane);
+            if (d0 >= 0) dst[nextCount++] = *first;
+            if ((d0 >= 0) != (d1 >= 0)) {
+                float t = d0 / (d0 - d1);
+                RSPVertex* v = &dst[nextCount++];
+                *v = *first;
+#define INTERPOLATE(field) v->field = first->field + (last->field - first->field) * t
+                INTERPOLATE(cx); INTERPOLATE(cy); INTERPOLATE(cz); INTERPOLATE(cw);
+                INTERPOLATE(tc_s); INTERPOLATE(tc_t);
+                INTERPOLATE(cr); INTERPOLATE(cg); INTERPOLATE(cb); INTERPOLATE(ca);
+#undef INTERPOLATE
+                v->clipFlags = 0;
+            }
+        }
+        count = nextCount;
+        current ^= 1;
+    }
+    memcpy(output, polygons[current], count * sizeof(*output));
+    return count;
+}
+
+static void submit_triangle(int i0, int i1, int i2, RSPState* rsp, RDPState* rdp) {
+    rdp->stats.triangles++;
+    if (i0 >= RSP_VTX_CACHE_SIZE || i1 >= RSP_VTX_CACHE_SIZE || i2 >= RSP_VTX_CACHE_SIZE) {
+        rdp->stats.invalid++; return;
+    }
+    RSPVertex *a = &rsp->vtx[i0], *b = &rsp->vtx[i1], *c = &rsp->vtx[i2];
+    if (!a->valid || !b->valid || !c->valid) { rdp->stats.invalid++; return; }
+    if (a->clipFlags & b->clipFlags & c->clipFlags) { rdp->stats.clipped++; return; }
+    if (!(a->clipFlags | b->clipFlags | c->clipFlags)) {
+        submit_vertices(a, b, c, rsp, rdp); return;
+    }
+    RSPVertex polygon[12];
+    int count = ps2_clip_triangle(a, b, c, polygon);
+    if (count < 3) { rdp->stats.clipped++; return; }
+    for (int i = 0; i < count; i++) project_vertex(&polygon[i], rsp);
+    for (int i = 1; i + 1 < count; i++)
+        submit_vertices(&polygon[0], &polygon[i], &polygon[i + 1], rsp, rdp);
 }
 
 /* ───────────────────────────────────────────────────────────────── *
@@ -379,7 +441,7 @@ void f3dex2_mtx(u32 w0, u32 w1, RSPState* rsp) {
         if (flags & G_MTX_LOAD) {
             memcpy(rsp->projection, m, sizeof(m));
         } else {
-            mat4_mul(rsp->projection, rsp->projection, m);
+            mat4_mul(rsp->projection, m, rsp->projection);
         }
     } else {
         /* PUSH: guardamos el estado ACTUAL en la pila y seguimos
@@ -395,7 +457,7 @@ void f3dex2_mtx(u32 w0, u32 w1, RSPState* rsp) {
         if (flags & G_MTX_LOAD) {
             memcpy(rsp->modelview, m, sizeof(m));
         } else {
-            mat4_mul(rsp->modelview, rsp->modelview, m);
+            mat4_mul(rsp->modelview, m, rsp->modelview);
         }
     }
 
@@ -535,10 +597,12 @@ void f3dex2_movemem(u32 w0, u32 w1, RSPState* rsp) {
         /* El eje Y del GS crece hacia abajo igual que en N64, y el
          * vscale de N64 ya viene negativo para eso, así que se respeta
          * tal cual. */
-        rsp->vpScaleX = sx;
-        rsp->vpScaleY = sy;
-        rsp->vpTransX = tx;
-        rsp->vpTransY = ty;
+        float outputX = g_rdpState.gs ? g_rdpState.gs->Width / 320.0f : 1.0f;
+        float outputY = g_rdpState.gs ? g_rdpState.gs->Height / 240.0f : 1.0f;
+        rsp->vpScaleX = sx * outputX;
+        rsp->vpScaleY = -sy * outputY;
+        rsp->vpTransX = tx * outputX;
+        rsp->vpTransY = ty * outputY;
 
         /* Copia cruda por si algo más la consulta */
         rsp->viewport[0] = (u16)ASSET_S16(src + 0);

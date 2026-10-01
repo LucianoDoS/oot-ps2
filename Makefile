@@ -250,7 +250,9 @@ PS2_PLATFORM_SRCS := \
   $(call find_c, src/platform/ps2/libultra_stub) \
   $(call find_c, src/platform/ps2/gfx) \
   $(call find_c, src/platform/ps2/io) \
-  src/platform/ps2/audio/ps2_audio_driver.c
+  src/platform/ps2/audio/ps2_audio_driver.c \
+  src/platform/ps2/audio/ps2_rsp_audio.c \
+  $(call find_c, src/platform/ps2/audio/rsp_hle)
 
 # Stubs de audio de alto nivel: chocan con src/audio del decomp.
 ifeq ($(PS2_AUDIO_STUBS),1)

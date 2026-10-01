@@ -167,6 +167,31 @@ s32 osSendMesg(OSMesgQueue* mq, OSMesg msg, s32 flags) {
     return 0;
 }
 
+/* Native rendering runs on the scheduler's EE thread. Keep one pending
+ * retrace rather than filling its queue while it draws a slow frame; SP/DP
+ * completion messages must still fit when that synchronous call returns. */
+s32 ps2_os_send_coalesced(OSMesgQueue* mq, OSMesg msg) {
+    if (!mq) return -1;
+    PS2QueueEntry* e = queue_find(mq);
+    if (!e) return -1;
+    WaitSema(e->sem_mutex);
+    for (s32 i = 0; i < mq->validCount; i++) {
+        if (mq->msg[(mq->first + i) % mq->msgCount] == msg) {
+            SignalSema(e->sem_mutex);
+            return 0;
+        }
+    }
+    if (PollSema(e->sem_space) < 0) {
+        SignalSema(e->sem_mutex);
+        return -1;
+    }
+    mq->msg[(mq->first + mq->validCount) % mq->msgCount] = msg;
+    mq->validCount++;
+    SignalSema(e->sem_mutex);
+    SignalSema(e->sem_items);
+    return 0;
+}
+
 /* ───────────────────────────────────────────────────────────────── *
  *  osJamMesg — inserta al PRINCIPIO (mensaje prioritario)
  *  OoT lo usa para reset / fault.

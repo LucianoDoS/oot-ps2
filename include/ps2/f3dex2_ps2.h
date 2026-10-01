@@ -18,6 +18,9 @@ void f3dex2_geometrymode(u32 w0, u32 w1, RSPState* rsp);
 void f3dex2_texture(u32 w0, u32 w1, RSPState* rsp, RDPState* rdp);
 void f3dex2_moveword(u32 w0, u32 w1, RSPState* rsp);
 void f3dex2_movemem(u32 w0, u32 w1, RSPState* rsp);
+/* Output has room for 12 vertices; result is a convex homogeneous polygon. */
+int ps2_clip_triangle(const RSPVertex* a, const RSPVertex* b, const RSPVertex* c,
+                      RSPVertex* output);
 
 /* Texture upload */
 void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp);

@@ -1605,6 +1605,11 @@ void Play_SpawnScene(PlayState* this, s32 sceneId, s32 spawn) {
     SceneTableEntry* scene;
     UNUSED_NDEBUG u32 size;
 
+#if defined(PLATFORM_PS2)
+    osSyncPrintf("[PS2 SCENE] id=%d spawn=%d entrance=%04x cutscene=%04x\n",
+                 sceneId, spawn, gSaveContext.save.entranceIndex, gSaveContext.save.cutsceneIndex);
+#endif
+
 #if PLATFORM_N64
     if ((B_80121220 != NULL) && (B_80121220->unk_48 != NULL)) {
         scene = B_80121220->unk_48(sceneId, gSceneTable);

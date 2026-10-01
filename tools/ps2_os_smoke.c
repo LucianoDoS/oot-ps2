@@ -23,6 +23,7 @@ extern void ps2_timer_init(void);
 extern void ps2_timer_tick(void);
 extern void osCreateMesgQueue(SmokeQueue*, void**, s32);
 extern s32 osSendMesg(SmokeQueue*, void*, s32);
+extern s32 ps2_os_send_coalesced(SmokeQueue*, void*);
 extern s32 osRecvMesg(SmokeQueue*, void**, s32);
 extern s32 osSetTimer(SmokeTimer*, u64, u64, SmokeQueue*, void*);
 extern s32 osStopTimer(SmokeTimer*);
@@ -61,6 +62,15 @@ int ps2_os_smoke(void) {
     CHECK(osRecvMesg(&guarded.queue, &message, 0) == 0 && message == (void*)2);
     CHECK(osRecvMesg(&guarded.queue, &message, 0) == 0 && message == (void*)3);
     CHECK(guarded.queue.validCount == 0);
+    /* A slow native frame must retain space for completion notifications. */
+    for (int i = 0; i < 1000; i++)
+        CHECK(ps2_os_send_coalesced(&guarded.queue, (void*)1) == 0);
+    CHECK(guarded.queue.validCount == 1);
+    CHECK(osSendMesg(&guarded.queue, (void*)2, 0) == 0);
+    CHECK(ps2_os_send_coalesced(&guarded.queue, (void*)1) == 0);
+    CHECK(ps2_os_send_coalesced(&guarded.queue, (void*)3) == -1);
+    CHECK(osRecvMesg(&guarded.queue, &message, 0) == 0 && message == (void*)1);
+    CHECK(osRecvMesg(&guarded.queue, &message, 0) == 0 && message == (void*)2);
 
     /* A new timer is not required to have been zero-initialized by the game. */
     memset(&timer, 0xA5, sizeof(timer));

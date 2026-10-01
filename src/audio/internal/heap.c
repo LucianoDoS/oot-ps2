@@ -1207,7 +1207,7 @@ void* AudioHeap_AllocPermanent(s32 tableType, s32 id, u32 size) {
 
     //! @bug UB: missing return. "ramAddr" is in v0 at this point, but doing an
     //! explicit return uses an additional register.
-#ifdef AVOID_UB
+#if defined(AVOID_UB) || PLATFORM_PS2
     return ramAddr;
 #endif
 }

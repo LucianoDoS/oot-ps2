@@ -1099,6 +1099,12 @@ s32 AudioLoad_Dma(OSIoMesg* mesg, u32 priority, s32 direction, u32 devAddr, void
     mesg->dramAddr = ramAddr;
     mesg->devAddr = devAddr;
     mesg->size = size;
+#if PLATFORM_PS2
+    static unsigned dmaCalls;
+    if (++dmaCalls <= 6)
+        osSyncPrintf("[PS2 AUDIO DMA] medium=%d handle=%p cart=%p drive=%p rom=%08x ram=%p size=%u\n",
+                     medium, handle, gAudioCtx.cartHandle, gAudioCtx.driveHandle, devAddr, ramAddr, size);
+#endif
     handle->transferInfo.cmdType = 2;
     sDmaHandler(handle, mesg, direction);
     return 0;
@@ -1348,6 +1354,9 @@ void AudioLoad_Init(void* heap, u32 heapSize) {
     gAudioCtx.curAudioFrameDmaCount = 0;
     gAudioCtx.sampleDmaCount = 0;
     gAudioCtx.cartHandle = osCartRomInit();
+#if PLATFORM_PS2
+    osSyncPrintf("[PS2 AUDIO INIT] cart=%p ctx=%p heap=%p\n", gAudioCtx.cartHandle, &gAudioCtx, gAudioHeap);
+#endif
 
     if (heap == NULL) {
         gAudioCtx.audioHeap = gAudioHeap;

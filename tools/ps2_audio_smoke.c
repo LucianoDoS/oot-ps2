@@ -1,0 +1,47 @@
+/* Exact-output fixtures run on the EE through the production audio adapter. */
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+extern int PS2RspAudio_Process(void*, unsigned);
+static int16_t input[16] __attribute__((aligned(16)));
+static int16_t output[32] __attribute__((aligned(16)));
+static int16_t history[16] __attribute__((aligned(16)));
+static int16_t book[16] __attribute__((aligned(16)));
+static uint8_t compressed[16] __attribute__((aligned(16)));
+static uint32_t commands[12][2] __attribute__((aligned(16)));
+
+int ps2_audio_smoke(void) {
+    int failures = 0;
+    for (int i = 0; i < 16; i++) input[i] = (i - 8) * 1024;
+    commands[0][0] = 0x14020100; commands[0][1] = (uint32_t)input; /* load 32 bytes */
+    commands[1][0] = 0x02000200; commands[1][1] = 32; /* clear mix destination */
+    commands[2][0] = 0x0c024000; commands[2][1] = 0x01000200; /* gain .5 */
+    commands[3][0] = 0x0d020300; commands[3][1] = 0x01000200; /* interleave L/R */
+    commands[4][0] = 0x15040300; commands[4][1] = (uint32_t)output;
+    if (PS2RspAudio_Process(commands, 5 * 8)) failures++;
+    for (int i = 0; i < 16; i++)
+        if (output[i * 2] != input[i] || output[i * 2 + 1] != input[i] / 2) failures++;
+    /* Zero predictor ADPCM: every 4-bit residual is +1, with scale zero. */
+    memset(compressed, 0x11, sizeof(compressed)); compressed[0] = 0;
+    memset(output, 0x7f, sizeof(output));
+    commands[0][0] = 0x14010100; commands[0][1] = (uint32_t)compressed;
+    commands[1][0] = 0x0b000020; commands[1][1] = (uint32_t)book;
+    commands[2][0] = 0x08000100; commands[2][1] = 0x02000020;
+    commands[3][0] = 0x01010000; commands[3][1] = (uint32_t)history;
+    commands[4][0] = 0x15040200; commands[4][1] = (uint32_t)output;
+    if (PS2RspAudio_Process(commands, 5 * 8)) failures++;
+    for (int i = 0; i < 16; i++)
+        if (output[i] != 0 || output[i + 16] != 1 || history[i] != 1) failures++;
+    for (int i = 0; i < 16; i++) compressed[i] = (uint8_t)(i - 8);
+    commands[1][0] = 0x08000100; commands[1][1] = 0x02000020;
+    commands[2][0] = 0x17010000; commands[2][1] = (uint32_t)history;
+    commands[3][0] = 0x15040200; commands[3][1] = (uint32_t)output;
+    if (PS2RspAudio_Process(commands, 4 * 8)) failures++;
+    for (int i = 0; i < 16; i++)
+        if (output[i] != 0 || output[i + 16] != (i - 8) * 256 ||
+            history[i] != (i - 8) * 256) failures++;
+    if (PS2RspAudio_Process(commands, 7) != -1) failures++;
+    printf("[PS2 AUDIO TEST] %s: PCM load/mix/stereo, ADPCM/S8/history, task bounds (%d)\n",
+           failures ? "FAIL" : "PASS", failures);
+    return failures;
+}

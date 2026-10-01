@@ -14,6 +14,9 @@ extern int ps2_math_smoke(void);
 extern int ps2_printf_smoke(void);
 extern int ps2_rom_smoke(void);
 extern int ps2_rom_threads_smoke(void);
+extern int ps2_renderer_smoke(void);
+extern int ps2_audio_smoke(void);
+extern int ps2_audio_heap_smoke(void);
 
 typedef struct {
     s16 x, y, z;
@@ -33,6 +36,16 @@ int main(void) {
     printf("[PS2 SMOKE] Entered main\n");
     fflush(stdout);
     SifInitRpc(0);
+    if (ps2_audio_heap_smoke()) {
+        fflush(stdout);
+        SleepThread();
+        return 1;
+    }
+    if (ps2_audio_smoke()) {
+        fflush(stdout);
+        SleepThread();
+        return 1;
+    }
     int mathResult = ps2_math_smoke();
     printf("[PS2 MATH TEST] %s: native matrix layout and trigonometry (%d)\n",
            mathResult == 0 ? "PASS" : "FAIL", mathResult);
@@ -87,6 +100,11 @@ int main(void) {
     printf("[PS2 SMOKE] GS initialized\n");
     fflush(stdout);
     gsKit_mode_switch(gs, GS_ONESHOT);
+    rdp_to_gs_init(gs);
+    if (ps2_renderer_smoke()) {
+        fflush(stdout);
+        SleepThread();
+    }
     rdp_to_gs_init(gs);
     gSegments[6] = 0x123456; /* CPU mapping must survive RSP commands. */
     g_rspState.vpScaleX = 180;

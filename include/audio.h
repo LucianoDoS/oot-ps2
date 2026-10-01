@@ -64,7 +64,11 @@ typedef void (*AudioCustomUpdateFunction)(void);
 // Must be the same amount of samples as copied by aDuplicate() (audio microcode)
 #define WAVE_SAMPLE_COUNT 64
 
+#if PLATFORM_PS2
+#define AUDIO_RELOCATED_ADDRESS_START 0x00100000u
+#else
 #define AUDIO_RELOCATED_ADDRESS_START K0BASE
+#endif
 
 typedef enum SoundSetting {
     /* 0 */ SOUND_SETTING_STEREO,
@@ -791,10 +795,17 @@ typedef struct AudioCmd {
     /* 0x0 */ union{
         u32 opArgs;
         struct {
+#if PLATFORM_PS2
+            u8 arg2;
+            u8 arg1;
+            u8 arg0;
+            u8 op;
+#else
             u8 op;
             u8 arg0;
             u8 arg1;
             u8 arg2;
+#endif
         };
     };
     /* 0x4 */ union {

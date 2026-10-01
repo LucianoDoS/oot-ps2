@@ -39,8 +39,17 @@
 #include "ps2_init.h"
 #include "rdp_to_gs.h"
 #include "f3dex2_ps2.h"
+#include "ps2_texture.h"
 
 uintptr_t gRspSegments[PS2_NUM_SEGMENTS];
+volatile unsigned gPS2GfxTraceStage;
+static const Gfx* s_tracePc;
+static u32 s_traceW0, s_traceW1;
+void PS2Gfx_DumpTrace(void) {
+    printf("[PS2 GFX WAIT] pc=%p command=%08x,%08x stage=%u tri=%u draw=%u\n",
+           s_tracePc, s_traceW0, s_traceW1, gPS2GfxTraceStage,
+           g_rdpState.stats.triangles, g_rdpState.stats.submitted);
+}
 
 /* ═══════════════════════════════════════════════════════════════════ *
  *  OPCODES
@@ -190,6 +199,9 @@ void rdp_to_gs_exec(const Gfx* dl) {
         u32 w0 = GFX_READ_W0(pc);
         u32 w1 = GFX_READ_W1(pc);
         u8  op = (u8)(w0 >> 24);
+        s_tracePc = pc; s_traceW0 = w0; s_traceW1 = w1; gPS2GfxTraceStage = 0;
+        if (guard % 10000 == 0)
+            printf("[PS2 DL TRACE] commands=%lu pc=%p op=%02x depth=%d\n", guard, pc, op, depth);
 
 #ifdef RDP_GS_DEBUG
         printf("[DL] @%p op=0x%02X w0=%08X w1=%08X\n",
@@ -387,7 +399,20 @@ void rdp_to_gs_exec(const Gfx* dl) {
 void rdp_to_gs_flip(void) {
     GSGLOBAL* gs = g_rdpState.gs;
     if (!gs) return;          /* antes esto reventaba con NULL */
+    static u32 frames;
+    if (++frames <= 3 || frames % 300 == 0) {
+        printf("[PS2 GEOMETRY] frame=%u tri=%u clipped=%u culled=%u invalid=%u textureFail=%u draw=%u mode=%08x,%08x\n",
+            frames, g_rdpState.stats.triangles, g_rdpState.stats.clipped,
+            g_rdpState.stats.culled, g_rdpState.stats.invalid,
+            g_rdpState.stats.textureFailed, g_rdpState.stats.submitted,
+            g_rdpState.otherMode.hi, g_rdpState.otherMode.lo);
+    }
+    memset(&g_rdpState.stats, 0, sizeof(g_rdpState.stats));
 
+    gPS2GfxTraceStage = 7;
     gsKit_queue_exec(gs);
+    gPS2GfxTraceStage = 8;
     gsKit_sync_flip(gs);
+    gPS2GfxTraceStage = 9;
+    ps2_texture_end_frame(&g_rdpState);
 }

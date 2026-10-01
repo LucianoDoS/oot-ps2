@@ -127,6 +127,13 @@ void IrqMgr_SendMesgToClients(IrqMgr* irqMgr, OSMesg msg) {
     IrqMgrClient* client;
 
     for (client = irqMgr->clients; client != NULL; client = client->prev) {
+#if PLATFORM_PS2
+        if (msg == (OSMesg)&irqMgr->retraceMsg) {
+            extern s32 ps2_os_send_coalesced(OSMesgQueue*, OSMesg);
+            ps2_os_send_coalesced(client->queue, msg);
+            continue;
+        }
+#endif
         if (MQ_IS_FULL(client->queue)) {
             PRINTF(VT_COL(RED, WHITE) T("irqmgr_SendMesgForClient:メッセージキューがあふれています mq=%08x cnt=%d\n",
                                         "irqmgr_SendMesgForClient: Message queue is overflowing mq=%08x cnt=%d\n")

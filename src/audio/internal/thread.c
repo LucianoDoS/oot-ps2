@@ -418,7 +418,11 @@ void AudioThread_QueueCmdS32(u32 opArgs, s32 data) {
  * original name: Nap_SetS8
  */
 void AudioThread_QueueCmdS8(u32 opArgs, s8 data) {
+#if PLATFORM_PS2
+    u32 uData = (u8)data;
+#else
     u32 uData = data << 0x18;
+#endif
 
     AudioThread_QueueCmd(opArgs, (void**)&uData);
 }
@@ -427,7 +431,11 @@ void AudioThread_QueueCmdS8(u32 opArgs, s8 data) {
  * original name: Nap_SetU16
  */
 void AudioThread_QueueCmdU16(u32 opArgs, u16 data) {
+#if PLATFORM_PS2
+    u32 uData = data;
+#else
     u32 uData = data << 0x10;
+#endif
 
     AudioThread_QueueCmd(opArgs, (void**)&uData);
 }

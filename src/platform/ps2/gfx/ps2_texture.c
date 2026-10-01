@@ -26,6 +26,7 @@
 
 #include <gsKit.h>
 #include <gsTexture.h>
+#include <dmaKit.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -39,6 +40,36 @@
  *  Max N64 texture size: 256×256 @ 32bpp = 262144 bytes
  * ─────────────────────────────────────────────────────────── */
 static u8 s_convBuf[256 * 256 * 4] __attribute__((aligned(128)));
+static u32 s_textureVram = GSKIT_ALLOC_ERROR;
+static u8 s_sourceRows[sizeof(s_convBuf)] __attribute__((aligned(128)));
+static u32 s_paletteGeneration;
+typedef struct TextureCacheEntry {
+    uintptr_t source;
+    u32 stride, combine0, combine1, prim, env, cycle, paletteGeneration;
+    u32 vram, used;
+    u16 width, height;
+    u8 fmt, siz, palette, valid;
+} TextureCacheEntry;
+/* Seven 64 KiB slots plus one 256 KiB slot fit above the two framebuffers
+ * and Z buffer. Cached draws retain their own VRAM until that slot is retired. */
+static TextureCacheEntry s_cache[8];
+static u32 s_cacheClock;
+extern volatile unsigned gPS2GfxTraceStage;
+
+void ps2_texture_end_frame(RDPState* rdp) {
+    /* Source buffers may be animated or reused by the next scene. */
+    for (int i = 0; i < 8; i++) s_cache[i].valid = 0;
+    for (int i = 0; i < MAX_TILES; i++) rdp->tile[i].gsTextureLoaded = false;
+}
+
+static void texture_descriptor(TileDescriptor* tile, int w, int h, u32 vram) {
+    GSTEXTURE* gt = &tile->gsTexture;
+    gt->Width = w; gt->Height = h; gt->PSM = GS_PSM_CT32;
+    gt->Mem = (u32*)s_convBuf; gt->Filter = GS_FILTER_LINEAR;
+    gt->Clut = NULL; gt->Vram = vram;
+    /* Upload normally computes this; cache hits must also restore it. */
+    gt->TBW = (w + 63) / 64;
+}
 
 /* ─────────────────────────────────────────────────────────── *
  *  RGBA16 (N64 5-5-5-1) → RGBA8888 (PS2 CT32)
@@ -127,7 +158,7 @@ static void convert_i8_to_rgba32(const u8* src, u8* dst, int w, int h) {
         dst[i*4+0] = v;
         dst[i*4+1] = v;
         dst[i*4+2] = v;
-        dst[i*4+3] = 0x80;  /* fully opaque */
+        dst[i*4+3] = v >> 1; /* N64 intensity supplies alpha as well. */
     }
 }
 
@@ -143,7 +174,7 @@ static void convert_i4_to_rgba32(const u8* src, u8* dst, int w, int h) {
         dst[i*4+0] = v;
         dst[i*4+1] = v;
         dst[i*4+2] = v;
-        dst[i*4+3] = 0x80;
+        dst[i*4+3] = v >> 1;
     }
 }
 
@@ -153,6 +184,8 @@ static void convert_i4_to_rgba32(const u8* src, u8* dst, int w, int h) {
 static u32 s_clut[256] __attribute__((aligned(128)));
 
 void ps2_texture_load_tlut(const u8* tlut_src, int count) {
+    if (count < 0 || count > 256) return;
+    s_paletteGeneration++;
     /* TLUT is RGBA16 on N64 */
     for (int i = 0; i < count; i++) {
         u16 px = read_be16(tlut_src + i * 2);
@@ -169,6 +202,10 @@ void ps2_texture_load_tlut(const u8* tlut_src, int count) {
  *  ps2_texture_upload() — convert N64 texture and upload to GS VRAM
  * ─────────────────────────────────────────────────────────── */
 void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
+    gPS2GfxTraceStage = 1;
+    if (tile && rdp->textureLoads[tile->tmem].source) {
+        tile->addr = (void*)rdp->textureLoads[tile->tmem].source;
+    }
     if (!tile || !tile->addr) return;
 
     const u8* src = (const u8*)tile->addr;
@@ -180,6 +217,39 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         /* Clamp to scratch buffer size */
         h = sizeof(s_convBuf) / (w * 4);
         if (h == 0) return;
+    }
+    u32 rowBytes = (w * (4u << tile->siz) + 7) / 8;
+    static unsigned sceneUploads;
+    int trace = rdp->stats.triangles > 96 && sceneUploads++ < 12;
+    if (trace) printf("[PS2 TEXTURE TRACE] begin %dx%d fmt=%u siz=%u ptr=%p\n", w, h, tile->fmt, tile->siz, tile->addr);
+    u32 sourceStride = rdp->textureLoads[tile->tmem].stride;
+    TextureCacheEntry key = {0};
+    key.source = (uintptr_t)tile->addr;
+    key.stride = sourceStride;
+    key.width = w; key.height = h; key.fmt = tile->fmt; key.siz = tile->siz;
+    key.palette = tile->palette;
+    key.combine0 = rdp->combiner.w0; key.combine1 = rdp->combiner.w1;
+    key.prim = rdp->primColor; key.env = rdp->envColor;
+    key.cycle = (rdp->otherMode.hi >> 20) & 3;
+    key.paletteGeneration = tile->fmt == G_IM_FMT_CI ? s_paletteGeneration : 0;
+    for (int i = 0; i < 8; i++) {
+        TextureCacheEntry* cached = &s_cache[i];
+        if (cached->valid && cached->source == key.source &&
+            cached->stride == key.stride && cached->width == w && cached->height == h &&
+            cached->fmt == key.fmt && cached->siz == key.siz && cached->palette == key.palette &&
+            cached->combine0 == key.combine0 && cached->combine1 == key.combine1 &&
+            cached->prim == key.prim && cached->env == key.env && cached->cycle == key.cycle &&
+            cached->paletteGeneration == key.paletteGeneration) {
+            cached->used = ++s_cacheClock;
+            texture_descriptor(tile, w, h, cached->vram);
+            tile->gsTextureLoaded = true;
+            return;
+        }
+    }
+    if (sourceStride && sourceStride != rowBytes) {
+        for (int y = 0; y < h; y++)
+            memcpy(s_sourceRows + y * rowBytes, src + y * sourceStride, rowBytes);
+        src = s_sourceRows;
     }
 
     /* ── Format conversion ──────────────────────────────── */
@@ -222,7 +292,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
                 for (int i = 0; i < w * h; i++) {
                     u8 idx = (i & 1) ? (src[i/2] & 0x0F)
                                      : (src[i/2] >> 4);
-                    u32 c = s_clut[idx & 0x0F];
+                    u32 c = s_clut[(tile->palette << 4) | (idx & 0x0F)];
                     memcpy(s_convBuf + i * 4, &c, 4);
                 }
             }
@@ -233,6 +303,26 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
             break;
     }
 
+    /* Bake constant RDP inputs into texels. Shade modulation remains on the
+     * GS vertices; full multitexture and additive shade terms need more passes. */
+    const u8 fullShade[4] = {255, 255, 255, 255};
+    u8 lookup[4][256];
+    for (int value = 0; value < 256; value++) {
+        u8 texel[4] = {value, value, value, 255}, color[4];
+        ps2_combiner_color(rdp, texel, fullShade, color);
+        for (int channel = 0; channel < 3; channel++) lookup[channel][value] = color[channel];
+        texel[0] = texel[1] = texel[2] = 255;
+        texel[3] = value;
+        ps2_combiner_color(rdp, texel, fullShade, color);
+        lookup[3][value] = color[3] * 128u / 255;
+    }
+    for (int i = 0; i < w * h; i++) {
+        u8* pixel = s_convBuf + i * 4;
+        pixel[0] = lookup[0][pixel[0]];
+        pixel[1] = lookup[1][pixel[1]];
+        pixel[2] = lookup[2][pixel[2]];
+        pixel[3] = lookup[3][pixel[3] == 128 ? 255 : pixel[3] * 2];
+    }
     /* ── Upload to GS VRAM ──────────────────────────────── */
     GSTEXTURE* gt = &tile->gsTexture;
     gt->Width     = w;
@@ -242,7 +332,48 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
     gt->Filter    = GS_FILTER_LINEAR;
     gt->Clut      = NULL;
 
+    /* A zero-initialized GSTEXTURE points at the first framebuffer in VRAM.
+     * Reserve a texture-only region and retire draws before reusing it. */
+    if (s_textureVram == GSKIT_ALLOC_ERROR) {
+        s_textureVram = gsKit_vram_alloc(rdp->gs, 7 * 65536 + sizeof(s_convBuf), GSKIT_ALLOC_USERBUFFER);
+        if (s_textureVram == GSKIT_ALLOC_ERROR) return;
+        for (int i = 0; i < 8; i++) s_cache[i].vram = s_textureVram + i * 65536;
+        printf("[PS2 TEXTURE] VRAM cache reserved at 0x%08x (%u bytes)\n",
+               (unsigned)s_textureVram, (unsigned)(7 * 65536 + sizeof(s_convBuf)));
+    }
+    int slot = 7;
+    u32 size = gsKit_texture_size(w, h, GS_PSM_CT32);
+    if (size <= 65536) {
+        slot = 0;
+        for (int i = 0; i < 7; i++)
+            if (!s_cache[i].valid || s_cache[i].used < s_cache[slot].used) {
+                slot = i;
+                if (!s_cache[i].valid) break;
+            }
+    }
+    if (size > sizeof(s_convBuf)) return;
+    gsKit_set_finish(rdp->gs);
+    gPS2GfxTraceStage = 2;
+    if (trace) printf("[PS2 TEXTURE TRACE] converted, retire queue\n");
+    gsKit_queue_exec(rdp->gs);
+    gPS2GfxTraceStage = 3;
+    gsKit_finish();
+    if (trace) printf("[PS2 TEXTURE TRACE] finish returned\n");
+    dmaKit_wait_fast();
+    u32 vram = s_cache[slot].vram;
+    for (int i = 0; i < MAX_TILES; i++)
+        if (rdp->tile[i].gsTexture.Vram == vram) rdp->tile[i].gsTextureLoaded = false;
+    gt->Vram = vram;
+    gPS2GfxTraceStage = 4;
     gsKit_texture_upload(rdp->gs, gt);
+    gPS2GfxTraceStage = 5;
+    dmaKit_wait_fast();
+    gPS2GfxTraceStage = 6;
+    key.vram = vram; key.used = ++s_cacheClock; key.valid = 1;
+    s_cache[slot] = key;
+    static unsigned uploads;
+    if (++uploads <= 3 || uploads % 1000 == 0)
+        printf("[PS2 TEXTURE] uploads=%u size=%dx%d source=%p slot=%d\n", uploads, w, h, tile->addr, slot);
     tile->gsTextureLoaded = true;
 }
 
@@ -268,6 +399,8 @@ void rdp_settile(u32 w0, u32 w1, RDPState* rdp) {
 
     t->fmt     = (N64TexFmt)((w0 >> 21) & 0x7);
     t->siz     = (N64TexSiz)((w0 >> 19) & 0x3);
+    t->tmem    = w0 & 0x1FF;
+    t->line    = (w0 >> 9) & 0x1FF;
     t->cms     = (w1 >> 8) & 0x3;
     t->cmt     = (w1 >> 18) & 0x3;
     t->masks   = (w1 >> 4) & 0xF;
@@ -293,7 +426,6 @@ void rdp_settilesize(u32 w0, u32 w1, RDPState* rdp) {
     /* Compute texture dimensions from tile extents (10.2 fixed) */
     t->width  = ((t->lrs >> 2) - (t->uls >> 2)) + 1;
     t->height = ((t->lrt >> 2) - (t->ult >> 2)) + 1;
-    t->addr   = rdp->textureImage;
     t->gsTextureLoaded = false;
 }
 
@@ -301,11 +433,22 @@ void rdp_settilesize(u32 w0, u32 w1, RDPState* rdp) {
  *  RDP: G_LOADBLOCK / G_LOADTILE — actually load texture data
  * ─────────────────────────────────────────────────────────── */
 void rdp_loadtexture(u8 op, u32 w0, u32 w1, RDPState* rdp) {
-    (void)op; (void)w0; (void)w1;
-    /* On N64 this initiates a DMA from DRAM to TMEM.
-     * On PS2 we read directly from the pointer set in SETTIMG.
-     * The actual upload happens lazily when the first triangle
-     * references this tile. */
+    TileDescriptor* loadTile = &rdp->tile[(w1 >> 24) & 7];
+    u32 bits = 4u << rdp->textureImageSiz;
+    u32 x = ((w0 >> 12) & 0xFFF) >> 2;
+    u32 y = (w0 & 0xFFF) >> 2;
+    u32 offset = (y * rdp->textureImageWidth + x) * bits / 8;
+    u32 tmem = loadTile->tmem;
+    rdp->textureLoads[tmem].source = rdp->textureImage ? (const u8*)rdp->textureImage + offset : NULL;
+    rdp->textureLoads[tmem].stride = op == 0xF4 ? (rdp->textureImageWidth * bits + 7) / 8 : 0;
+    /* Load and render descriptors often differ (7 versus 0). The shared
+     * TMEM address connects them; SETTIMG alone must not change other tiles. */
+    for (int i = 0; i < MAX_TILES; i++) {
+        if (rdp->tile[i].tmem == tmem) {
+            rdp->tile[i].addr = (void*)rdp->textureLoads[tmem].source;
+            rdp->tile[i].gsTextureLoaded = false;
+        }
+    }
 }
 
 /* ─────────────────────────────────────────────────────────── *

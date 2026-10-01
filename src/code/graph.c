@@ -229,12 +229,22 @@ void Graph_TaskSet00(GraphicsContext* gfxCtx) {
         OSMesg msg;
 
         // Schedule a message to be handled in 3 seconds, for RCP timeout
+#if defined(PLATFORM_PS2)
+        // The native EE translator also converts/uploads textures synchronously.
+        // Keep a finite watchdog while allowing the first uncached scene to load.
+        osSetTimer(&timer, OS_USEC_TO_CYCLES(60000000), 0, &gfxCtx->queue, (OSMesg)666);
+#else
         osSetTimer(&timer, OS_USEC_TO_CYCLES(3000000), 0, &gfxCtx->queue, (OSMesg)666);
+#endif
 
         osRecvMesg(&gfxCtx->queue, &msg, OS_MESG_BLOCK);
         osStopTimer(&timer);
 
         if (msg == (OSMesg)666) {
+#if PLATFORM_PS2
+            extern void PS2Gfx_DumpTrace(void);
+            PS2Gfx_DumpTrace();
+#endif
 #if DEBUG_FEATURES
             PRINTF_COLOR_RED();
             PRINTF(T("RCPが帰ってきませんでした。", "RCP did not return."));

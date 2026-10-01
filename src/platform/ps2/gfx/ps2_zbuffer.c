@@ -30,6 +30,7 @@
  */
 
 #include <gsKit.h>
+#include <gsInline.h>
 #include "ps2_types.h"
 #include "rdp_to_gs.h"
 
@@ -41,12 +42,15 @@ void ps2_zbuffer_update_test(RDPState* rdp) {
 /**
  * ps2_zbuffer_set_writes() — activa o desactiva la escritura en Z
  *
- * El bit Z_UPD del other mode. En el GS se controla con ZMSK dentro del
- * registro FRAME, no con TEST, así que va aparte.
+ * El bit Z_UPD del other mode se traduce a ZMSK en el registro ZBUF.
  */
 void ps2_zbuffer_set_writes(RDPState* rdp, bool enable) {
     if (!rdp || !rdp->gs) return;
-    /* gsKit gestiona FRAME internamente; lo dejamos anotado para que
-     * el renderer lo consulte al montar el paquete de dibujo. */
     rdp->zWriteEnabled = enable;
+    GSGLOBAL* gs = rdp->gs;
+    u64* packet = gsKit_heap_alloc(gs, 1, 16, GIF_AD);
+    packet[0] = GIF_TAG_AD(1);
+    packet[1] = GIF_AD;
+    packet[2] = GS_SETREG_ZBUF(gs->ZBuffer / 8192, gs->PSMZ & 0xF, !enable);
+    packet[3] = GS_ZBUF_1 + gs->PrimContext;
 }

@@ -4,6 +4,57 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Renderer y síntesis nativa — 2026-09-30
+
+El diagnóstico ejecutado en PCSX2 pasa PCM, mezcla, intercalado estéreo,
+ADPCM, PCM de 8 bits e historial, además de geometría y sistema. Se prueba
+el asignador permanente real y la agrupación de notificaciones de refresco.
+Los tres tests de bancos de instrumentos pasan: estructuras compartidas,
+bitfields de Sample y rechazo de punteros/libros de predicción inválidos.
+**Todavía no es un juego jugable.** Tras las correcciones, el título sigue
+animándose, alcanza 600 fotogramas enviados y entra al estado del selector de
+partida al pulsar Start. La captura muestra el logo Zelda, cielo y parte de
+Link/Epona; faltan escenario, texturas y rendimiento (unos 4 FPS).
+El audio envía buffers no silenciosos: por ejemplo, 2240 bytes aceptados por
+audsrv con amplitud máxima 12288. Esto verifica generación y envío de PCM,
+no la fidelidad de la música. No se registraron excepciones TLB ni watchdog
+en esa ejecución; se mantienen los logs privados en `build/PS2-ntsc12`.
+
+- Corregido el orden de argumentos de los triángulos gouraud de gsKit: los
+  colores se estaban interpretando como coordenadas. La captura posterior
+  permite reconocer a Epona; aún tiene colores incorrectos y falta escenario.
+- Recorte homogéneo de triángulos antes de dividir por W, comprobado con
+  cruce del plano cercano y geometría completamente fuera del volumen.
+- Corregidos campos del blender, ciclo final, control real de escritura Z,
+  coordenadas de rectángulos y relación entre descriptores de carga/render
+  de texturas, incluidos sus pasos entre filas.
+- Combinador CPU para constantes prim/env y modulación por vértice; tabla de
+  búsqueda y caché de VRAM para reducir trabajo. TEXEL1 sigue aproximado con
+  TEXEL0; no reproduce todas las combinaciones, niebla ni perspectiva.
+- Corregidas notificaciones de refresco que llenaban la cola del scheduler
+  durante un fotograma lento y hacían perder los avisos SP/DP. El renderer
+  había terminado, pero Graph esperaba hasta el watchdog. En PS2 se conserva
+  un refresco pendiente; los demás mensajes mantienen su orden y semántica.
+  El watchdog sigue siendo finito (60 segundos) y registra la última etapa.
+- Los rectángulos en ciclos normales usan el combinador y la transparencia
+  primitiva; antes los fundidos negros se dibujaban opacos. El ciclo COPY
+  evita el combinador, como en el RDP.
+- Perfil de datos ampliado a escenas de demostración y sus objetos por
+  dependencias explícitas; se valida que todos los segmentos se hayan extraído.
+- Conversión de fuentes de sonido por sus punteros y estructuras: instrumentos,
+  percusión, efectos, envolventes, muestras, bucles y predictores. Datos de
+  ondas comprimidas y bytecode de secuencias permanecen intactos.
+- Intérprete de síntesis NEAD/OoT adaptado al EE, con código GPL-2.0-or-later
+  de Mupen64Plus y procedencia en `src/platform/ps2/audio/rsp_hle/README.md`.
+  El motor del juego sigue compilado como código nativo. Corregidos el orden
+  de bytes de AudioCmd y los argumentos s8/u16, y la detección de punteros
+  de muestras ya relocalizadas. Se registran tareas DSP y amplitud PCM.
+- Corregido el retorno ausente en `AudioHeap_AllocPermanent` para PS2: el
+  compilador devolvía la dirección de gAudioCtx y el DMA de instrumentos
+  sobreescribía el estado del audio. La prueba EE verifica punteros, datos
+  del caché y agotamiento del pool. Convertidos `title_static` y
+  `parameter_static` para seguir probando el selector de partida.
+
 ## Enlace completo y carga de escenas — 2026-09-26
 
 El juego completo ya enlaza con 707 objetos. PCSX2 completa `Play_Init` y la

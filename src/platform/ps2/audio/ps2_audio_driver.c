@@ -226,7 +226,18 @@ int PS2Audio_SubmitBuffer(void* buffer, unsigned int size) {
     if (!s_audioReady || !buffer || (size & 3) || size > 0x40000) return -1;
     if (audsrv_available() < (int)size) return -1;
     s_nativeOutput = true;
-    return audsrv_play_audio((const char*)buffer, size) == (int)size ? 0 : -1;
+    int result = audsrv_play_audio((const char*)buffer, size);
+    static unsigned buffers;
+    if (++buffers <= 3 || buffers % 300 == 0) {
+        unsigned peak = 0;
+        const s16* pcm = buffer;
+        for (unsigned i = 0; i < size / 2; i++) {
+            unsigned amplitude = pcm[i] < 0 ? -(int)pcm[i] : pcm[i];
+            if (amplitude > peak) peak = amplitude;
+        }
+        printf("[PS2 PCM] buffer=%u bytes=%u peak=%u sent=%d\n", buffers, size, peak, result);
+    }
+    return result == (int)size ? 0 : -1;
 }
 
 /* ─────────────────────────────────────────────────────────── *
@@ -272,18 +283,16 @@ void PS2Audio_StopVoice(int voiceIdx) {
 /* ─────────────────────────────────────────────────────────── *
  *  PS2Audio_ProcessTask — recibe las tareas de audio del scheduler
  *
- *  En N64 el juego empaqueta comandos de síntesis y se los manda al
- *  RSP. Aquí, de momento, mezclamos por nuestra cuenta en
- *  PS2Audio_Update(), así que sólo aceptamos la tarea y la damos por
- *  terminada (osTask.c ya dispara el evento correspondiente).
- *
- *  El paso siguiente del port sería interpretar de verdad esta lista de
- *  comandos, que es lo que haría sonar la música del juego en vez de
- *  sólo los efectos.
+ *  Interpreta en el EE los comandos de síntesis que genera src/audio.
+ *  El scheduler notifica la finalización; osAiSetNextBuffer envía el
+ *  PCM estéreo resultante a audsrv.
  * ─────────────────────────────────────────────────────────── */
 void PS2Audio_ProcessTask(void* cmdList, u32 size) {
-    (void)cmdList;
-    (void)size;
+    extern int PS2RspAudio_Process(void*, unsigned);
+    static unsigned tasks;
+    int result = PS2RspAudio_Process(cmdList, size);
+    if (++tasks <= 3 || (result && tasks % 300 == 0))
+        printf("[PS2 DSP] task=%u commands=%u result=%d\n", tasks, size / 8, result);
 }
 
 /* NOTA: aquí había dos funciones más, AudioThread_NotifyTaskDone() y

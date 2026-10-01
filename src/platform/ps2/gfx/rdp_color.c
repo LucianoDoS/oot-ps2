@@ -52,6 +52,7 @@ static inline u8 n64_alpha_to_gs(u8 a) {
 void rdp_setprimcolor(u32 w0, u32 w1, RDPState* rdp) {
     (void)w0;
     rdp->primColor = w1;  /* store as RRGGBBAA */
+    for (int i = 0; i < MAX_TILES; i++) rdp->tile[i].gsTextureLoaded = false;
 }
 
 /* ─────────────────────────────────────────────────────────── *
@@ -60,6 +61,7 @@ void rdp_setprimcolor(u32 w0, u32 w1, RDPState* rdp) {
 void rdp_setenvcolor(u32 w0, u32 w1, RDPState* rdp) {
     (void)w0;
     rdp->envColor = w1;
+    for (int i = 0; i < MAX_TILES; i++) rdp->tile[i].gsTextureLoaded = false;
 }
 
 /* ─────────────────────────────────────────────────────────── *
@@ -109,6 +111,7 @@ void rdp_setfillcolor(u32 w0, u32 w1, RDPState* rdp) {
 void rdp_setcombine(u32 w0, u32 w1, RDPState* rdp) {
     rdp->combiner.w0 = w0;
     rdp->combiner.w1 = w1;
+    for (int i = 0; i < MAX_TILES; i++) rdp->tile[i].gsTextureLoaded = false;
 
     /* Decode cycle 1 color A source (bits 52–55 of 64-bit command) */
     /* w0 bits [28:24] = a0 (color A cycle 0) */
@@ -150,17 +153,81 @@ void rdp_setcombine(u32 w0, u32 w1, RDPState* rdp) {
     }
 }
 
+static void combiner_sources(const RDPState* rdp, int cycle, bool alpha, u8 s[4]) {
+    u32 a = rdp->combiner.w0, b = rdp->combiner.w1;
+    if (alpha) {
+        s[0] = cycle ? (b >> 21) & 7 : (a >> 12) & 7;
+        s[1] = cycle ? (b >> 3) & 7 : (b >> 12) & 7;
+        s[2] = cycle ? (b >> 18) & 7 : (a >> 9) & 7;
+        s[3] = cycle ? b & 7 : (b >> 9) & 7;
+    } else {
+        s[0] = cycle ? (a >> 5) & 15 : (a >> 20) & 15;
+        s[1] = cycle ? (b >> 24) & 15 : (b >> 28) & 15;
+        s[2] = cycle ? a & 31 : (a >> 15) & 31;
+        s[3] = cycle ? (b >> 6) & 7 : (b >> 15) & 7;
+    }
+}
+
+bool ps2_combiner_uses_shade(const RDPState* rdp, bool alpha) {
+    int cycles = ((rdp->otherMode.hi >> 20) & 3) == 1 ? 2 : 1;
+    for (int cycle = 0; cycle < cycles; cycle++) {
+        u8 s[4]; combiner_sources(rdp, cycle, alpha, s);
+        for (int i = 0; i < 4; i++)
+            if (s[i] == 4 || (!alpha && i == 2 && s[i] == 11)) return true;
+    }
+    return false;
+}
+
+static int combiner_input(const RDPState* rdp, int source, int slot, bool alpha, int component,
+                          const u8 texel[4], const u8 shade[4], const u8 combined[4]) {
+    if (!alpha && slot == 2 && source >= 7 && source <= 12) {
+        switch (source) {
+            case 7: return combined[3];
+            case 8: case 9: return texel[3];
+            case 10: return rdp->primColor & 255;
+            case 11: return shade[3];
+            case 12: return rdp->envColor & 255;
+        }
+    }
+    switch (source) {
+        case 0: return (alpha && slot == 2) ? 0 : combined[component];
+        case 1: case 2: return texel[component]; /* TEXEL1 needs a second texture path. */
+        case 3: return (rdp->primColor >> ((3 - component) * 8)) & 255;
+        case 4: return shade[component];
+        case 5: return (rdp->envColor >> ((3 - component) * 8)) & 255;
+        case 6: return (slot == 2) ? 0 : 255;
+        default: return 0;
+    }
+}
+
+void ps2_combiner_color(const RDPState* rdp, const u8 texel[4], const u8 shade[4], u8 output[4]) {
+    /* Copy cycle bypasses the color combiner entirely. */
+    if (((rdp->otherMode.hi >> 20) & 3) == 2) { memcpy(output, texel, 4); return; }
+    if (!rdp->combiner.w0 && !rdp->combiner.w1) { memcpy(output, texel, 4); return; }
+    u8 combined[4] = {0};
+    int cycles = ((rdp->otherMode.hi >> 20) & 3) == 1 ? 2 : 1;
+    for (int cycle = 0; cycle < cycles; cycle++) {
+        u8 next[4];
+        for (int component = 0; component < 4; component++) {
+            bool alpha = component == 3;
+            u8 sources[4]; combiner_sources(rdp, cycle, alpha, sources);
+            int inputs[4];
+            for (int slot = 0; slot < 4; slot++)
+                inputs[slot] = combiner_input(rdp, sources[slot], slot, alpha, component,
+                                               texel, shade, combined);
+            int value = (inputs[0] - inputs[1]) * inputs[2] / 255 + inputs[3];
+            next[component] = value < 0 ? 0 : value > 255 ? 255 : value;
+        }
+        memcpy(combined, next, 4);
+    }
+    memcpy(output, combined, 4);
+}
+
 /* ─────────────────────────────────────────────────────────── *
  *  G_RDPSETOTHERMODE — sets pipeline, cycle, blend formula
  *
- *  Key bits we care about in the low word (w1):
- *    [29:28] = cycle type: 0=1-cycle, 1=2-cycle, 2=copy, 3=fill
- *    [19:16] = alpha compare mode
- *    [15:14] = depth source (0=pixel Z, 1=prim depth)
- *    [13:0]  = blender configuration (2-cycle blend formula)
- *
- *  Blender cycle 0 config (bits 13–10):
- *    P, A, Q, B sources → we map to GS ALPHA register
+ *  Cycle type is hi[21:20]; alpha compare is lo[1:0],
+ *  depth source lo[2], FORCE_BL lo[14], and blender lo[31:16].
  * ─────────────────────────────────────────────────────────── */
 
 /* Blender sources */
@@ -171,7 +238,7 @@ void rdp_setcombine(u32 w0, u32 w1, RDPState* rdp) {
 #define BL_A_IN     0   /* input alpha */
 #define BL_A_FOG    1   /* fog alpha */
 #define BL_A_SHADE  2   /* shade alpha */
-#define BL_1MA      0   /* 1 - mem_alpha */
+#define BL_1MA      0   /* 1 - selected input alpha */
 #define BL_A_MEM    1   /* mem alpha */
 #define BL_1        2   /* 1.0 */
 #define BL_0        3   /* 0.0 */
@@ -185,10 +252,8 @@ void rdp_setcombine(u32 w0, u32 w1, RDPState* rdp) {
  *  Corrección importante: los desplazamientos de bits del blender
  *  estaban mal. En el other mode de N64 el blender vive en los bits
  *  [31:16] de la palabra baja, repartidos en dos ciclos:
- *      P1[31:30] A1[29:28] M1[27:26] B1[25:24]
- *      P2[23:22] A2[21:20] M2[19:18] B2[17:16]
- *  El código anterior leía P de [31:30] pero B de [19:18], mezclando
- *  ciclos distintos.
+ *      P1[31:30] A1[27:26] M1[23:22] B1[19:18]
+ *      P2[29:28] A2[25:24] M2[21:20] B2[17:16]
  * ─────────────────────────────────────────────────────────── */
 void rdp_apply_othermode(RDPState* rdp) {
     GSGLOBAL* gs = rdp->gs;
@@ -203,22 +268,25 @@ void rdp_apply_othermode(RDPState* rdp) {
     /* Comparación de alfa: bits [1:0] de la palabra baja */
     u8 alphaCompare = (u8)(lo & 0x3);
 
-    /* Blender, primer ciclo */
-    u8 P1 = (u8)((lo >> 30) & 0x3);
-    u8 A1 = (u8)((lo >> 28) & 0x3);
-    u8 M1 = (u8)((lo >> 26) & 0x3);
-    u8 B1 = (u8)((lo >> 24) & 0x3);
-    (void)A1; (void)M1;
+    /* GBL_c1/c2 interleave their fields. In two-cycle mode the final
+     * blender is cycle 2; the preceding fog stage needs separate emulation. */
+    u32 cycleShift = cycleType == 1 ? 2 : 0;
+    u8 P1 = (u8)((lo >> (30 - cycleShift)) & 0x3);
+    u8 A1 = (u8)((lo >> (26 - cycleShift)) & 0x3);
+    u8 M1 = (u8)((lo >> (22 - cycleShift)) & 0x3);
+    u8 B1 = (u8)((lo >> (18 - cycleShift)) & 0x3);
+    (void)A1;
 
     u64 gsAlpha;
-    if (cycleType == 3) {
-        /* Modo fill: sin mezcla */
-        gsAlpha = GS_SETREG_ALPHA(0, 1, 0, 1, 0);
-    } else if (P1 == BL_CLR_IN && B1 == BL_1MA) {
+    if (cycleType >= 2 || !(lo & 0x4000)) {
+        /* Without FORCE_BL the N64 blender uses coverage for opaque
+         * surfaces; source alpha must not make them disappear. */
+        gsAlpha = GS_SETREG_ALPHA(0, 2, 2, 2, 0x80);
+    } else if (P1 == BL_CLR_IN && M1 == BL_CLR_MEM && B1 == BL_1MA) {
         /* Mezcla alfa clásica: src*a + dst*(1-a) */
         gsAlpha = GS_SETREG_ALPHA(0, 1, 0, 1, 0x80);
     } else if (P1 == BL_CLR_IN && B1 == BL_0) {
-        gsAlpha = GS_SETREG_ALPHA(0, 1, 0, 1, 0);     /* opaco */
+        gsAlpha = GS_SETREG_ALPHA(0, 2, 2, 2, 0x80);
     } else if (P1 == BL_CLR_FOG) {
         gsAlpha = GS_SETREG_ALPHA(1, 0, 1, 0, 0x80);  /* niebla */
     } else {
@@ -243,7 +311,16 @@ void rdp_apply_othermode(RDPState* rdp) {
 
     u64 test = GS_SETREG_TEST(ate, atst, aref, 0, 0, 0, zte, ztst);
     rdp->gs_test = test;
-    gsKit_set_test(gs, test);
+    gs->Test->ATE = ate;
+    gs->Test->ATST = atst;
+    gs->Test->AREF = aref;
+    gs->Test->AFAIL = 0;
+    gs->Test->DATE = 0;
+    gs->Test->DATM = 0;
+    gs->Test->ZTE = zte;
+    gs->Test->ZTST = ztst;
+    gsKit_set_test(gs, 0); /* Emit the populated GSTEST, not a preset. */
+    ps2_zbuffer_set_writes(rdp, (lo & 0x20) != 0);
 }
 
 void rdp_setothermode(u32 w0, u32 w1, RDPState* rdp) {
@@ -261,15 +338,16 @@ void rdp_setothermode(u32 w0, u32 w1, RDPState* rdp) {
  *  PARCIALES del other mode, no como el comando completo.
  *
  *  Codificación F3DEX2:
- *    w0[15:8] = longitud - 1  (bits afectados)
- *    w0[ 7:0] = desplazamiento
+ *    w0[15:8] = 32 - desplazamiento - longitud
+ *    w0[ 7:0] = longitud - 1
  *    w1       = valor a insertar
  * ─────────────────────────────────────────────────────────── */
 static u32 om_insert(u32 current, u32 w0, u32 w1) {
     u32 len   = ((w0 >> 0) & 0xFF) + 1;
-    u32 shift = ((w0 >> 8) & 0xFF);
+    u32 encodedShift = ((w0 >> 8) & 0xFF);
     /* F3DEX2 guarda el shift "al revés": 32 - shift - len */
-    if (shift > 32) shift = 32;
+    if (len > 32 || encodedShift > 32 - len) return current;
+    u32 shift = 32 - encodedShift - len;
     u32 mask = (len >= 32) ? 0xFFFFFFFFu : (((1u << len) - 1u) << shift);
     return (current & ~mask) | (w1 & mask);
 }
@@ -301,6 +379,12 @@ void rdp_setscissor(u32 w0, u32 w1, RDPState* rdp) {
     u16 y1 = rdp->scissorY1 >> 2;
 
     if (rdp->gs) {
+        x0 = (u16)(x0 * rdp->gs->Width / 320);
+        y0 = (u16)(y0 * rdp->gs->Height / 240);
+        x1 = (u16)(x1 * rdp->gs->Width / 320);
+        y1 = (u16)(y1 * rdp->gs->Height / 240);
+        if (x1 > x0) --x1; /* GS bounds are inclusive. */
+        if (y1 > y0) --y1;
         gsKit_set_scissor(rdp->gs, GS_SETREG_SCISSOR(x0, x1, y0, y1));
     }
 }
@@ -318,7 +402,49 @@ void rdp_fillrect(u32 w0, u32 w1, RDPState* rdp) {
 
     if (!rdp->gs) return;
 
-    /* Decode fill color as RGBA16 (two packed pixels) */
+    if (((rdp->otherMode.hi >> 20) & 3) == 3) {
+        x1 += 1; y1 += 1; /* Fill-cycle lower-right is inclusive. */
+    }
+    x0 *= rdp->gs->Width / 320.0f;
+    x1 *= rdp->gs->Width / 320.0f;
+    y0 *= rdp->gs->Height / 240.0f;
+    y1 *= rdp->gs->Height / 240.0f;
+
+    /* N64 clears depth by temporarily using the depth buffer as color image.
+     * Write far depth while preserving the displayed color through Cd blending. */
+    if (rdp->colorImage && rdp->colorImage == rdp->zImage) {
+        GSGLOBAL* gs = rdp->gs;
+        u8 oldZ = gs->Test->ZTST, oldAlpha = gs->Test->ATE;
+        int oldBlend = gs->PrimAlphaEnable;
+        bool oldWrite = rdp->zWriteEnabled;
+        ps2_zbuffer_set_writes(rdp, true);
+        gs->Test->ZTST = 1;
+        gs->Test->ATE = 0;
+        gsKit_set_test(gs, 0);
+        gs->PrimAlphaEnable = GS_SETTING_ON;
+        gsKit_set_primalpha(gs, GS_SETREG_ALPHA(0, 0, 2, 1, 0), 0);
+        gsKit_prim_sprite(gs, x0, y0, x1, y1, 0, GS_SETREG_RGBA(0, 0, 0, 0));
+        ps2_zbuffer_set_writes(rdp, oldWrite);
+        gs->PrimAlphaEnable = oldBlend;
+        gsKit_set_primalpha(gs, rdp->gs_alpha, 0);
+        gs->Test->ZTST = oldZ;
+        gs->Test->ATE = oldAlpha;
+        gsKit_set_test(gs, 0);
+        return;
+    }
+
+    /* One/two-cycle rectangles use the combiner, including primitive alpha
+     * for screen fades. Using the fill register here covered every frame
+     * with opaque black even when coverAlpha was zero. */
+    if (((rdp->otherMode.hi >> 20) & 3) != 3) {
+        const u8 white[4] = {255, 255, 255, 255};
+        u8 rgba[4];
+        ps2_combiner_color(rdp, white, white, rgba);
+        gsKit_prim_sprite(rdp->gs, x0, y0, x1, y1, 1,
+            GS_SETREG_RGBA(rgba[0], rgba[1], rgba[2], n64_alpha_to_gs(rgba[3])));
+        return;
+    }
+    /* Fill cycle decodes fill color as RGBA16 (two packed pixels). */
     u16 fc16 = (u16)(rdp->fillColor >> 16);
     u8 r = ((fc16 >> 11) & 0x1F) << 3;
     u8 g = ((fc16 >>  6) & 0x1F) << 3;
@@ -333,12 +459,11 @@ void rdp_fillrect(u32 w0, u32 w1, RDPState* rdp) {
  *  G_TEXRECT — textured rectangle (2D sprites, HUD, menus)
  *
  *  The TEXRECT command is 3 DL commands long:
- *    cmd 0: G_TEXRECT  + x1/y1
- *    cmd 1: tile + x0/y0
- *    cmd 2: s/t coords + ds/dt (texture velocity, usually 0)
+ *    cmd 0: w0 = G_TEXRECT + x1/y1, w1 = tile + x0/y0
+ *    cmd 1: G_RDPHALF_1, w1 = s/t
+ *    cmd 2: G_RDPHALF_2, w1 = dS/dX, dT/dY
  * ─────────────────────────────────────────────────────────── */
 void rdp_texrect(u8 op, u32 w0, u32 w1, const Gfx* pc, RDPState* rdp) {
-    (void)op;
 
     /* Command 0: x1, y1 (lower-right, 10.2 fixed) */
     float x1 = (float)((w0 >> 12) & 0xFFF) / 4.0f;
@@ -351,20 +476,20 @@ void rdp_texrect(u8 op, u32 w0, u32 w1, const Gfx* pc, RDPState* rdp) {
      * sea LITTLE-endian, así que se decodificaban al revés y el HUD
      * salía en coordenadas absurdas. Ahora usa el mismo modo que el
      * resto del intérprete (ver ps2_segment.h). */
-    u32 c1w0 = GFX_READ_W0(pc + 1);
     u32 c1w1 = GFX_READ_W1(pc + 1);
-    float x0 = (float)((c1w1 >> 12) & 0xFFF) / 4.0f;
-    float y0 = (float)((c1w1      ) & 0xFFF) / 4.0f;
-    (void)c1w0;
+    float x0 = (float)((w1 >> 12) & 0xFFF) / 4.0f;
+    float y0 = (float)((w1      ) & 0xFFF) / 4.0f;
 
     /* Command 2 (pc+2): texture S/T start + dS/dT */
-    u32 c2w0 = GFX_READ_W0(pc + 2);
     u32 c2w1 = GFX_READ_W1(pc + 2);
-    float s0 = (float)(s16)((c2w0 >> 16) & 0xFFFF) / 32.0f;
-    float t0 = (float)(s16)( c2w0        & 0xFFFF) / 32.0f;
+    float s0 = (float)(s16)((c1w1 >> 16) & 0xFFFF) / 32.0f;
+    float t0 = (float)(s16)( c1w1        & 0xFFFF) / 32.0f;
     float ds = (float)(s16)((c2w1 >> 16) & 0xFFFF) / 1024.0f;
     float dt = (float)(s16)( c2w1        & 0xFFFF) / 1024.0f;
-    (void)ds; (void)dt;
+    if (((rdp->otherMode.hi >> 20) & 3) == 2) {
+        ds *= 0.25f;
+        x1 += 1; y1 += 1;
+    }
 
     if (!rdp->gs) return;
 
@@ -373,9 +498,25 @@ void rdp_texrect(u8 op, u32 w0, u32 w1, const Gfx* pc, RDPState* rdp) {
         ps2_texture_upload(tile, rdp);
     }
 
-    float s1 = s0 + (x1 - x0);
-    float t1 = t0 + (y1 - y0);
+    if (!tile->gsTextureLoaded) return;
+    /* TEXRECTFLIP exchanges screen axes for the texture derivatives. */
+    float s1 = s0 + ((op == 0xE5) ? (y1 - y0) : (x1 - x0)) * ds;
+    float t1 = t0 + ((op == 0xE5) ? (x1 - x0) : (y1 - y0)) * dt;
+    x0 *= rdp->gs->Width / 320.0f;
+    x1 *= rdp->gs->Width / 320.0f;
+    y0 *= rdp->gs->Height / 240.0f;
+    y1 *= rdp->gs->Height / 240.0f;
 
+    if (op == 0xE5) {
+        u64 color = GS_SETREG_RGBAQ(0x80, 0x80, 0x80, 0x80, 1.0f);
+        gsKit_prim_triangle_goraud_texture_3d(rdp->gs, &tile->gsTexture,
+            x0, y0, 1, s0, t0, x1, y0, 1, s0, t1,
+            x0, y1, 1, s1, t0, color, color, color);
+        gsKit_prim_triangle_goraud_texture_3d(rdp->gs, &tile->gsTexture,
+            x1, y0, 1, s0, t1, x1, y1, 1, s1, t1,
+            x0, y1, 1, s1, t0, color, color, color);
+        return;
+    }
     gsKit_prim_sprite_texture(
         rdp->gs, &tile->gsTexture,
         x0, y0,   s0, t0,

@@ -18,7 +18,7 @@ if ([IO.File]::ReadAllText($config) -notmatch '(?m)^HostFs = true\s*$') {
 if (Test-Path -LiteralPath $pidFile) {
     $oldPid = [int](Get-Content -LiteralPath $pidFile)
     $oldProcess = Get-CimInstance Win32_Process -Filter "ProcessId=$oldPid"
-    if ($oldProcess -and $oldProcess.Name -eq 'pcsx2-qt.exe' -and $oldProcess.CommandLine.Contains($elf)) {
+    if ($oldProcess -and $oldProcess.Name -eq 'pcsx2-qt.exe' -and $oldProcess.CommandLine -and $oldProcess.CommandLine.Contains($elf)) {
         Stop-Process -Id $oldPid
     }
 }
