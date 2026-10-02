@@ -50,6 +50,7 @@ static inline u8 n64_alpha_to_gs(u8 a) {
  *  w1: RRGGBBAA
  * ─────────────────────────────────────────────────────────── */
 void rdp_setprimcolor(u32 w0, u32 w1, RDPState* rdp) {
+    if (rdp->primLodFrac == (w0 & 255) && rdp->primColor == w1) return;
     rdp->primLodFrac = w0 & 255;
     rdp->primColor = w1;  /* store as RRGGBBAA */
     for (int i = 0; i < MAX_TILES; i++) rdp->tile[i].gsTextureLoaded = false;
@@ -60,6 +61,7 @@ void rdp_setprimcolor(u32 w0, u32 w1, RDPState* rdp) {
  * ─────────────────────────────────────────────────────────── */
 void rdp_setenvcolor(u32 w0, u32 w1, RDPState* rdp) {
     (void)w0;
+    if (rdp->envColor == w1) return;
     rdp->envColor = w1;
     for (int i = 0; i < MAX_TILES; i++) rdp->tile[i].gsTextureLoaded = false;
 }
@@ -112,6 +114,7 @@ void rdp_setfillcolor(u32 w0, u32 w1, RDPState* rdp) {
 #define CC_ENV      5
 
 void rdp_setcombine(u32 w0, u32 w1, RDPState* rdp) {
+    if (rdp->combiner.w0 == w0 && rdp->combiner.w1 == w1) return;
     rdp->combiner.w0 = w0;
     rdp->combiner.w1 = w1;
     for (int i = 0; i < MAX_TILES; i++) rdp->tile[i].gsTextureLoaded = false;
@@ -359,9 +362,7 @@ void rdp_apply_othermode(RDPState* rdp) {
     /* Test de alfa + test de profundidad, en UN solo registro TEST.
      * Antes se escribían por separado desde dos archivos distintos y el
      * segundo pisaba al primero. */
-    u32 zmode = (lo >> 10) & 0x3;
     bool zCompare = (lo & 0x0010) != 0;
-    (void)zmode;
 
     /* TEX_EDGE materials discard zero coverage even with G_AC_NONE.
      * GS has no RDP coverage buffer; approximate the alpha coverage edge

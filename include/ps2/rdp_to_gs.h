@@ -254,5 +254,7 @@ void ps2_fog_apply_xyz(gs_xyz2* xyz, float z, const RSPState* rsp);
 void ps2_zbuffer_update_test(RDPState* rdp);
 void ps2_zbuffer_set_writes(RDPState* rdp, bool enable);
 u32 ps2_zbuffer_value(const RDPState* rdp, float normalizedDepth);
+void ps2_zbuffer_decal_bias(const RDPState* rdp, const RSPVertex* a,
+    const RSPVertex* b, const RSPVertex* c, u32 depth[3]);
 
 #endif /* RDP_TO_GS_H */

@@ -115,8 +115,17 @@ void ps2_init_iop(void) {
     if (ret < 0) printf("[OoT-PS2] AVISO: MCSERV fallo (%d)\n", ret);
 
     /* ── Audio ──────────────────────────────────────────────────── */
-    ret = SifLoadModule("rom0:LIBSD", 0, NULL);
-    if (ret < 0) printf("[OoT-PS2] AVISO: LIBSD fallo (%d)\n", ret);
+    /* Use the SDK's sound driver with audsrv instead of depending on the
+     * BIOS version's block-DMA implementation. Keep ROM fallback available. */
+    extern unsigned char freesd_irx[];
+    extern unsigned int size_freesd_irx;
+    int soundRv = 0;
+    ret = SifExecModuleBuffer(freesd_irx, size_freesd_irx, 0, NULL, &soundRv);
+    if (ret < 0 || soundRv != 0) {
+        printf("[PS2 SOUND MODULE] SDK failed ret=%d rv=%d; ROM fallback\n", ret, soundRv);
+        ret = SifLoadModule("rom0:LIBSD", 0, NULL);
+        if (ret < 0) printf("[OoT-PS2] AVISO: LIBSD fallo (%d)\n", ret);
+    } else printf("[PS2 SOUND MODULE] SDK libsd loaded id=%d\n", ret);
 
     /* audsrv.irx NO está en la ROM de la consola: lo trae ps2sdk y se
      * enlaza dentro del ELF. Por eso hacen falta los parches sbv. */
@@ -124,8 +133,8 @@ void ps2_init_iop(void) {
     extern unsigned int  size_audsrv_irx;
     int rv = 0;
     ret = SifExecModuleBuffer(audsrv_irx, size_audsrv_irx, 0, NULL, &rv);
-    if (ret < 0) {
-        printf("[OoT-PS2] AVISO: audsrv.irx fallo (%d). Sin sonido.\n", ret);
+    if (ret < 0 || rv != 0) {
+        printf("[OoT-PS2] AVISO: audsrv.irx fallo (%d, rv=%d). Sin sonido.\n", ret, rv);
     }
 
     printf("[OoT-PS2] Modulos IOP cargados.\n");

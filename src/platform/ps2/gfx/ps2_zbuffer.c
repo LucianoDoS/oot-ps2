@@ -31,6 +31,7 @@
 
 #include <gsKit.h>
 #include <gsInline.h>
+#include <math.h>
 #include "ps2_types.h"
 #include "rdp_to_gs.h"
 
@@ -42,6 +43,27 @@ u32 ps2_zbuffer_value(const RDPState* rdp, float normalizedDepth) {
     if (normalizedDepth <= 0.0f) return maximum;
     if (!(normalizedDepth < 1.0f)) return 0;
     return (u32)((1.0f - normalizedDepth) * maximum);
+}
+
+void ps2_zbuffer_decal_bias(const RDPState* rdp, const RSPVertex* a,
+    const RSPVertex* b, const RSPVertex* c, u32 depth[3]) {
+    /* N64 decal comparison accepts a delta-Z interval around its receiver.
+     * GS GEQUAL has no interval. Approximate it with slope-scaled bias only
+     * on depth-tested decals without depth writes, retaining occlusion. */
+    if ((rdp->otherMode.lo & 0xc30) != 0xc10) return;
+    float dx1 = b->sx - a->sx, dy1 = b->sy - a->sy;
+    float dx2 = c->sx - a->sx, dy2 = c->sy - a->sy;
+    float area = dx1 * dy2 - dy1 * dx2;
+    if (fabsf(area) < 0.0001f) return;
+    float dz1 = (float)depth[1] - depth[0], dz2 = (float)depth[2] - depth[0];
+    float slope = fabsf((dz1 * dy2 - dz2 * dy1) / area) +
+                  fabsf((dx1 * dz2 - dx2 * dz1) / area);
+    u32 maximum = (rdp->gs->PSMZ == GS_PSMZ_16 || rdp->gs->PSMZ == GS_PSMZ_16S) ? 0xffffu : 0xffffffu;
+    float offset = ceilf(slope * 2.0f) + 2.0f;
+    u32 limit = maximum / 4096;
+    u32 bias = offset < limit ? (u32)offset : limit;
+    for (int i = 0; i < 3; i++)
+        depth[i] = depth[i] > maximum - bias ? maximum : depth[i] + bias;
 }
 
 void ps2_zbuffer_update_test(RDPState* rdp) {

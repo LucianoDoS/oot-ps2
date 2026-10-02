@@ -4,6 +4,40 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Grabación: sombras, repetición en espejo y salida de audio — 2026-10-01
+
+- Revisada grabación local de 48,42 segundos: selección de partida, casa
+  de Link y salida al bosque. El audio de Windows contiene saltos grandes
+  y picos de escala completa. La captura nativa previa de dos segundos del
+  título alcanza solo 570/32768 y no satura; son momentos diferentes, por
+  lo que esa comparación todavía no demuestra dónde se genera el ruido.
+- El renderer ignoraba `G_TX_MIRROR`, presente en materiales del bosque.
+  Se cachea un período normal y otro invertido por eje solicitado, con
+  coordenadas continuas y repetición GS sobre ambos períodos. Las variantes
+  de espejo tienen claves independientes; se conserva alfa y no se genera
+  la imagen ampliada en los aciertos de caché. Texturas demasiado grandes
+  mantienen la aproximación anterior para respetar el buffer disponible.
+- Sombras usan `SETUPDL_44` / `G_RM_ZB_OVL_SURF2` (`ZMODE_DEC`). Se añade
+  sesgo de profundidad proporcional a la pendiente únicamente a decals
+  con comparación y sin escritura Z. Se limita y satura en Z16/Z24; la
+  geometría ordinaria conserva sus profundidades. Es una aproximación a
+  la tolerancia delta-Z de N64, pendiente de comprobar jugando.
+- Colores y combinadores repetidos sin cambios conservan las texturas
+  cargadas, evitando hashes y búsquedas adicionales. Los cambios reales
+  siguen invalidando; no se modifica la velocidad de simulación.
+- Navi usa verde al señalar objetos de categorías PROP/BG/etc., según
+  `sAttentionColors` y `Attention_SetNaviState` en `src/code/z_actor.c`.
+  La grabación muestra la acción `Check` junto al cuadro de la casa.
+  Ese cambio de color es coherente con el comportamiento original.
+- Se incorpora el módulo `freesd.irx` / libsd del SDK antes de audsrv,
+  conservando alternativa ROM si falla. Prueba de compatibilidad de salida,
+  no una corrección audible confirmada. El build enlaza 716 objetos.
+- Diagnóstico EE completo pasa 120 fotogramas; pruebas de espejo S/T,
+  píxeles alfa, variantes de caché, coordenadas, pendientes de decals,
+  límites y oclusión dan cero fallos. Registro:
+  `build/PS2/pcsx2-shadow-mirror-pass.log`. Pendiente comparación visual
+  de sombras/escalones y confirmación audible de la nueva versión.
+
 ## Diagnóstico de chasquidos — 2026-10-01
 
 - Usuario confirma que el árbol ya se oculta correctamente, pero los

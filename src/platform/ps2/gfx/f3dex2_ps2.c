@@ -325,6 +325,11 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
     u32 z0 = ps2_zbuffer_value(rdp, v0->sz);
     u32 z1 = ps2_zbuffer_value(rdp, v1->sz);
     u32 z2 = ps2_zbuffer_value(rdp, v2->sz);
+    if ((rdp->otherMode.lo & 0xc30) == 0xc10) {
+        u32 depthsDecal[3] = {z0, z1, z2};
+        ps2_zbuffer_decal_bias(rdp, v0, v1, v2, depthsDecal);
+        z0 = depthsDecal[0]; z1 = depthsDecal[1]; z2 = depthsDecal[2];
+    }
     bool fog = ps2_fog_enabled(rdp, rsp);
 
     if (rsp->texEnabled) {

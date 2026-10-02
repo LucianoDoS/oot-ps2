@@ -281,6 +281,7 @@ DEPS := $(OBJS:.o=.d)
 
 ifeq ($(PLATFORM),PS2)
 OBJS += $(BUILD_DIR)/generated/audsrv_irx.o
+OBJS += $(BUILD_DIR)/generated/freesd_irx.o
 ifneq ($(OOT_UPSTREAM),)
 OBJS += $(BUILD_DIR)/generated/rom_metadata.o
 ROM_LDFLAGS := -Wl,-T,$(BUILD_DIR)/generated/rom_segments.ld
@@ -330,6 +331,13 @@ $(BUILD_DIR)/generated/audsrv_irx.c: $(PS2SDK)/iop/irx/audsrv.irx
 	$(Q)$(PS2SDK)/bin/bin2c $< $@ audsrv_irx
 
 $(BUILD_DIR)/generated/audsrv_irx.o: $(BUILD_DIR)/generated/audsrv_irx.c
+	$(Q)$(CC) $(CFLAGS) $(PLATFORM_INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/generated/freesd_irx.c: $(PS2SDK)/iop/irx/freesd.irx
+	@mkdir -p $(dir $@)
+	$(Q)$(PS2SDK)/bin/bin2c $< $@ freesd_irx
+
+$(BUILD_DIR)/generated/freesd_irx.o: $(BUILD_DIR)/generated/freesd_irx.c
 	$(Q)$(CC) $(CFLAGS) $(PLATFORM_INCLUDES) -c $< -o $@
 
 ifneq ($(OOT_UPSTREAM),)

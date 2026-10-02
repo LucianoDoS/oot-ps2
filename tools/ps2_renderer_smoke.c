@@ -40,6 +40,31 @@ int ps2_renderer_smoke(void) {
     }
     g_rdpState.gs->PSMZ = initializedDepth;
     printf("[PS2 DEPTH TEST] initialized=%02x monotonic failures=%d\n", initializedDepth, failures);
+    RSPVertex decalA = {.sx=0,.sy=0}, decalB = {.sx=10,.sy=0}, decalC = {.sx=0,.sy=10};
+    u32 decalDepth[3] = {10000,10100,10200};
+    g_rdpState.otherMode.lo = 0xc10;
+    ps2_zbuffer_decal_bias(&g_rdpState, &decalA, &decalB, &decalC, decalDepth);
+    if (decalDepth[0] != 10062 || decalDepth[1] != 10162 || decalDepth[2] != 10262) failures++;
+    /* A separate foreground surface must still hide the decal; ordinary
+     * geometry and depth-writing materials receive no polygon offset. */
+    if (decalDepth[0] >= 10500) failures++;
+    g_rdpState.otherMode.lo = 0xc30;
+    ps2_zbuffer_decal_bias(&g_rdpState, &decalA, &decalB, &decalC, decalDepth);
+    if (decalDepth[0] != 10062) failures++;
+    g_rdpState.otherMode.lo = 0x10;
+    ps2_zbuffer_decal_bias(&g_rdpState, &decalA, &decalB, &decalC, decalDepth);
+    if (decalDepth[0] != 10062) failures++;
+    g_rdpState.otherMode.lo = 0xc10;
+    decalDepth[0] = decalDepth[1] = decalDepth[2] = 0xfffffe;
+    ps2_zbuffer_decal_bias(&g_rdpState, &decalA, &decalB, &decalC, decalDepth);
+    if (decalDepth[0] != 0xffffff) failures++;
+    g_rdpState.gs->PSMZ = GS_PSMZ_16;
+    decalDepth[0] = decalDepth[1] = decalDepth[2] = 0xfffe;
+    ps2_zbuffer_decal_bias(&g_rdpState, &decalA, &decalB, &decalC, decalDepth);
+    if (decalDepth[0] != 0xffff) failures++;
+    g_rdpState.gs->PSMZ = initializedDepth;
+    g_rdpState.otherMode.lo = 0;
+    printf("[PS2 DECAL TEST] slope bias, occlusion and depth limits failures=%d\n", failures);
     const u8 texel[4] = {128, 64, 32, 200}, shade[4] = {80, 100, 120, 140};
     u8 combined[4];
     rdp_setcombine(0xfcffffff, 0xfffdf6fb, &g_rdpState); /* PRIMITIVE */
@@ -119,6 +144,39 @@ int ps2_renderer_smoke(void) {
     rdp_setblendcolor(0, 0, &g_rdpState);
     if (g_rdpState.gs->Test->AREF != 1) failures++;
     rdp_setothermode(0, 0, &g_rdpState);
+    static const u8 mirroredTexels[] = {
+        10,0,0,0, 20,0,0,255, 30,0,0,255, 40,0,0,255,
+        50,0,0,255, 60,0,0,255, 70,0,0,255, 80,0,0,255};
+    TileDescriptor mirrored = {.addr=(void*)mirroredTexels,.width=4,.height=2,
+        .fmt=G_IM_FMT_RGBA,.siz=G_IM_SIZ_32b,.masks=2,.maskt=1,.tmem=511};
+    u32 mirrorVram[4];
+    rdp_setothermode(2u << 20, 0, &g_rdpState);
+    for (int pass=0; pass<2; pass++) for (int mode=0; mode<4; mode++) {
+        mirrored.cms = mode & 1; mirrored.cmt = (mode >> 1) & 1;
+        mirrored.gsTextureLoaded = false;
+        ps2_texture_upload(&mirrored, &g_rdpState);
+        int mw = mode & 1 ? 8 : 4, mh = mode & 2 ? 4 : 2;
+        if (!mirrored.gsTextureLoaded || mirrored.gsTexture.Width != mw || mirrored.gsTexture.Height != mh) failures++;
+        if (!pass) {
+            mirrorVram[mode] = mirrored.gsTexture.Vram;
+            for (int y=0;y<mh;y++) for (int x=0;x<mw;x++) {
+                int sx = x >= 4 ? 7-x : x, sy = y >= 2 ? 3-y : y;
+                const u8* pixel = (u8*)mirrored.gsTexture.Mem + (y*mw+x)*4;
+                if (pixel[0] != mirroredTexels[(sy*4+sx)*4] ||
+                    pixel[3] != (sx==0 && sy==0 ? 0 : 128)) failures++;
+            }
+            for (int i=0;i<mode;i++) if (mirrorVram[i]==mirrorVram[mode]) failures++;
+        } else if (mirrored.gsTexture.Vram != mirrorVram[mode]) failures++;
+        ps2_texture_apply_tile(&mirrored, &g_rdpState);
+        if (g_rdpState.gs->Clamp->MINU != mw-1 || g_rdpState.gs->Clamp->MINV != mh-1) failures++;
+    }
+    RSPVertex mirrorVertex = {.tc_s=256,.tc_t=-128,.cw=1};
+    RSPState mirrorRsp = {.texScaleS=1,.texScaleT=1};
+    GSPRIMSTQPOINT mirrorPoint;
+    ps2_texture_build_vertex(&mirrored,&mirrorRsp,&g_rdpState,&mirrorVertex,0,0,&mirrorPoint);
+    if (mirrorPoint.stq.st.s != 1 || mirrorPoint.stq.st.t != -1) failures++;
+    printf("[PS2 MIRROR TEST] S/T texels, alpha, cache variants and coordinates failures=%d\n", failures);
+    rdp_setothermode(0, 0, &g_rdpState);
     static const u8 texture[] = {255,255, 255,255, 255,255, 255,255};
     for (int i = 0; i < 2; i++) {
         TileDescriptor* tile = &g_rdpState.tile[i];
@@ -135,6 +193,13 @@ int ps2_renderer_smoke(void) {
     if (!g_rdpState.tile[0].gsTextureLoaded ||
         g_rdpState.tile[0].gsTexture.Vram != g_rdpState.tile[1].gsTexture.Vram ||
         g_rdpState.tile[1].gsTexture.TBW != 1) failures++;
+    rdp_setprimcolor(g_rdpState.primLodFrac, g_rdpState.primColor, &g_rdpState);
+    rdp_setenvcolor(0, g_rdpState.envColor, &g_rdpState);
+    rdp_setcombine(g_rdpState.combiner.w0, g_rdpState.combiner.w1, &g_rdpState);
+    if (!g_rdpState.tile[0].gsTextureLoaded) failures++;
+    rdp_setprimcolor(g_rdpState.primLodFrac, g_rdpState.primColor ^ 0x100, &g_rdpState);
+    if (g_rdpState.tile[0].gsTextureLoaded) failures++;
+    ps2_texture_upload(&g_rdpState.tile[0], &g_rdpState);
     ps2_texture_end_frame(&g_rdpState);
     if (g_rdpState.tile[0].gsTextureLoaded) failures++;
     static const u8 rows[] = {0,0,0,255, 1,0,0,255, 2,0,0,255, 3,0,0,255,

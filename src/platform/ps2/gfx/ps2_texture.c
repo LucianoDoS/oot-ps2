@@ -53,6 +53,7 @@ typedef struct TextureCacheEntry {
     u32 vram, size, used, frame;
     u16 width, height;
     u8 fmt, siz, palette, valid;
+    u16 mirror;
 } TextureCacheEntry;
 /* Share the available VRAM budget between actual texture sizes. Fixed size
  * classes stranded most of VRAM while menu strips evicted one another. */
@@ -139,6 +140,18 @@ static const u8 (*combiner_lookup(const RDPState* rdp))[256] {
     return entry->values;
 }
 
+/* The GS has region repeat but no mirrored repeat. Store one forward and
+ * one reversed period in cached texels; interpolate coordinates normally. */
+static unsigned mirrored_dimensions(const TileDescriptor* tile, int w, int h, int* outW, int* outH) {
+    bool ms = tile->cms == 1 && tile->masks && tile->masks <= 9 && (1u << tile->masks) <= (unsigned)w;
+    bool mt = tile->cmt == 1 && tile->maskt && tile->maskt <= 9 && (1u << tile->maskt) <= (unsigned)h;
+    int mw = ms ? 2u << tile->masks : w;
+    int mh = mt ? 2u << tile->maskt : h;
+    if ((unsigned)mw * mh * 4 > sizeof(s_convBuf)) { mw = w; mh = h; ms = mt = false; }
+    *outW = mw; *outH = mh;
+    return (ms ? 1u | (tile->masks << 4) : 0) | (mt ? 2u | (tile->maskt << 8) : 0);
+}
+
 void ps2_texture_apply_tile(TileDescriptor* tile, RDPState* rdp) {
     GSGLOBAL* gs = rdp->gs;
     if (!gs) return;
@@ -148,6 +161,12 @@ void ps2_texture_apply_tile(TileDescriptor* tile, RDPState* rdp) {
     unsigned modeT = (tile->cmt & 2) || !tile->maskt ? 2 : 3;
     unsigned minS = modeS == 3 ? (1u << (tile->masks > 10 ? 10 : tile->masks)) - 1 : 0;
     unsigned minT = modeT == 3 ? (1u << (tile->maskt > 10 ? 10 : tile->maskt)) - 1 : 0;
+    int mw, mh;
+    unsigned mirror = mirrored_dimensions(tile, tile->width, tile->height, &mw, &mh);
+    if ((mirror & 1) && tile->gsTexture.Width == (unsigned)mw)
+        minS = tile->gsTexture.Width - 1;
+    if ((mirror & 2) && tile->gsTexture.Height == (unsigned)mh)
+        minT = tile->gsTexture.Height - 1;
     unsigned maxS = modeS == 2 && tile->width ? tile->width - 1 : 0;
     unsigned maxT = modeT == 2 && tile->height ? tile->height - 1 : 0;
     gs->Clamp->WMS = modeS; gs->Clamp->WMT = modeT;
@@ -174,8 +193,8 @@ void ps2_texture_build_vertex(const TileDescriptor* tile, const RSPState* rsp,
     const RDPState* rdp, const RSPVertex* vertex, u32 color, u32 depth,
     GSPRIMSTQPOINT* output) {
     unsigned width = 1, height = 1;
-    while (width < tile->width) width <<= 1;
-    while (height < tile->height) height <<= 1;
+    while (width < (tile->gsTexture.Width ? tile->gsTexture.Width : tile->width)) width <<= 1;
+    while (height < (tile->gsTexture.Height ? tile->gsTexture.Height : tile->height)) height <<= 1;
     float u = texture_shift(vertex->tc_s * rsp->texScaleS / 32.0f, tile->shifts) - tile->uls / 4.0f;
     float v = texture_shift(vertex->tc_t * rsp->texScaleT / 32.0f, tile->shiftt) - tile->ult / 4.0f;
     float q = (rdp->otherMode.hi & (1u << 19)) && vertex->cw > 0.0001f ? 1.0f / vertex->cw : 1.0f;
@@ -364,6 +383,9 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         if (h == 0) return;
     }
     u32 rowBytes = (w * (4u << tile->siz) + 7) / 8;
+    int uploadW, uploadH;
+    unsigned mirror = mirrored_dimensions(tile, w, h, &uploadW, &uploadH);
+    bool mirrorS = mirror & 1, mirrorT = mirror & 2;
     static unsigned sceneUploads;
     int trace = rdp->stats.triangles > 96 && sceneUploads++ < 12;
     if (trace) printf("[PS2 TEXTURE TRACE] begin %dx%d fmt=%u siz=%u ptr=%p\n", w, h, tile->fmt, tile->siz, tile->addr);
@@ -373,6 +395,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
     key.stride = sourceStride;
     key.width = w; key.height = h; key.fmt = tile->fmt; key.siz = tile->siz;
     key.palette = tile->palette;
+    key.mirror = mirror;
     key.combine0 = rdp->combiner.w0; key.combine1 = rdp->combiner.w1;
     ps2_combiner_constants(rdp, &key.prim, &key.env);
     if (ps2_combiner_dynamic_alpha(rdp)) key.prim &= 0xffffff00u;
@@ -418,20 +441,20 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         bool sameMaterial = cached->valid && cached->source == key.source &&
             cached->source2 == key.source2 && cached->stride2 == key.stride2 &&
             cached->stride == key.stride && cached->width == w && cached->height == h &&
-            cached->fmt == key.fmt && cached->siz == key.siz && cached->palette == key.palette &&
+            cached->fmt == key.fmt && cached->siz == key.siz && cached->palette == key.palette && cached->mirror == key.mirror &&
             cached->combine0 == key.combine0 && cached->combine1 == key.combine1 && cached->cycle == key.cycle;
         if (sameMaterial && cached->frame != s_textureFrame &&
             (reusable < 0 || cached->used < s_cache[reusable].used)) reusable = i;
         if (cached->valid && cached->source == key.source &&
             cached->source2 == key.source2 && cached->stride2 == key.stride2 && cached->lodFrac == key.lodFrac &&
             cached->stride == key.stride && cached->width == w && cached->height == h &&
-            cached->fmt == key.fmt && cached->siz == key.siz && cached->palette == key.palette &&
+            cached->fmt == key.fmt && cached->siz == key.siz && cached->palette == key.palette && cached->mirror == key.mirror &&
             cached->combine0 == key.combine0 && cached->combine1 == key.combine1 &&
             cached->prim == key.prim && cached->env == key.env && cached->cycle == key.cycle &&
             cached->paletteHash == key.paletteHash && cached->contentHash == key.contentHash) {
             cached->used = ++s_cacheClock;
             cached->frame = s_textureFrame;
-            texture_descriptor(tile, w, h, cached->vram);
+            texture_descriptor(tile, uploadW, uploadH, cached->vram);
             tile->gsTextureLoaded = true;
             rdp->stats.textureHits++;
             return;
@@ -528,10 +551,21 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
             src, sourceStride, w, h, rdp->combiner.w0, rdp->combiner.w1, rdp->otherMode.hi,
             rdp->primColor, src[0], src[1], src[2], src[3], s_convBuf[0], s_convBuf[1], s_convBuf[2], s_convBuf[3]);
     }
+    if (mirrorS || mirrorT) {
+        for (int y = 0; y < uploadH; y++) {
+            int sy = mirrorT && y >= uploadH / 2 ? uploadH - 1 - y : y;
+            for (int x = 0; x < uploadW; x++) {
+                int sx = mirrorS && x >= uploadW / 2 ? uploadW - 1 - x : x;
+                memcpy(s_sourceRows + (y * uploadW + x) * 4,
+                       s_convBuf + (sy * w + sx) * 4, 4);
+            }
+        }
+        memcpy(s_convBuf, s_sourceRows, uploadW * uploadH * 4);
+    }
     /* ── Upload to GS VRAM ──────────────────────────────── */
     GSTEXTURE* gt = &tile->gsTexture;
-    gt->Width     = w;
-    gt->Height    = h;
+    gt->Width     = uploadW;
+    gt->Height    = uploadH;
     gt->PSM       = GS_PSM_CT32;
     gt->Mem       = (void*)s_convBuf;
     gt->Filter    = GS_FILTER_LINEAR;
@@ -552,7 +586,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         printf("[PS2 TEXTURE] VRAM cache reserved at 0x%08x (%u bytes)\n",
                (unsigned)s_textureVram, (unsigned)s_textureCacheBytes);
     }
-    u32 size = gsKit_texture_size(w, h, GS_PSM_CT32);
+    u32 size = gsKit_texture_size(uploadW, uploadH, GS_PSM_CT32);
     if (size > sizeof(s_convBuf) || size > s_textureCacheBytes) return;
     size = (size + TEXTURE_CACHE_CHUNK - 1) & ~(TEXTURE_CACHE_CHUNK - 1);
     int slot = reusable >= 0 ? reusable : 0;
