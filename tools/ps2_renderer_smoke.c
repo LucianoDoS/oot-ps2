@@ -408,6 +408,49 @@ int ps2_renderer_smoke(void) {
     if (g_rdpState.stats.submitted != beforeDraw + 1) failures++;
     rdp_setothermode(1u << 20, 0xc8113078u, &g_rdpState);
     if (ps2_combiner_texture_lerp(&g_rdpState)) failures++;
+    /* Cutout paths must combine both RGBA sources BEFORE the alpha test.
+     * One input has a hole where the other has an opaque blue texel. */
+    static u8 path0[] = {0xf8,0,0xf8,1}, path1[] = {0,0x3f,0,0x3e};
+    rdp_setcombine(0xfc262a04, 0x1f5893f8, &g_rdpState);
+    if (!ps2_combiner_path_lerp(&g_rdpState)) failures++;
+    rdp_setprimcolor(0, 0xffffffff, &g_rdpState);
+    rdp_setenvcolor(0, 255, &g_rdpState);
+    for (int i = 0; i < 2; i++) {
+        rdp_settimg(0xfd100001, (u32)(i ? path1 : path0), &g_rdpState);
+        rdp_loadtexture(0xf3, 0, (u32)i << 24, &g_rdpState);
+    }
+    ps2_texture_upload(&g_rdpState.tile[0], &g_rdpState);
+    pixels = (u8*)g_rdpState.tile[0].gsTexture.Mem;
+    if (pixels[0] || pixels[2] != 255 || pixels[3] != 128 || pixels[7]) failures++;
+    u32 pathVram = g_rdpState.tile[0].gsTexture.Vram;
+    u32 pathUploads = g_rdpState.stats.textureUploads;
+    ps2_texture_upload(&g_rdpState.tile[0], &g_rdpState);
+    if (g_rdpState.stats.textureUploads != pathUploads || g_rdpState.tile[0].gsTexture.Vram != pathVram) failures++;
+    /* The second input is RAM, not immutable ROM: mutation must invalidate. */
+    path1[1] = 0x3e;
+    ps2_texture_end_frame(&g_rdpState);
+    ps2_texture_upload(&g_rdpState.tile[0], &g_rdpState);
+    pixels = (u8*)g_rdpState.tile[0].gsTexture.Mem;
+    if (pixels[3] || g_rdpState.stats.textureUploads != pathUploads + 1) failures++;
+    rdp_setenvcolor(0, 0, &g_rdpState);
+    ps2_texture_upload(&g_rdpState.tile[0], &g_rdpState);
+    pixels = (u8*)g_rdpState.tile[0].gsTexture.Mem;
+    if (pixels[0] != 255 || pixels[2] || pixels[3] || pixels[7] != 128) failures++;
+    path1[1] = 0x3f;
+    rdp_setenvcolor(0, 128, &g_rdpState);
+    ps2_texture_upload(&g_rdpState.tile[0], &g_rdpState);
+    pixels = (u8*)g_rdpState.tile[0].gsTexture.Mem;
+    if (pixels[0] != 127 || pixels[2] != 128 || pixels[3] != 64 || pixels[7] != 64) failures++;
+    rdp_setprimcolor(255, 0xffffffff, &g_rdpState);
+    ps2_texture_upload(&g_rdpState.tile[0], &g_rdpState);
+    pixels = (u8*)g_rdpState.tile[0].gsTexture.Mem;
+    if (pixels[3] != 128 || pixels[7] != 64) failures++;
+    /* Repeated tile application emits no redundant CLAMP packet. */
+    ps2_texture_apply_tile(&g_rdpState.tile[0], &g_rdpState);
+    void* queueEnd = g_rdpState.gs->CurQueue->pool_cur;
+    ps2_texture_apply_tile(&g_rdpState.tile[0], &g_rdpState);
+    if (g_rdpState.gs->CurQueue->pool_cur != queueEnd) failures++;
+    printf("[PS2 PATH TEST] failures=%d\n", failures);
     printf("[PS2 RENDER TEST] %s: matrices, viewport, othermode, textures and palettes (%d)\n",
            failures ? "FAIL" : "PASS", failures);
     return failures;

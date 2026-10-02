@@ -4,6 +4,30 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Materiales recortados de dos texturas, estéreo y medición — 2026-10-01
+
+- Usuario confirma solucionados los huecos transparentes de la escalera.
+  Continúan pendientes parpadeos en caminos exteriores, rendimiento y audio
+  distorsionado; no se consideran resueltos por esa confirmación.
+- Añadida combinación RGBA previa al recorte para el material de dos tiles
+  RGBA16 con igual mapa usado en `spot04`. La clave de caché comprueba ambas
+  fuentes, sus bytes, strides y PRIM_LOD_FRAC. Conserva la ruta normal cuando
+  los tiles tienen mapas distintos. Pruebas EE pasan alfa cero/completo,
+  mezcla parcial, mutación de la segunda fuente y retención de la caché.
+- Retiradas dos consultas de SHADE por vértice y paquetes CLAMP redundantes
+  cuando el valor/contexto no cambia. Medición de traducción y flip cada
+  300 tareas para distinguir coste de CPU y espera de presentación.
+- `StereoData` conserva en EE los bits originales de los bytes de secuencia
+  y comandos; antes sus campos se interpretaban en orden inverso. La prueba
+  verifica cada bandera de canal fuerte, auriculares y política estéreo.
+  Esto corrige la interpretación; aún falta confirmar su impacto audible.
+- Diagnóstico renderer/audio pasa 120 fotogramas y el puente de tareas pasa
+  64 entregas con audio antes de DP. Registros:
+  `build/PS2/pcsx2-path-stereo-pass.log`, `build/PS2/pcsx2-task-profile-pass.log`.
+  El registro anterior produjo 370,136 s de PCM en 370,508 s, sin descartes;
+  esa continuidad no confirma calidad musical. Se mantiene la temporización
+  original: durante Play, R_UPDATE_RATE=3 (aproximadamente 20 FPS NTSC).
+
 ## Mezcla de suelo y reserva de audio — 2026-10-01
 
 - El material del suelo de `spot04` mezcla TEXEL0 y TEXEL1 mediante

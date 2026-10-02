@@ -7,6 +7,17 @@ static u8 bank[8192] __attribute__((aligned(16)));
 
 int ps2_audio_heap_smoke(void) {
     int failures = 0;
+    Stereo stereo;
+    stereo.asByte = 8;
+    if (!stereo.s.strongRight || stereo.s.strongLeft || stereo.s.usesHeadsetPanEffects) failures++;
+    stereo.asByte = 4;
+    if (!stereo.s.strongLeft || stereo.s.strongRight) failures++;
+    stereo.asByte = 2;
+    if (!stereo.s.stereoHeadsetEffects || stereo.s.strongRight) failures++;
+    stereo.asByte = 1;
+    if (!stereo.s.usesHeadsetPanEffects || stereo.s.strongRight) failures++;
+    stereo.asByte = 0x30;
+    if (stereo.s.bit2 != 3 || stereo.s.strongRight || stereo.s.usesHeadsetPanEffects) failures++;
     AudioHeap_InitPool(&gAudioCtx.permanentPool, bank, sizeof(bank));
     void* first = AudioHeap_AllocPermanent(FONT_TABLE, 1, 6064);
     void* second = AudioHeap_AllocPermanent(SEQUENCE_TABLE, 2, 512);

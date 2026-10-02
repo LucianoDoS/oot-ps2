@@ -8,4 +8,5 @@ mkdir -p build/PS2
     -T"$PS2SDK/ee/startup/linkfile" -Wl,-zmax-page-size=128 \
     tools/ps2_task_smoke.c src/platform/ps2/libultra_stub/osTask.c \
     src/platform/ps2/libultra_stub/osEvent.c src/platform/ps2/libultra_stub/osMessage.c \
+    src/platform/ps2/libultra_stub/osTimer.c src/platform/ps2/libultra_stub/osInterrupt.c \
     -L"$PS2SDK/ee/lib" -o build/PS2/oot_ps2_task_smoke.elf

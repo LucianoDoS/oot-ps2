@@ -50,7 +50,7 @@ static inline u8 n64_alpha_to_gs(u8 a) {
  *  w1: RRGGBBAA
  * ─────────────────────────────────────────────────────────── */
 void rdp_setprimcolor(u32 w0, u32 w1, RDPState* rdp) {
-    (void)w0;
+    rdp->primLodFrac = w0 & 255;
     rdp->primColor = w1;  /* store as RRGGBBAA */
     for (int i = 0; i < MAX_TILES; i++) rdp->tile[i].gsTextureLoaded = false;
 }
@@ -190,6 +190,14 @@ bool ps2_combiner_texture_lerp(const RDPState* rdp) {
         for (int j = 0; j < 4; j++) if (sources[j] != expected[i][j]) return false;
     }
     return true;
+}
+
+bool ps2_combiner_path_lerp(const RDPState* rdp) {
+    /* Kokiri's cutout path blends two identically mapped RGBA16 tiles.
+     * Both color and coverage depend on the pair, so two alpha-tested
+     * GS passes would discard different pixels and expose the grass. */
+    return ((rdp->otherMode.hi >> 20) & 3) == 1 &&
+           rdp->combiner.w0 == 0xfc262a04u && rdp->combiner.w1 == 0x1f5893f8u;
 }
 
 void ps2_combiner_constants(const RDPState* rdp, u32* prim, u32* env) {

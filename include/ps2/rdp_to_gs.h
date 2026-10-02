@@ -96,6 +96,7 @@ typedef struct {
 
     /* Colors */
     u32            primColor;     /* RGBA packed */
+    u8             primLodFrac;
     u32            envColor;
     u32            fogColor;
     u32            blendColor;
@@ -119,6 +120,9 @@ typedef struct {
     u64            gs_tex1;
     u64            gs_alpha;
     u64            gs_test;
+    u64            gs_clamp;
+    u8             gs_clamp_context;
+    bool           gs_clamp_valid;
     struct {
         u32 triangles, clipped, culled, invalid, textureFailed, submitted, backgrounds;
         u32 textureHits, textureUploads, textureWaits;
@@ -212,6 +216,7 @@ bool ps2_combiner_uses_shade(const RDPState* rdp, bool alpha);
 void ps2_combiner_constants(const RDPState* rdp, u32* prim, u32* env);
 bool ps2_combiner_dynamic_alpha(const RDPState* rdp);
 bool ps2_combiner_texture_lerp(const RDPState* rdp);
+bool ps2_combiner_path_lerp(const RDPState* rdp);
 void rdp_setprimcolor(u32 w0, u32 w1, RDPState* rdp);
 void rdp_setenvcolor(u32 w0, u32 w1, RDPState* rdp);
 void rdp_setfogcolor(u32 w0, u32 w1, RDPState* rdp);

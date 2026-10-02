@@ -46,6 +46,9 @@ static u8 s_sourceRows[sizeof(s_convBuf)] __attribute__((aligned(128)));
 static u32 s_clut[256] __attribute__((aligned(128)));
 typedef struct TextureCacheEntry {
     uintptr_t source;
+    uintptr_t source2;
+    u32 stride2;
+    u8 lodFrac;
     u32 stride, combine0, combine1, prim, env, cycle, paletteHash, contentHash;
     u32 vram, size, used;
     u16 width, height;
@@ -148,10 +151,16 @@ void ps2_texture_apply_tile(TileDescriptor* tile, RDPState* rdp) {
     gs->Clamp->WMS = modeS; gs->Clamp->WMT = modeT;
     gs->Clamp->MINU = minS; gs->Clamp->MAXU = maxS;
     gs->Clamp->MINV = minT; gs->Clamp->MAXV = maxT;
-    u64* packet = gsKit_heap_alloc(gs, 1, 16, GIF_AD);
-    packet[0] = GIF_TAG_AD(1); packet[1] = GIF_AD;
-    packet[2] = GS_SETREG_CLAMP(modeS, modeT, minS, maxS, minT, maxT);
-    packet[3] = GS_CLAMP_1 + gs->PrimContext;
+    u64 clamp = GS_SETREG_CLAMP(modeS, modeT, minS, maxS, minT, maxT);
+    if (!rdp->gs_clamp_valid || rdp->gs_clamp != clamp || rdp->gs_clamp_context != gs->PrimContext) {
+        u64* packet = gsKit_heap_alloc(gs, 1, 16, GIF_AD);
+        packet[0] = GIF_TAG_AD(1); packet[1] = GIF_AD;
+        packet[2] = clamp;
+        packet[3] = GS_CLAMP_1 + gs->PrimContext;
+        rdp->gs_clamp = clamp;
+        rdp->gs_clamp_context = gs->PrimContext;
+        rdp->gs_clamp_valid = true;
+    }
     tile->gsTexture.Filter = ((rdp->otherMode.hi >> 12) & 3) ? GS_FILTER_LINEAR : GS_FILTER_NEAREST;
 }
 
@@ -365,6 +374,22 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
     ps2_combiner_constants(rdp, &key.prim, &key.env);
     if (ps2_combiner_dynamic_alpha(rdp)) key.prim &= 0xffffff00u;
     key.cycle = (rdp->otherMode.hi >> 20) & 3;
+    const TileDescriptor* second = &rdp->tile[(rdp->textureTile + 1) & 7];
+    const u8* secondSrc = rdp->textureLoads[second->tmem].source;
+    if (!secondSrc) secondSrc = second->addr;
+    bool pathPair = ps2_combiner_path_lerp(rdp) && tile == &rdp->tile[rdp->textureTile] &&
+        tile->fmt == G_IM_FMT_RGBA && tile->siz == G_IM_SIZ_16b && secondSrc &&
+        second->fmt == tile->fmt && second->siz == tile->siz &&
+        second->width == w && second->height == h &&
+        second->uls == tile->uls && second->ult == tile->ult &&
+        second->shifts == tile->shifts && second->shiftt == tile->shiftt &&
+        second->cms == tile->cms && second->cmt == tile->cmt &&
+        second->masks == tile->masks && second->maskt == tile->maskt;
+    if (pathPair) {
+        key.source2 = (uintptr_t)secondSrc;
+        key.stride2 = rdp->textureLoads[second->tmem].stride;
+        key.lodFrac = rdp->primLodFrac;
+    }
     if (tile->fmt == G_IM_FMT_CI) {
         unsigned first = tile->siz == G_IM_SIZ_4b ? tile->palette * 16 : 0;
         unsigned count = tile->siz == G_IM_SIZ_4b ? 16 : 256;
@@ -376,10 +401,15 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         const u8* row = src + y * (sourceStride ? sourceStride : rowBytes);
         for (u32 x = 0; x < rowBytes; x++) hash = (hash ^ row[x]) * 16777619u;
     }
+    if (pathPair) for (int y = 0; y < h; y++) {
+        const u8* row = secondSrc + y * (key.stride2 ? key.stride2 : rowBytes);
+        for (u32 x = 0; x < rowBytes; x++) hash = (hash ^ row[x]) * 16777619u;
+    }
     key.contentHash = hash;
     for (int i = 0; i < TEXTURE_CACHE_SLOTS; i++) {
         TextureCacheEntry* cached = &s_cache[i];
         if (cached->valid && cached->source == key.source &&
+            cached->source2 == key.source2 && cached->stride2 == key.stride2 && cached->lodFrac == key.lodFrac &&
             cached->stride == key.stride && cached->width == w && cached->height == h &&
             cached->fmt == key.fmt && cached->siz == key.siz && cached->palette == key.palette &&
             cached->combine0 == key.combine0 && cached->combine1 == key.combine1 &&
@@ -453,13 +483,29 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
 
     /* Bake constant RDP inputs into texels. Shade modulation remains on the
      * GS vertices; full multitexture and additive shade terms need more passes. */
-    const u8 (*lookup)[256] = combiner_lookup(rdp);
-    for (int i = 0; i < w * h; i++) {
+    if (pathPair) {
+        unsigned factor = rdp->envColor & 255;
+        for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
+            u8* pixel = s_convBuf + (y * w + x) * 4;
+            u16 raw = read_be16(secondSrc + y * (key.stride2 ? key.stride2 : rowBytes) + x * 2);
+            u8 texel[4] = {(raw >> 11) & 31, (raw >> 6) & 31, (raw >> 1) & 31, (raw & 1) ? 128 : 0};
+            for (int c = 0; c < 3; c++) {
+                unsigned value = (texel[c] << 3) | (texel[c] >> 2);
+                pixel[c] += ((int)value - pixel[c]) * (int)factor / 255;
+            }
+            int alpha = pixel[3] + ((int)texel[3] - pixel[3]) * (int)factor / 255;
+            alpha += texel[3] * key.lodFrac / 255;
+            pixel[3] = alpha > 128 ? 128 : alpha;
+        }
+    } else {
+      const u8 (*lookup)[256] = combiner_lookup(rdp);
+      for (int i = 0; i < w * h; i++) {
         u8* pixel = s_convBuf + i * 4;
         pixel[0] = lookup[0][pixel[0]];
         pixel[1] = lookup[1][pixel[1]];
         pixel[2] = lookup[2][pixel[2]];
         pixel[3] = lookup[3][pixel[3] == 128 ? 255 : pixel[3] * 2];
+      }
     }
     static unsigned logoTrace;
     if (tile->fmt == G_IM_FMT_RGBA && tile->siz == G_IM_SIZ_32b && w == 160 && logoTrace++ < 3) {
@@ -603,6 +649,8 @@ void rdp_loadtexture(u8 op, u32 w0, u32 w1, RDPState* rdp) {
             rdp->tile[i].gsTextureLoaded = false;
         }
     }
+    if (ps2_combiner_path_lerp(rdp) && rdp->tile[(rdp->textureTile + 1) & 7].tmem == tmem)
+        rdp->tile[rdp->textureTile].gsTextureLoaded = false;
 }
 
 /* ─────────────────────────────────────────────────────────── *

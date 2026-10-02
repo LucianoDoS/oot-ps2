@@ -77,13 +77,29 @@ static volatile u32 s_dpStatus;
 static OSTask s_graphicsTask;
 static int s_gfxThread = -1, s_gfxWake = -1, s_gfxFree = -1;
 static u8 s_gfxStack[32 * 1024] __attribute__((aligned(64)));
+extern u64 osGetTime(void);
 
 static void graphics_worker(void* arg) {
     (void)arg;
     for (;;) {
         WaitSema(s_gfxWake);
+        u64 begin = osGetTime();
         rdp_to_gs_exec((const Gfx*)s_graphicsTask.t.data_ptr);
+        u64 translated = osGetTime();
         rdp_to_gs_flip();
+        u64 flipped = osGetTime();
+        static unsigned frames;
+        static u64 translationTicks, flipTicks, worstTicks;
+        translationTicks += translated - begin;
+        flipTicks += flipped - translated;
+        if (translated - begin > worstTicks) worstTicks = translated - begin;
+        if (++frames % 300 == 0) {
+            printf("[PS2 GFX PERF] translateUs=%u flipUs=%u worstTranslateUs=%u\n",
+                (unsigned)(translationTicks * 1000000 / (46875000ull * 300)),
+                (unsigned)(flipTicks * 1000000 / (46875000ull * 300)),
+                (unsigned)(worstTicks * 1000000 / 46875000));
+            translationTicks = flipTicks = worstTicks = 0;
+        }
         s_dpStatus &= ~(1u << 5);
         SignalSema(s_gfxFree);
         ps2_os_fire_event(PS2_OS_EVENT_DP);

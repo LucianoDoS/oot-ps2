@@ -13,6 +13,7 @@ extern int osRecvMesg(Queue*, void**, int);
 extern void osSetEventMesg(int, Queue*, void*);
 extern void osSpTaskStartGo(Task*);
 extern u32 osDpGetStatus(void);
+extern void ps2_timer_init(void);
 static volatile int drawing, audio, rendered, failures;
 void rdp_to_gs_exec(const Gfx* data) {
     if (!data || *(const u32*)data != 0x12345678) failures++;
@@ -25,6 +26,7 @@ void PS2Audio_ProcessTask(void* data, u32 size) {
     audio++;
 }
 int main(void) {
+    ps2_timer_init();
     Queue queue;
     void* messages[8], *message;
     osCreateMesgQueue(&queue, messages, 8);

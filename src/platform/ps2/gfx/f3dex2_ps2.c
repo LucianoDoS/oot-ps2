@@ -300,12 +300,12 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
     u64 c0, c1, c2;
     u64* colors[3] = {&c0, &c1, &c2};
     RSPVertex* vertices[3] = {v0, v1, v2};
+    bool rgbShade = rsp->texEnabled && ps2_combiner_uses_shade(rdp, false);
+    bool alphaShade = rsp->texEnabled && ps2_combiner_uses_shade(rdp, true);
     for (int i = 0; i < 3; i++) {
         RSPVertex* v = vertices[i];
         u8 shade[4] = {v->cr, v->cg, v->cb, v->ca}, color[4];
         if (rsp->texEnabled) {
-            bool rgbShade = ps2_combiner_uses_shade(rdp, false);
-            bool alphaShade = ps2_combiner_uses_shade(rdp, true);
             color[0] = rgbShade ? (shade[0] * 128u / 255) : 128;
             color[1] = rgbShade ? (shade[1] * 128u / 255) : 128;
             color[2] = rgbShade ? (shade[2] * 128u / 255) : 128;
@@ -562,9 +562,9 @@ void f3dex2_geometrymode(u32 w0, u32 w1, RSPState* rsp) {
  *    w1[31:16] = escala S   w1[15:0] = escala T   (0.16 fijo, 1.0 = 0xFFFF)
  * ───────────────────────────────────────────────────────────────── */
 void f3dex2_texture(u32 w0, u32 w1, RSPState* rsp, RDPState* rdp) {
-    (void)rdp;
     rsp->texEnabled = (((w0 >> 1) & 0x7F) != 0);
     rsp->texTile    = (u8)((w0 >> 8) & 0x7);
+    rdp->textureTile = rsp->texTile;
 
     /* 0xFFFF representa 1.0, no 0x7FFF. La versión anterior dividía
      * entre 32767 y por tanto duplicaba la escala de TODAS las
