@@ -93,6 +93,11 @@ static bool s_nativeOutput;
 static u64 s_pcmStart, s_pcmLast, s_pcmBytes;
 static unsigned s_pcmLate, s_pcmDropped;
 static unsigned s_iopQueued;
+static unsigned s_outputRate = AUDIO_SAMPLE_RATE;
+static unsigned s_outputPhase;
+static s16 s_previousL, s_previousR;
+static bool s_outputHistory;
+static s16 s_outputBuffer[8192] __attribute__((aligned(64)));
 extern u64 osGetTime(void);
 static s16         s_mixBuf[AUDIO_BUFFER_BYTES / sizeof(s16)]
                             __attribute__((aligned(64)));
@@ -116,6 +121,10 @@ void PS2Audio_Init(void) {
     s_pcmStart = s_pcmLast = s_pcmBytes = 0;
     s_pcmLate = s_pcmDropped = 0;
     s_iopQueued = 0;
+    s_outputRate = AUDIO_SAMPLE_RATE;
+    s_outputPhase = 0;
+    s_outputHistory = false;
+    s_audfmt.freq = AUDIO_SAMPLE_RATE;
 
     /* audsrv_init() ya NO se llama aquí: lo hace ps2_main.c una sola
      * vez, después de cargar audsrv.irx. Llamarla dos veces dejaba el
@@ -214,11 +223,17 @@ void PS2Audio_Update(void) {
 
 /* The game's audio interface queues native stereo PCM through audsrv. */
 s32 osAiSetFrequency(u32 frequency) {
-    if (!s_audioReady) return -1;
+    if (!s_audioReady || !frequency || frequency > 48000) return -1;
     struct audsrv_fmt_t format = s_audfmt;
-    format.freq = frequency;
+    /* Feed SPU2's native rate. audsrv's 32 kHz path repeats samples and
+     * restarts its 341-to-512 mapping at every hardware block. Keep the
+     * game's synthesis rate, but resample its PCM continuously on EE. */
+    format.freq = 48000;
     if (audsrv_set_format(&format) != 0) return -1;
-    s_audfmt = format;
+    s_audfmt.freq = frequency;
+    s_outputRate = 48000;
+    s_outputPhase = 0;
+    s_outputHistory = false;
     s_nativeOutput = true;
     return (s32)frequency;
 }
@@ -231,21 +246,53 @@ u32 osAiGetLength(void) {
      * playback reservoir. Exposing the entire reservoir makes the game's
      * adaptive synthesizer choose its minimum block until it underruns.
      * Keep 20 ms on the IOP and report only audio above that reserve. */
+    unsigned nativeBytes = ((u64)s_iopQueued * s_audfmt.freq / s_outputRate) & ~3u;
     unsigned reserve = (unsigned)s_audfmt.freq * 4 / 50;
-    return s_iopQueued > reserve ? s_iopQueued - reserve : 0;
+    return nativeBytes > reserve ? nativeBytes - reserve : 0;
 }
 
 int PS2Audio_SubmitBuffer(void* buffer, unsigned int size) {
     if (!s_audioReady || !buffer || (size & 3) || size > 0x40000) return -1;
-    if (audsrv_available() < (int)size) { s_pcmDropped++; return -1; }
+    unsigned outputSize = size;
+    if (s_outputRate != (unsigned)s_audfmt.freq) {
+        u64 units = (u64)(size / 4) * s_outputRate;
+        unsigned frames = units > s_outputPhase ?
+            (units - s_outputPhase + s_audfmt.freq - 1) / s_audfmt.freq : 0;
+        if (frames > sizeof(s_outputBuffer) / 4) return -1;
+        outputSize = frames * 4;
+    }
+    if (audsrv_available() < (int)outputSize) { s_pcmDropped++; return -1; }
     s_nativeOutput = true;
-    int result = audsrv_play_audio((const char*)buffer, size);
+    const s16* output = buffer;
+    if (s_outputRate != (unsigned)s_audfmt.freq) {
+        const s16* source = buffer;
+        unsigned cursor = 0;
+        for (unsigned frame = 0; frame < size / 4; frame++) {
+            s16 left = source[frame * 2], right = source[frame * 2 + 1];
+            if (!s_outputHistory) {
+                s_previousL = left; s_previousR = right;
+                s_outputHistory = true;
+            }
+            while (s_outputPhase < s_outputRate) {
+                unsigned complement = s_outputRate - s_outputPhase;
+                s_outputBuffer[cursor++] = ((s32)s_previousL * (s32)complement +
+                    (s32)left * (s32)s_outputPhase) / (s32)s_outputRate;
+                s_outputBuffer[cursor++] = ((s32)s_previousR * (s32)complement +
+                    (s32)right * (s32)s_outputPhase) / (s32)s_outputRate;
+                s_outputPhase += s_audfmt.freq;
+            }
+            s_outputPhase -= s_outputRate;
+            s_previousL = left; s_previousR = right;
+        }
+        output = s_outputBuffer;
+    }
+    int result = audsrv_play_audio((const char*)output, outputSize);
     u64 now = osGetTime();
     if (!s_pcmStart) s_pcmStart = now;
     if (s_pcmLast && (now - s_pcmLast) * (u64)s_audfmt.freq * 4 > (u64)size * 46875000 * 2)
         s_pcmLate++;
     s_pcmLast = now;
-    if (result == (int)size) s_pcmBytes += size;
+    if (result == (int)outputSize) s_pcmBytes += outputSize;
     else s_pcmDropped++;
     static unsigned buffers;
     if (++buffers <= 3 || buffers % 300 == 0) {
@@ -256,12 +303,12 @@ int PS2Audio_SubmitBuffer(void* buffer, unsigned int size) {
             if (amplitude > peak) peak = amplitude;
         }
         unsigned elapsed = (now - s_pcmStart) * 1000 / 46875000;
-        unsigned duration = s_pcmBytes * 1000 / ((u64)s_audfmt.freq * 4);
+        unsigned duration = s_pcmBytes * 1000 / ((u64)s_outputRate * 4);
         printf("[PS2 PCM] buffer=%u bytes=%u peak=%u sent=%d elapsedMs=%u audioMs=%u late=%u dropped=%u queueMs=%u\n",
                buffers, size, peak, result, elapsed, duration, s_pcmLate, s_pcmDropped,
-               s_iopQueued * 1000 / ((unsigned)s_audfmt.freq * 4));
+               s_iopQueued * 1000 / (s_outputRate * 4));
     }
-    return result == (int)size ? 0 : -1;
+    return result == (int)outputSize ? 0 : -1;
 }
 
 /* ─────────────────────────────────────────────────────────── *

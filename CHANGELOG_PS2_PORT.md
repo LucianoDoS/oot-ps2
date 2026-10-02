@@ -4,6 +4,22 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Salida PCM continua a 48 kHz — 2026-10-01
+
+- Usuario confirma que el FIR anterior no eliminó el ruido/chasquidos.
+  No se considera resuelto el audio por el resultado de la prueba FIR.
+- La síntesis conserva 32 kHz; la salida EE interpola PCM estéreo a 48 kHz
+  manteniendo fase y muestra anterior entre bloques. audsrv recibe su formato
+  nativo, evitando su conversión de 341 a 512 muestras repetidas por bloque.
+  Referencia: [upsamplers audsrv](https://github.com/ps2dev/ps2sdk/blob/master/iop/sound/audsrv/src/upsamplers.c).
+- El feedback AI convierte la cola IOP a bytes de la frecuencia del juego
+  antes de restar su reserva. La capacidad se comprueba con el tamaño de
+  salida completo antes de modificar la fase; se preservan ambos canales.
+- Prueba EE verifica interpolación de una rampa estéreo, salida continua
+  frente a corte tras 11 muestras, rechazo sin avanzar estado, 48 kHz
+  directo y feedback AI. Diagnóstico completo pasa 120 fotogramas:
+  `build/PS2/pcsx2-output-resample-pass.log`. Falta confirmar calidad audible.
+
 ## Oclusión tras ampliar VRAM y filtro de audio — 2026-10-01
 
 - Corregida regresión: `gsKit_init_screen` cambia CT16/Z24 a CT16/Z16.
