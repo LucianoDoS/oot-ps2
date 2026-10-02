@@ -37,7 +37,8 @@ y Link montado en Epona. Corregida la matriz identidad nativa que deformaba el
 escenario y el caballo. El renderer usa STQ para conservar la repetición y
 perspectiva de las texturas; las pruebas EE verifican coordenadas, shifts,
 paletas CI4 e IA4. Añadida generación esférica/lineal de coordenadas con LookAt.
-El framebuffer de color usa RGB5551, conservando profundidad de 24 bits.
+El framebuffer de color usa RGB5551 CT16S, conservando profundidad de 24 bits
+después de inicializar gsKit. CT16 cambiaba automáticamente la profundidad a 16 bits.
 La caché comparte hasta 1792 KiB de VRAM entre 256 entradas según su tamaño y reutiliza
 tablas del combinador; valida los bytes de fuentes y paletas para detectar
 texturas modificadas en RAM. Reutiliza variantes de fotogramas anteriores,

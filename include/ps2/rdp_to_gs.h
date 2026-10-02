@@ -253,5 +253,6 @@ void ps2_fog_apply_xyz(gs_xyz2* xyz, float z, const RSPState* rsp);
 /* Z-buffer (ps2_zbuffer.c) */
 void ps2_zbuffer_update_test(RDPState* rdp);
 void ps2_zbuffer_set_writes(RDPState* rdp, bool enable);
+u32 ps2_zbuffer_value(const RDPState* rdp, float normalizedDepth);
 
 #endif /* RDP_TO_GS_H */

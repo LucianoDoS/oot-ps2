@@ -34,6 +34,16 @@
 #include "ps2_types.h"
 #include "rdp_to_gs.h"
 
+/* Use the initialized depth format, not the requested one: gsKit may
+ * change it. Sending 24-bit values to Z16 truncates them and wraps Z. */
+u32 ps2_zbuffer_value(const RDPState* rdp, float normalizedDepth) {
+    u32 maximum = (rdp->gs->PSMZ == GS_PSMZ_16 || rdp->gs->PSMZ == GS_PSMZ_16S) ?
+        0xffffu : 0xffffffu;
+    if (normalizedDepth <= 0.0f) return maximum;
+    if (!(normalizedDepth < 1.0f)) return 0;
+    return (u32)((1.0f - normalizedDepth) * maximum);
+}
+
 void ps2_zbuffer_update_test(RDPState* rdp) {
     /* Punto único de escritura del registro TEST */
     rdp_apply_othermode(rdp);

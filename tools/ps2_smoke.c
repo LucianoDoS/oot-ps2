@@ -8,7 +8,7 @@
 #include "rdp_to_gs.h"
 #include "ps2_segment.h"
 #ifndef PS2_SMOKE_COLOR_PSM
-#define PS2_SMOKE_COLOR_PSM GS_PSM_CT16
+#define PS2_SMOKE_COLOR_PSM GS_PSM_CT16S
 #endif
 
 uintptr_t gSegments[16];
@@ -125,7 +125,11 @@ int main(void) {
     gs->ZBuffering = GS_SETTING_ON;
     gs->DoubleBuffering = GS_SETTING_ON;
     gsKit_init_screen(gs);
-    printf("[PS2 SMOKE] GS initialized\n");
+    printf("[PS2 SMOKE] GS initialized color=%02x depth=%02x\n", gs->PSM, gs->PSMZ);
+    if (gs->PSM == GS_PSM_CT16S && gs->PSMZ != GS_PSMZ_24) {
+        printf("[PS2 SMOKE] FAIL: requested 24-bit depth was changed\n");
+        SleepThread(); return 1;
+    }
     fflush(stdout);
     gsKit_mode_switch(gs, GS_ONESHOT);
     rdp_to_gs_init(gs);

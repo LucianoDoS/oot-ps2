@@ -13,3 +13,7 @@ address arithmetic for real EE pointers in memory.h, and route audio DMA
 through those helpers in alist.c. The native scheduler owns task completion.
 The OoT opcode table also implements signed eight-bit PCM (opcode 23), with
 fixtures verifying its history and output samples on the EE.
+
+The filter uses consecutive native samples and taps on PS2. Upstream's
+unrolled filter directly indexes word-swizzled pairs; an impulse spanning
+two synthesis blocks verifies tap order and preservation of raw history.

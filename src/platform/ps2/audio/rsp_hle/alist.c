@@ -808,11 +808,43 @@ void alist_filter(
     int16_t* in1 = dram_u16(hle, address);
     int16_t* in2 = (int16_t*)(hle->alist_buffer + dmem);
 
+#ifdef PLATFORM_PS2
+    if ((count & 15) || count > sizeof(outbuff) ||
+        (unsigned)dmem + count > sizeof(hle->alist_buffer)) {
+        HleWarnMessage(hle->user_defined, "Filter outside synthesis buffer");
+        return;
+    }
+    if (!count) return;
+#endif
 
     for (x = 0; x < 8; ++x) {
         int32_t v = (lutt5[x] + lutt6[x]) >> 1;
         lutt5[x] = lutt6[x] = v;
     }
+
+#ifdef PLATFORM_PS2
+    /* The upstream unrolled filter addresses word-swizzled sample pairs
+     * directly, unlike the other routines that honor S/S16. EE samples
+     * and coefficients are consecutive: tap k uses input[n-k]. Keep the
+     * last eight raw inputs, not the filtered output, across audio ticks. */
+    for (x = 0; x < count; x += 16) {
+        for (int sample = 0; sample < 8; sample++) {
+            int64_t value = 0x4000;
+            for (int tap = 0; tap < 8; tap++) {
+                int index = sample - tap;
+                int16_t input = index >= 0 ? in2[index] : in1[8 + index];
+                value += (int32_t)input * lutt6[tap];
+            }
+            outp[sample] = (int16_t)(value >> 15);
+        }
+        in1 = in2;
+        in2 += 8;
+        outp += 8;
+    }
+    memcpy(dram_u8(hle, address), in2 - 8, 16);
+    memcpy(hle->alist_buffer + dmem, outbuff, count);
+    return;
+#endif
 
     for (x = 0; x < count; x += 16) {
         int32_t v[8];

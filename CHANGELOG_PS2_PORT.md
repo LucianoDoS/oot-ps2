@@ -4,11 +4,34 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Oclusión tras ampliar VRAM y filtro de audio — 2026-10-01
+
+- Corregida regresión: `gsKit_init_screen` cambia CT16/Z24 a CT16/Z16.
+  El renderer seguía enviando Z de 24 bits y el truncamiento rompía el orden
+  de profundidad. Se usa CT16S/Z24 para conservar RGB5551, precisión y caché
+  de 1792 KiB. Se registra el formato efectivo tras inicializar la pantalla.
+  Referencia: [gsKit init](https://github.com/ps2dev/gsKit/blob/master/ee/gs/src/gsInit.c).
+- La conversión de profundidad consulta el formato efectivo, limita sus
+  extremos y soporta también Z16 sin desbordamientos. Prueba EE recorre
+  65537 profundidades en cuatro formatos y exige orden monótono y límites.
+- El filtro FIR importado indexaba directamente pares de muestras y
+  coeficientes con el orden de palabras de memoria emulada, aunque los
+  buffers EE son consecutivos. La ruta PS2 usa muestras n-k y conserva
+  los ocho samples de entrada anteriores. El impulso de dos bloques falla
+  en 9 muestras antes del cambio y pasa con cero diferencias después.
+- Diagnóstico EE completo pasa 120 fotogramas con color=0a, depth=01
+  (CT16S/Z24), recortes, caché y audio. Registro:
+  `build/PS2/pcsx2-depth-filter-pass.log`.
+- La versión CT16 anterior redujo recargas en el fotograma 600 del título
+  de 102 a 1; la media de traducción del bloque pasó de 54003 a 29027 us.
+  Es una comparación del título, no una medición del exterior ni una
+  confirmación de calidad audible. Falta validar oclusión y caminos jugando.
+
 ## VRAM y retención de texturas animadas — 2026-10-01
 
 - Color GS pasa de CT24 (almacenado en palabras de 32 bits) a RGB5551 CT16,
-  el formato del framebuffer original. Se conservan salida 640×448 y Z24;
-  no se reduce la precisión de profundidad. La reserva de texturas crece de
+  el formato del framebuffer original. Se conservan salida 640×448 y se solicita Z24;
+  la regresión del formato efectivo se corrige en la entrada anterior. La reserva crece de
   704 a 1792 KiB, limitada al espacio realmente disponible menos 32 KiB.
   Referencia de tamaños: [gsKit](https://github.com/ps2dev/gsKit/blob/master/ee/gs/src/gsTexture.c).
 - Una versión anterior de la misma fuente/material se reutiliza al cambiar

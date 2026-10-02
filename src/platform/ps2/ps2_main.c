@@ -148,7 +148,8 @@ void ps2_init_gs(void) {
     g_gsGlobal->Height    = PS2_SCREEN_H;
     /* OoT's native framebuffer is RGB5551. CT24 occupies 32-bit GS words;
      * CT16 frees over 1 MiB for textures while retaining 24-bit Z precision. */
-    g_gsGlobal->PSM       = GS_PSM_CT16;
+    /* CT16S keeps RGB5551 storage without gsKit's CT16 -> Z16 override. */
+    g_gsGlobal->PSM       = GS_PSM_CT16S;
     g_gsGlobal->PSMZ      = GS_PSMZ_24;
     g_gsGlobal->ZBuffering       = GS_SETTING_ON;
     g_gsGlobal->DoubleBuffering  = GS_SETTING_ON;
@@ -162,6 +163,8 @@ void ps2_init_gs(void) {
     dmaKit_chan_init(DMA_CHANNEL_TOSPR);
 
     gsKit_init_screen(g_gsGlobal);
+    printf("[PS2 GS FORMAT] color=%02x depth=%02x textureStart=%08x\n",
+           g_gsGlobal->PSM, g_gsGlobal->PSMZ, g_gsGlobal->CurrentPointer);
     gsKit_mode_switch(g_gsGlobal, GS_ONESHOT);
 
     gsKit_clear(g_gsGlobal, GS_SETREG_RGBAQ(0, 0, 0, 0x80, 0));

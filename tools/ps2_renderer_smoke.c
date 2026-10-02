@@ -24,6 +24,22 @@ static void matrix(short* out, float scale, float translate) {
 
 int ps2_renderer_smoke(void) {
     int failures = 0;
+    int initializedDepth = g_rdpState.gs->PSMZ;
+    const int formats[] = {GS_PSMZ_16, GS_PSMZ_16S, GS_PSMZ_24, GS_PSMZ_32};
+    for (unsigned format = 0; format < sizeof(formats)/sizeof(formats[0]); format++) {
+        g_rdpState.gs->PSMZ = formats[format];
+        u32 maximum = format < 2 ? 0xffff : 0xffffff;
+        u32 previous = maximum;
+        for (unsigned step = 0; step <= 65536; step++) {
+            u32 depth = ps2_zbuffer_value(&g_rdpState, step / 65536.0f);
+            if (depth > maximum || depth > previous) failures++;
+            previous = depth;
+        }
+        if (ps2_zbuffer_value(&g_rdpState, -1) != maximum ||
+            ps2_zbuffer_value(&g_rdpState, 2) != 0 || previous != 0) failures++;
+    }
+    g_rdpState.gs->PSMZ = initializedDepth;
+    printf("[PS2 DEPTH TEST] initialized=%02x monotonic failures=%d\n", initializedDepth, failures);
     const u8 texel[4] = {128, 64, 32, 200}, shade[4] = {80, 100, 120, 140};
     u8 combined[4];
     rdp_setcombine(0xfcffffff, 0xfffdf6fb, &g_rdpState); /* PRIMITIVE */

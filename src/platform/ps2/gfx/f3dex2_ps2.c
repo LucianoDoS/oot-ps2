@@ -322,9 +322,9 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
      * El GS usa 0 = lejos y 0xFFFFFF = cerca (al revés que N64), por
      * eso se invierte. Antes se mandaba sin invertir, con lo que el
      * z-test habría descartado justo lo que tocaba dibujar. */
-    u32 z0 = (u32)((1.0f - v0->sz) * 16777215.0f);
-    u32 z1 = (u32)((1.0f - v1->sz) * 16777215.0f);
-    u32 z2 = (u32)((1.0f - v2->sz) * 16777215.0f);
+    u32 z0 = ps2_zbuffer_value(rdp, v0->sz);
+    u32 z1 = ps2_zbuffer_value(rdp, v1->sz);
+    u32 z2 = ps2_zbuffer_value(rdp, v2->sz);
     bool fog = ps2_fog_enabled(rdp, rsp);
 
     if (rsp->texEnabled) {
