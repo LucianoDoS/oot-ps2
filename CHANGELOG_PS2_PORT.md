@@ -4,6 +4,30 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Sincronización de fotogramas GS — 2026-10-02
+
+- Usuario confirma que ya oye algunos efectos antes ausentes; la voz de
+  Link se corta mientras la música continúa. El audio no se da por corregido.
+- Solo en PS2, el planificador deja de esperar por los buffers ficticios de
+  N64 después del aviso DP_DONE: el hilo gráfico ya terminó la presentación
+  del GS. La admisión de nuevas tareas respeta updateRate desde su inicio
+  anterior (20 Hz con updateRate=3, 30 Hz con 2, 60 Hz con 1), sin acumular recuperaciones tras
+  un fotograma lento. Se conservan la exclusión DP y prioridad de audio,
+  además de la actualización lógica VI y del framebuffer de fallos.
+- Prueba del planificador de producción pasa límites de 20/30 Hz,
+  fotogramas tardíos, prioridad de audio, DP ocupado, tareas de sincronización
+  y vuelta del contador. Diagnóstico completo: 120 fotogramas y cero fallos,
+  `build/PS2/pcsx2-sched-pass.log`. Build del juego: 716 objetos.
+- Comparación de la secuencia del título alrededor del fotograma 600,
+  con las mismas cuentas de geometría (1608 triángulos, 691 dibujos): el
+  período CPU pasa de 61,4 ms a 50,6 ms, cerca del límite de 20 FPS.
+  Traducción gráfica permanece en unos 31 ms. La partida exterior (escena
+  85) todavía tiene muestras de 66–102 ms por fotograma, según cámara y
+  geometría: no se ha alcanzado una tasa estable de 20 FPS fuera de la casa.
+  Este cambio no corrige la voz entrecortada.
+- Versión abierta con ventana visible y memory card existente. Respaldo
+  del ELF anterior: `build/PS2-ntsc12/oot_ps2-before-gs-pacing.elf`.
+
 ## Secuencias de sonido y caché de lecturas — 2026-10-02
 
 - Usuario confirma que el audio interno capturado se escucha limpio, pero

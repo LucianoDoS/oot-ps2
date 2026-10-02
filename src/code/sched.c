@@ -65,6 +65,15 @@ OSTime sRSPAudioTimeStart;
 OSTime sRSPOtherTimeStart;
 OSTime sRDPTimeStart;
 
+#if PLATFORM_PS2
+/* GS owns the real double buffers and DP_DONE arrives after its flip. The
+ * CPU-side N64 framebuffer pointers are bookkeeping only. Pace admission
+ * from the previous task's start, rather than delaying it again after GS
+ * has already waited for vblank. Late frames do not accumulate catch-up. */
+static u32 sPs2LastGfxRetrace;
+static u8 sPs2GfxStarted;
+#endif
+
 #if OOT_VERSION < PAL_1_0 || DEBUG_FEATURES
 vs32 sSchedDebugPrintfEnabled = false;
 
@@ -263,6 +272,16 @@ OSScTask* Sched_GfxTaskFramebufferValid(Scheduler* sc, OSScTask* task) {
         return NULL;
     }
 
+#if PLATFORM_PS2
+    if (task->list.t.type == M_GFXTASK && task->framebuffer != NULL) {
+        u32 interval = task->framebuffer->updateRate > 0 ? task->framebuffer->updateRate : 1;
+        if (sPs2GfxStarted && (u32)((u32)sc->retraceCount - sPs2LastGfxRetrace) < interval) {
+            return NULL;
+        }
+    }
+    return task;
+#else
+
     // If there are pending swaps, wait until there are none (within 2 VI)
 
     if (sc->pendingSwapBuf1 != NULL) {
@@ -298,6 +317,7 @@ OSScTask* Sched_GfxTaskFramebufferValid(Scheduler* sc, OSScTask* task) {
     }
 
     return task;
+#endif
 }
 
 /**
@@ -351,6 +371,12 @@ s32 Sched_Schedule(Scheduler* sc, OSScTask** spTaskOut, OSScTask** dpTaskOut, s3
         } else if (state == (OS_SC_SP | OS_SC_DP)) {
             // Both the RSP and RDP are available, check requested framebuffer
             if (gfxTask->framebuffer == NULL || Sched_GfxTaskFramebufferValid(sc, gfxTask) != NULL) {
+#if PLATFORM_PS2
+                if (gfxTask->list.t.type == M_GFXTASK && gfxTask->framebuffer != NULL) {
+                    sPs2LastGfxRetrace = (u32)sc->retraceCount;
+                    sPs2GfxStarted = true;
+                }
+#endif
                 // Return next graphics task
                 *spTaskOut = *dpTaskOut = gfxTask;
                 // RSP and RDP both required
@@ -374,6 +400,13 @@ s32 Sched_Schedule(Scheduler* sc, OSScTask** spTaskOut, OSScTask** dpTaskOut, s3
  * @see Sched_HandleRetrace
  */
 void Sched_SetNextFramebufferFromTask(Scheduler* sc, OSScTask* task) {
+#if PLATFORM_PS2
+    /* The worker has completed the real GS flip before signalling DP_DONE.
+     * Preserve VI/fault bookkeeping without a second presentation wait. */
+    Sched_SwapFrameBuffer(sc, task->framebuffer);
+    sc->curBuf = task->framebuffer;
+    sc->pendingSwapBuf1 = sc->pendingSwapBuf2 = NULL;
+#else
     if (sc->pendingSwapBuf1 == NULL) {
         sc->pendingSwapBuf1 = task->framebuffer;
 
@@ -383,6 +416,7 @@ void Sched_SetNextFramebufferFromTask(Scheduler* sc, OSScTask* task) {
             Sched_SwapFrameBuffer(sc, task->framebuffer);
         }
     }
+#endif
 }
 
 /**
@@ -514,8 +548,13 @@ void Sched_HandleRetrace(Scheduler* sc) {
 #if OOT_VERSION >= PAL_1_0
     ViConfig_UpdateBlack();
 #endif
+#if PLATFORM_PS2
+    sc->retraceCount = (s32)((u32)sc->retraceCount + 1u);
+#else
     sc->retraceCount++;
+#endif
 
+#if !PLATFORM_PS2
     // Retrace handlers run after VI context swap. The last swap buffer may now be the current buffer.
     if (osViGetCurrentFramebuffer() == ((sc->pendingSwapBuf1 != NULL) ? sc->pendingSwapBuf1->swapBuffer : NULL)) {
         if (sc->curBuf != NULL) {
@@ -539,6 +578,7 @@ void Sched_HandleRetrace(Scheduler* sc) {
             Sched_SwapFrameBuffer(sc, sc->pendingSwapBuf1);
         }
     }
+#endif
 
     SCHED_DEBUG_PRINTF("%08x %08x %08x %d\n", osViGetCurrentFramebuffer(), osViGetNextFramebuffer(),
                        (sc->pendingSwapBuf1 != NULL) ? sc->pendingSwapBuf1->swapBuffer : NULL,
@@ -691,6 +731,10 @@ void Sched_ThreadEntry(void* arg) {
 void Sched_Init(Scheduler* sc, void* stack, OSPri priority, u8 viModeType, UNK_TYPE arg4, IrqMgr* irqMgr) {
     bzero(sc, sizeof(Scheduler));
     sc->isFirstSwap = true;
+#if PLATFORM_PS2
+    sPs2LastGfxRetrace = 0;
+    sPs2GfxStarted = false;
+#endif
 
     // Create message queues for receiving interrupt events and tasks
     osCreateMesgQueue(&sc->interruptQueue, sc->interruptMsgBuf, ARRAY_COUNT(sc->interruptMsgBuf));
