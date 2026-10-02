@@ -146,9 +146,9 @@ void ps2_init_gs(void) {
     g_gsGlobal->Field     = PS2_FIELD;
     g_gsGlobal->Width     = PS2_SCREEN_W;
     g_gsGlobal->Height    = PS2_SCREEN_H;
-    g_gsGlobal->PSM       = GS_PSM_CT24;   /* 24 bits: ahorra VRAM y OoT
-                                              no necesita alfa en el
-                                              framebuffer */
+    /* OoT's native framebuffer is RGB5551. CT24 occupies 32-bit GS words;
+     * CT16 frees over 1 MiB for textures while retaining 24-bit Z precision. */
+    g_gsGlobal->PSM       = GS_PSM_CT16;
     g_gsGlobal->PSMZ      = GS_PSMZ_24;
     g_gsGlobal->ZBuffering       = GS_SETTING_ON;
     g_gsGlobal->DoubleBuffering  = GS_SETTING_ON;

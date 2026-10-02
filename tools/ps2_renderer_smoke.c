@@ -215,6 +215,42 @@ int ps2_renderer_smoke(void) {
         if (!pass) stripVram[i] = address;
         else if (address != stripVram[i]) failures++;
     }
+    /* Hundreds of changing tint values must reuse the previous frame's
+     * version instead of evicting unchanged scene strips. */
+    static const u8 colorChanging[] = {255,255,255,255,255,255,255,255};
+    u32 changingVram = 0;
+    rdp_setothermode(0, 0, &g_rdpState);
+    rdp_setcombine(0xfcffffff, 0xfffdf6fb, &g_rdpState);
+    rdp_settile(0xf5180000, 0, &g_rdpState);
+    rdp_settilesize(0xf2000000, 4u << 12, &g_rdpState);
+    rdp_settimg(0xfd180001, (u32)colorChanging, &g_rdpState);
+    rdp_loadtexture(0xf3, 0, 0, &g_rdpState);
+    for (int frame = 0; frame < 320; frame++) {
+        ps2_texture_end_frame(&g_rdpState);
+        rdp_setprimcolor(0, ((u32)(frame & 255) << 24) | 0x2030ff, &g_rdpState);
+        ps2_texture_upload(&g_rdpState.tile[0], &g_rdpState);
+        if (!frame) changingVram = g_rdpState.tile[0].gsTexture.Vram;
+        else if (g_rdpState.tile[0].gsTexture.Vram != changingVram) failures++;
+    }
+    rdp_setprimcolor(0, 0xc82030ff, &g_rdpState);
+    ps2_texture_upload(&g_rdpState.tile[0], &g_rdpState);
+    if (g_rdpState.tile[0].gsTexture.Vram == changingVram) failures++;
+    rdp_setprimcolor(0, 0x3f2030ff, &g_rdpState);
+    ps2_texture_upload(&g_rdpState.tile[0], &g_rdpState);
+    if (g_rdpState.tile[0].gsTexture.Vram != changingVram) failures++;
+    u32 stableUploads = g_rdpState.stats.textureUploads;
+    rdp_setothermode(2u << 20, 0, &g_rdpState);
+    rdp_setcombine(0xfcffffff, 0xfffdf6fb, &g_rdpState);
+    rdp_settile(0xf5100000, 0, &g_rdpState);
+    rdp_settilesize(0xf2000000, (124u << 12) | 252u, &g_rdpState);
+    for (int i = 0; i < 32; i++) {
+        rdp_settimg(0xfd10001f, (u32)strips[i], &g_rdpState);
+        rdp_loadtexture(0xf3, 0, 0, &g_rdpState);
+        ps2_texture_upload(&g_rdpState.tile[0], &g_rdpState);
+        if (g_rdpState.tile[0].gsTexture.Vram != stripVram[i]) failures++;
+    }
+    if (g_rdpState.stats.textureUploads != stableUploads) failures++;
+    printf("[PS2 CACHE ANIMATION TEST] failures=%d\n", failures);
     /* A large upload may evict several strips, but must fit the same budget. */
     /* A keyboard needs more than 64 small glyph/color combinations. They
      * occupy 1 KiB each, rather than wasting a 4 KiB allocation per letter. */

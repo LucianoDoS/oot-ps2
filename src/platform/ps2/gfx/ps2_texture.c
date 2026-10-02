@@ -50,17 +50,19 @@ typedef struct TextureCacheEntry {
     u32 stride2;
     u8 lodFrac;
     u32 stride, combine0, combine1, prim, env, cycle, paletteHash, contentHash;
-    u32 vram, size, used;
+    u32 vram, size, used, frame;
     u16 width, height;
     u8 fmt, siz, palette, valid;
 } TextureCacheEntry;
-/* Share the entire 704 KiB budget between actual texture sizes. Fixed size
+/* Share the available VRAM budget between actual texture sizes. Fixed size
  * classes stranded most of VRAM while menu strips evicted one another. */
 #define TEXTURE_CACHE_SLOTS 256
 #define TEXTURE_CACHE_CHUNK 1024u
-#define TEXTURE_CACHE_BYTES (704u * 1024)
+#define TEXTURE_CACHE_BYTES (1792u * 1024)
+static u32 s_textureCacheBytes;
 static TextureCacheEntry s_cache[TEXTURE_CACHE_SLOTS];
 static u32 s_cacheClock;
+static u32 s_textureFrame;
 /* A linear sliding maximum selects the same oldest overlapping region as
  * the old scan over every entry for each of 704 possible starting chunks. */
 static u32 s_chunkAge[TEXTURE_CACHE_BYTES / TEXTURE_CACHE_CHUNK];
@@ -76,7 +78,7 @@ static u32 cache_region(u32 size, u32* costOut) {
     }
     unsigned span = size / TEXTURE_CACHE_CHUNK, head = 0, tail = 0, best = 0;
     u32 bestCost = ~0u;
-    for (unsigned i = 0; i < sizeof(s_chunkAge) / sizeof(s_chunkAge[0]); i++) {
+    for (unsigned i = 0; i < s_textureCacheBytes / TEXTURE_CACHE_CHUNK; i++) {
         while (head < tail && s_ageDeque[head] + span <= i) head++;
         while (head < tail && s_chunkAge[s_ageDeque[tail - 1]] <= s_chunkAge[i]) tail--;
         s_ageDeque[tail++] = i;
@@ -190,6 +192,7 @@ void ps2_texture_end_frame(RDPState* rdp) {
     /* Recheck source bytes next frame: animated/reused RAM cannot retain an
      * old texture just because its address is unchanged. VRAM stays cached. */
     for (int i = 0; i < MAX_TILES; i++) rdp->tile[i].gsTextureLoaded = false;
+    s_textureFrame++;
 }
 
 static void texture_descriptor(TileDescriptor* tile, int w, int h, u32 vram) {
@@ -406,8 +409,19 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         for (u32 x = 0; x < rowBytes; x++) hash = (hash ^ row[x]) * 16777619u;
     }
     key.contentHash = hash;
+    int reusable = -1;
     for (int i = 0; i < TEXTURE_CACHE_SLOTS; i++) {
         TextureCacheEntry* cached = &s_cache[i];
+        /* Retain variants used together in this frame, but replace an older
+         * frame's version of the same source/material instead of filling
+         * VRAM with historical animation/tint values. Retire GS reads below. */
+        bool sameMaterial = cached->valid && cached->source == key.source &&
+            cached->source2 == key.source2 && cached->stride2 == key.stride2 &&
+            cached->stride == key.stride && cached->width == w && cached->height == h &&
+            cached->fmt == key.fmt && cached->siz == key.siz && cached->palette == key.palette &&
+            cached->combine0 == key.combine0 && cached->combine1 == key.combine1 && cached->cycle == key.cycle;
+        if (sameMaterial && cached->frame != s_textureFrame &&
+            (reusable < 0 || cached->used < s_cache[reusable].used)) reusable = i;
         if (cached->valid && cached->source == key.source &&
             cached->source2 == key.source2 && cached->stride2 == key.stride2 && cached->lodFrac == key.lodFrac &&
             cached->stride == key.stride && cached->width == w && cached->height == h &&
@@ -416,6 +430,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
             cached->prim == key.prim && cached->env == key.env && cached->cycle == key.cycle &&
             cached->paletteHash == key.paletteHash && cached->contentHash == key.contentHash) {
             cached->used = ++s_cacheClock;
+            cached->frame = s_textureFrame;
             texture_descriptor(tile, w, h, cached->vram);
             tile->gsTextureLoaded = true;
             rdp->stats.textureHits++;
@@ -525,22 +540,33 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
     /* A zero-initialized GSTEXTURE points at the first framebuffer in VRAM.
      * Reserve a texture-only region and retire draws before reusing it. */
     if (s_textureVram == GSKIT_ALLOC_ERROR) {
-        s_textureVram = gsKit_vram_alloc(rdp->gs, TEXTURE_CACHE_BYTES, GSKIT_ALLOC_USERBUFFER);
+        /* Leave room for small GS allocations, and also support diagnostic
+         * framebuffers that still use CT24 (704 KiB available there). */
+        u32 available = rdp->gs->CurrentPointer < 0x400000 - 32768 ?
+            0x400000 - 32768 - rdp->gs->CurrentPointer : 0;
+        s_textureCacheBytes = available < TEXTURE_CACHE_BYTES ? available : TEXTURE_CACHE_BYTES;
+        s_textureCacheBytes &= ~(TEXTURE_CACHE_CHUNK - 1);
+        if (!s_textureCacheBytes) return;
+        s_textureVram = gsKit_vram_alloc(rdp->gs, s_textureCacheBytes, GSKIT_ALLOC_USERBUFFER);
         if (s_textureVram == GSKIT_ALLOC_ERROR) return;
         printf("[PS2 TEXTURE] VRAM cache reserved at 0x%08x (%u bytes)\n",
-               (unsigned)s_textureVram, (unsigned)TEXTURE_CACHE_BYTES);
+               (unsigned)s_textureVram, (unsigned)s_textureCacheBytes);
     }
     u32 size = gsKit_texture_size(w, h, GS_PSM_CT32);
-    if (size > sizeof(s_convBuf)) return;
+    if (size > sizeof(s_convBuf) || size > s_textureCacheBytes) return;
     size = (size + TEXTURE_CACHE_CHUNK - 1) & ~(TEXTURE_CACHE_CHUNK - 1);
-    int slot = 0;
-    for (int i = 0; i < TEXTURE_CACHE_SLOTS; i++) {
+    int slot = reusable >= 0 ? reusable : 0;
+    for (int i = 0; reusable < 0 && i < TEXTURE_CACHE_SLOTS; i++) {
         if (!s_cache[i].valid || s_cache[i].used < s_cache[slot].used) {
             slot = i;
             if (!s_cache[i].valid) break;
         }
     }
-    u32 bestCost, vram = cache_region(size, &bestCost);
+    u32 bestCost, vram;
+    if (reusable >= 0 && s_cache[slot].size == size) {
+        vram = s_cache[slot].vram;
+        bestCost = s_cache[slot].used;
+    } else vram = cache_region(size, &bestCost);
     /* Retire reads before overwriting VRAM or forgetting a live descriptor.
      * Uploads into unused regions need only the normal ordered GIF DMA. */
     if (bestCost || s_cache[slot].valid) {
@@ -568,7 +594,8 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
     gPS2GfxTraceStage = 5;
     dmaKit_wait_fast();
     gPS2GfxTraceStage = 6;
-    key.vram = vram; key.size = size; key.used = ++s_cacheClock; key.valid = 1;
+    key.vram = vram; key.size = size; key.used = ++s_cacheClock;
+    key.frame = s_textureFrame; key.valid = 1;
     s_cache[slot] = key;
     static unsigned uploads;
     if (++uploads <= 3 || uploads % 1000 == 0)

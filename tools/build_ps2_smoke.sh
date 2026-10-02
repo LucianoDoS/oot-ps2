@@ -6,6 +6,7 @@ upstream="${OOT_UPSTREAM:-$HOME/oot-ps2-tools/oot-upstream}"
 mkdir -p build/PS2/smoke
 cc="$PS2DEV/ee/bin/mips64r5900el-ps2-elf-gcc"
 flags=(-D_EE -DPLATFORM_PS2=1 -G0 -O2 -std=gnu11 -Wall -Wextra -Wno-unused-parameter
+       "-DPS2_SMOKE_COLOR_PSM=${PS2_SMOKE_COLOR_PSM:-GS_PSM_CT16}"
        -fno-strict-aliasing '-DPS2_ROM_TEST_PATH="host:ps2-rom-smoke.bin"' -Iinclude/ps2 -I"$PS2SDK/ee/include"
        -I"$PS2SDK/common/include" -I"$PS2SDK/ports/include" -I"$GSKIT/include")
 objects=()

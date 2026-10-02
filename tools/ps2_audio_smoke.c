@@ -3,7 +3,9 @@
 #include <stdio.h>
 #include <string.h>
 extern int PS2RspAudio_Process(void*, unsigned);
-static int16_t input[16] __attribute__((aligned(16)));
+static int16_t input[64] __attribute__((aligned(16)));
+static int16_t resampledFull[32] __attribute__((aligned(16)));
+static int16_t resampledParts[32] __attribute__((aligned(16)));
 static int16_t output[32] __attribute__((aligned(16)));
 static int16_t history[16] __attribute__((aligned(16)));
 static int16_t book[16] __attribute__((aligned(16)));
@@ -40,8 +42,24 @@ int ps2_audio_smoke(void) {
     for (int i = 0; i < 16; i++)
         if (output[i] != 0 || output[i + 16] != (i - 8) * 256 ||
             history[i] != (i - 8) * 256) failures++;
+    /* A note split across synthesis ticks must retain FIR history and
+     * fractional pitch: output must match one uninterrupted block. */
+    for (int i = 0; i < 64; i++) input[i] = (i % 13 - 6) * 4096;
+    commands[0][0] = 0x14040100; commands[0][1] = (uint32_t)input;
+    commands[1][0] = 0x08000100; commands[1][1] = 0x02000040;
+    commands[2][0] = 0x05016000; commands[2][1] = (uint32_t)history; /* pitch .75, init */
+    commands[3][0] = 0x15040200; commands[3][1] = (uint32_t)resampledFull;
+    if (PS2RspAudio_Process(commands, 4 * 8)) failures++;
+    commands[1][1] = 0x02000020;
+    commands[3][0] = 0x15020200; commands[3][1] = (uint32_t)resampledParts;
+    if (PS2RspAudio_Process(commands, 4 * 8)) failures++;
+    commands[0][1] = (uint32_t)(input + 12);
+    commands[2][0] = 0x05006000; /* continue */
+    commands[3][1] = (uint32_t)(resampledParts + 16);
+    if (PS2RspAudio_Process(commands, 4 * 8) ||
+        memcmp(resampledFull, resampledParts, sizeof(resampledFull))) failures++;
     if (PS2RspAudio_Process(commands, 7) != -1) failures++;
-    printf("[PS2 AUDIO TEST] %s: PCM load/mix/stereo, ADPCM/S8/history, task bounds (%d)\n",
+    printf("[PS2 AUDIO TEST] %s: PCM/mix/stereo, ADPCM/S8, resample continuity and bounds (%d)\n",
            failures ? "FAIL" : "PASS", failures);
     return failures;
 }

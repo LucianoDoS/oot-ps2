@@ -4,6 +4,29 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## VRAM y retención de texturas animadas — 2026-10-01
+
+- Color GS pasa de CT24 (almacenado en palabras de 32 bits) a RGB5551 CT16,
+  el formato del framebuffer original. Se conservan salida 640×448 y Z24;
+  no se reduce la precisión de profundidad. La reserva de texturas crece de
+  704 a 1792 KiB, limitada al espacio realmente disponible menos 32 KiB.
+  Referencia de tamaños: [gsKit](https://github.com/ps2dev/gsKit/blob/master/ee/gs/src/gsTexture.c).
+- Una versión anterior de la misma fuente/material se reutiliza al cambiar
+  sus bytes, paleta o factores constantes en otro fotograma. Las variantes
+  utilizadas juntas se conservan; antes se acumulaban versiones históricas
+  que expulsaban texturas estables. Se mantiene FINISH antes de sobrescribir.
+- Prueba EE con 320 cambios de color conserva 32 texturas estables, la VRAM
+  de la textura cambiante y dos colores simultáneos de la misma fuente.
+  Pasan también recortes combinados, caché, audio y 120 fotogramas en CT16.
+  Registro `build/PS2/pcsx2-cache-reuse-ct16-pass.log`, reserva real 1835008 bytes.
+  La variante CT24 también pasa con 720896 bytes en
+  `build/PS2/pcsx2-cache-reuse-ct24-pass.log`.
+- Añadida prueba de remuestreo: una nota a pitch 0,75 dividida en dos bloques
+  produce exactamente los mismos samples que un bloque continuo, conservando
+  historia FIR y fase. No confirma todavía fidelidad musical del juego.
+- Compilación completa de 715 objetos en `oot_ps2-next.elf`. Pendiente comparar
+  la nueva versión en el exterior con una misma cámara y verificar los caminos.
+
 ## Materiales recortados de dos texturas, estéreo y medición — 2026-10-01
 
 - Usuario confirma solucionados los huecos transparentes de la escalera.

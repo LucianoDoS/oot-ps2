@@ -7,6 +7,9 @@
 #include "ps2_types.h"
 #include "rdp_to_gs.h"
 #include "ps2_segment.h"
+#ifndef PS2_SMOKE_COLOR_PSM
+#define PS2_SMOKE_COLOR_PSM GS_PSM_CT16
+#endif
 
 uintptr_t gSegments[16];
 extern int ps2_os_smoke(void);
@@ -117,7 +120,7 @@ int main(void) {
     gs->Field = GS_FIELD;
     gs->Width = 640;
     gs->Height = 448;
-    gs->PSM = GS_PSM_CT24;
+    gs->PSM = PS2_SMOKE_COLOR_PSM;
     gs->PSMZ = GS_PSMZ_24;
     gs->ZBuffering = GS_SETTING_ON;
     gs->DoubleBuffering = GS_SETTING_ON;

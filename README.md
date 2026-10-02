@@ -4,7 +4,9 @@ Port de **The Legend of Zelda: Ocarina of Time** a PlayStation 2, basado en la d
 
 ## Estado comprobado — 1 de octubre de 2026
 
-**Todavía no es un port jugable.** Ya se compila la capa PS2 con ps2dev real
+**Port parcial, todavía con fallos visuales, de audio y rendimiento.**
+Se puede iniciar una partida y salir al bosque; falta validar el juego completo.
+Ya se compila la capa PS2 con ps2dev real
 (GCC 15.2.0), y el ejecutable de diagnóstico arranca en PCSX2 2.8.0.
 Las pruebas en el EE verifican matrices, trigonometría, formato de texto,
 secciones críticas, colas de mensajes y temporizadores. El renderer envía
@@ -35,9 +37,12 @@ y Link montado en Epona. Corregida la matriz identidad nativa que deformaba el
 escenario y el caballo. El renderer usa STQ para conservar la repetición y
 perspectiva de las texturas; las pruebas EE verifican coordenadas, shifts,
 paletas CI4 e IA4. Añadida generación esférica/lineal de coordenadas con LookAt.
-La caché comparte 704 KiB de VRAM entre 256 entradas según su tamaño y reutiliza
+El framebuffer de color usa RGB5551, conservando profundidad de 24 bits.
+La caché comparte hasta 1792 KiB de VRAM entre 256 entradas según su tamaño y reutiliza
 tablas del combinador; valida los bytes de fuentes y paletas para detectar
-texturas modificadas en RAM. Todavía faltan fidelidad visual y rendimiento.
+texturas modificadas en RAM. Reutiliza variantes de fotogramas anteriores,
+conservando las usadas juntas en el fotograma actual. Todavía faltan fidelidad
+visual, calidad del audio y un benchmark comparable de rendimiento.
 Los triángulos con la etapa estándar de niebla usan los parámetros reales
 del juego y niebla nativa del GS; las pruebas EE verifican factores y límites.
 Start abre el selector de partida y sus textos y botones se ven correctamente.
