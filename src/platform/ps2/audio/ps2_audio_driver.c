@@ -103,10 +103,11 @@ static s16 s_outputBuffer[8192] __attribute__((aligned(64)));
  * once. No allocation, copies or file writes in normal game sessions. */
 static u8* s_capturePcm;
 static unsigned s_captureBytes, s_captureTicks;
+static unsigned s_captureDelay = 900;
 #define PCM_CAPTURE_BYTES 256000u
 
 static void capture_pcm(const void* buffer, unsigned size, unsigned rate) {
-    if (!s_capturePcm || ++s_captureTicks < 900) return;
+    if (!s_capturePcm || ++s_captureTicks < s_captureDelay) return;
     unsigned remaining = PCM_CAPTURE_BYTES - s_captureBytes;
     if (size > remaining) size = remaining;
     memcpy(s_capturePcm + s_captureBytes, buffer, size);
@@ -173,10 +174,14 @@ void PS2Audio_Init(void) {
     s_captureBytes = s_captureTicks = 0;
     FILE* captureFlag = fopen("host:ps2-audio-capture.enable", "rb");
     if (captureFlag) {
+        /* Optional delay in submitted buffers, to capture actual gameplay
+         * rather than the quiet title sample used by the earlier test. */
+        unsigned delay;
+        s_captureDelay = fscanf(captureFlag, "%u", &delay) == 1 && delay <= 36000 ? delay : 900;
         fclose(captureFlag);
         s_capturePcm = malloc(PCM_CAPTURE_BYTES);
-        printf("[PS2 PCM CAPTURE] %s; starts after 900 submitted buffers\n",
-               s_capturePcm ? "armed" : "allocation failed");
+        printf("[PS2 PCM CAPTURE] %s; starts after %u submitted buffers\n",
+               s_capturePcm ? "armed" : "allocation failed", s_captureDelay);
     }
 
     printf("[Audio] Initialized: %d Hz, %d-bit, %d ch\n",

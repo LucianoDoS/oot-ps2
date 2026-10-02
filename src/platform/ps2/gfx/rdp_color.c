@@ -174,71 +174,67 @@ static void combiner_sources(const RDPState* rdp, int cycle, bool alpha, u8 s[4]
     }
 }
 
-bool ps2_combiner_uses_shade(const RDPState* rdp, bool alpha) {
-    int cycles = ((rdp->otherMode.hi >> 20) & 3) == 1 ? 2 : 1;
-    for (int cycle = 0; cycle < cycles; cycle++) {
-        u8 s[4]; combiner_sources(rdp, cycle, alpha, s);
-        for (int i = 0; i < 4; i++)
-            if (s[i] == 4 || (!alpha && i == 2 && s[i] == 11)) return true;
-    }
-    return false;
-}
+typedef struct {
+    u32 w0, w1, type, blend, primMask, envMask;
+    bool valid, shade[2], dynamicAlpha, textureLerp, pathLerp;
+    u8 sources[2][2][4];
+} CombinerAnalysis;
 
-bool ps2_combiner_texture_lerp(const RDPState* rdp) {
-    if (((rdp->otherMode.hi >> 20) & 3) != 1 || (rdp->otherMode.lo & 0x5003)) return false;
-    const u8 expected[4][4] = {{2,1,12,1}, {0,15,4,7}, {7,7,7,6}, {7,7,7,0}};
-    for (int i = 0; i < 4; i++) {
-        u8 sources[4];
-        combiner_sources(rdp, i & 1, i >= 2, sources);
-        for (int j = 0; j < 4; j++) if (sources[j] != expected[i][j]) return false;
-    }
-    return true;
-}
-
-bool ps2_combiner_path_lerp(const RDPState* rdp) {
-    /* Kokiri's cutout path blends two identically mapped RGBA16 tiles.
-     * Both color and coverage depend on the pair, so two alpha-tested
-     * GS passes would discard different pixels and expose the grass. */
-    return ((rdp->otherMode.hi >> 20) & 3) == 1 &&
-           rdp->combiner.w0 == 0xfc262a04u && rdp->combiner.w1 == 0x1f5893f8u;
-}
-
-void ps2_combiner_constants(const RDPState* rdp, u32* prim, u32* env) {
-    u32 primMask = 0, envMask = 0;
-    unsigned cycleType = (rdp->otherMode.hi >> 20) & 3;
-    if (cycleType != 2 && (rdp->combiner.w0 || rdp->combiner.w1)) {
-        int cycles = cycleType == 1 ? 2 : 1;
-        for (int cycle = 0; cycle < cycles; cycle++) for (int alpha = 0; alpha < 2; alpha++) {
-            u8 sources[4]; combiner_sources(rdp, cycle, alpha, sources);
-            for (int slot = 0; slot < 4; slot++) {
-                u8 source = sources[slot];
-                u32 mask = alpha ? 255u : 0xffffff00u;
-                if (!alpha && slot == 2 && source >= 7 && source <= 12) {
-                    if (source == 10) primMask |= 255;
-                    if (source == 12) envMask |= 255;
-                } else {
-                    if (source == 3) primMask |= mask;
-                    if (source == 5) envMask |= mask;
-                }
+/* Decode once per material, not once per vertex/channel. Key the words
+ * directly so callers which restore an RDPState also invalidate the analysis. */
+static const CombinerAnalysis* combiner_analysis(const RDPState* rdp) {
+    static CombinerAnalysis cache;
+    u32 type = (rdp->otherMode.hi >> 20) & 3;
+    u32 blend = rdp->otherMode.lo & 0x5003;
+    if (cache.valid && cache.w0 == rdp->combiner.w0 && cache.w1 == rdp->combiner.w1 &&
+        cache.type == type && cache.blend == blend) return &cache;
+    memset(&cache, 0, sizeof(cache));
+    cache.w0 = rdp->combiner.w0; cache.w1 = rdp->combiner.w1;
+    cache.type = type; cache.blend = blend; cache.valid = true;
+    int cycles = type == 1 ? 2 : 1;
+    for (int cycle = 0; cycle < cycles; cycle++) for (int alpha = 0; alpha < 2; alpha++) {
+        u8* sources = cache.sources[cycle][alpha];
+        combiner_sources(rdp, cycle, alpha, sources);
+        for (int slot = 0; slot < 4; slot++) {
+            u8 source = sources[slot];
+            if (source == 4 || (!alpha && slot == 2 && source == 11)) cache.shade[alpha] = true;
+            if (type == 2 || (!cache.w0 && !cache.w1)) continue;
+            u32 mask = alpha ? 255u : 0xffffff00u;
+            if (!alpha && slot == 2 && source >= 7 && source <= 12) {
+                if (source == 10) cache.primMask |= 255;
+                if (source == 12) cache.envMask |= 255;
+            } else {
+                if (source == 3) cache.primMask |= mask;
+                if (source == 5) cache.envMask |= mask;
             }
         }
     }
-    *prim = rdp->primColor & primMask;
-    /* This factor is applied between two GS texture passes, not baked
-     * into either texture. Changing it must retain both cache entries. */
-    if (ps2_combiner_texture_lerp(rdp)) envMask &= ~255u;
-    *env = rdp->envColor & envMask;
+    const u8 expected[2][2][4] = {{{2,1,12,1},{7,7,7,6}},{{0,15,4,7},{7,7,7,0}}};
+    cache.textureLerp = type == 1 && !blend && !memcmp(cache.sources, expected, sizeof(expected));
+    if (cache.textureLerp) cache.envMask &= ~255u;
+    cache.pathLerp = type == 1 && cache.w0 == 0xfc262a04u && cache.w1 == 0x1f5893f8u;
+    const u8* alpha = cache.sources[0][1];
+    cache.dynamicAlpha = type == 0 && (alpha[0] == 1 || alpha[0] == 2) &&
+        alpha[1] == 7 && alpha[2] == 3 && alpha[3] == 7 && cache.sources[0][0][2] != 10;
+    return &cache;
 }
 
+bool ps2_combiner_uses_shade(const RDPState* rdp, bool alpha) {
+    return combiner_analysis(rdp)->shade[alpha];
+}
+bool ps2_combiner_texture_lerp(const RDPState* rdp) {
+    return combiner_analysis(rdp)->textureLerp;
+}
+bool ps2_combiner_path_lerp(const RDPState* rdp) {
+    return combiner_analysis(rdp)->pathLerp;
+}
+void ps2_combiner_constants(const RDPState* rdp, u32* prim, u32* env) {
+    const CombinerAnalysis* analysis = combiner_analysis(rdp);
+    *prim = rdp->primColor & analysis->primMask;
+    *env = rdp->envColor & analysis->envMask;
+}
 bool ps2_combiner_dynamic_alpha(const RDPState* rdp) {
-    /* Lift TEXEL_ALPHA * PRIMITIVE_ALPHA into GS vertex modulation only
-     * when that alpha cannot feed the RGB calculation or a second cycle. */
-    if (((rdp->otherMode.hi >> 20) & 3) != 0) return false;
-    u8 alpha[4], rgb[4];
-    combiner_sources(rdp, 0, true, alpha);
-    combiner_sources(rdp, 0, false, rgb);
-    return (alpha[0] == 1 || alpha[0] == 2) && alpha[1] == 7 &&
-           alpha[2] == 3 && alpha[3] == 7 && rgb[2] != 10;
+    return combiner_analysis(rdp)->dynamicAlpha;
 }
 
 static int combiner_input(const RDPState* rdp, int source, int slot, bool alpha, int component,
@@ -267,13 +263,14 @@ void ps2_combiner_color(const RDPState* rdp, const u8 texel[4], const u8 shade[4
     /* Copy cycle bypasses the color combiner entirely. */
     if (((rdp->otherMode.hi >> 20) & 3) == 2) { memcpy(output, texel, 4); return; }
     if (!rdp->combiner.w0 && !rdp->combiner.w1) { memcpy(output, texel, 4); return; }
+    const CombinerAnalysis* analysis = combiner_analysis(rdp);
     u8 combined[4] = {0};
     int cycles = ((rdp->otherMode.hi >> 20) & 3) == 1 ? 2 : 1;
     for (int cycle = 0; cycle < cycles; cycle++) {
         u8 next[4];
         for (int component = 0; component < 4; component++) {
             bool alpha = component == 3;
-            u8 sources[4]; combiner_sources(rdp, cycle, alpha, sources);
+            const u8* sources = analysis->sources[cycle][alpha];
             int inputs[4];
             for (int slot = 0; slot < 4; slot++)
                 inputs[slot] = combiner_input(rdp, sources[slot], slot, alpha, component,

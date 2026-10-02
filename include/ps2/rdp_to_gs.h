@@ -48,6 +48,7 @@ typedef struct {
     /* PS2-specific: converted GS texture (uploaded to VRAM) */
     GSTEXTURE  gsTexture;
     bool       gsTextureLoaded;
+    u16        cacheSlot;
 } TileDescriptor;
 
 /* ─────────────────────────────────────────────────────────── *
@@ -125,7 +126,7 @@ typedef struct {
     bool           gs_clamp_valid;
     struct {
         u32 triangles, clipped, culled, invalid, textureFailed, submitted, backgrounds;
-        u32 textureHits, textureUploads, textureWaits;
+        u32 textureHits, textureUploads, textureWaits, texturePackets;
     } stats;
 } RDPState;
 

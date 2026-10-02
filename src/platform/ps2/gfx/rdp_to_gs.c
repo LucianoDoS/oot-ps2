@@ -428,8 +428,9 @@ void rdp_to_gs_flip(void) {
             g_rdpState.stats.culled, g_rdpState.stats.invalid,
             g_rdpState.stats.textureFailed, g_rdpState.stats.submitted, g_rdpState.stats.backgrounds,
             g_rdpState.otherMode.hi, g_rdpState.otherMode.lo);
-        printf("[PS2 TEXTURE PERF] hits=%u uploads=%u waits=%u\n",
-            g_rdpState.stats.textureHits, g_rdpState.stats.textureUploads, g_rdpState.stats.textureWaits);
+        printf("[PS2 TEXTURE PERF] hits=%u uploads=%u waits=%u packets=%u\n",
+            g_rdpState.stats.textureHits, g_rdpState.stats.textureUploads,
+            g_rdpState.stats.textureWaits, g_rdpState.stats.texturePackets);
     }
     memset(&g_rdpState.stats, 0, sizeof(g_rdpState.stats));
 

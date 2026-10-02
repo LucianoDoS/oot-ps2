@@ -1656,7 +1656,9 @@ void AudioSeq_SequenceChannelProcessScript(SequenceChannel* channel) {
 
                 case ASEQ_OP_CHAN_LDSEQTOPTR:
                     cmdArgU16 = (u16)cmdArgs[0];
-                    channel->unk_22 = *(u16*)(seqPlayer->seqData + (u32)(cmdArgU16 + scriptState->value * 2));
+                    data = seqPlayer->seqData + (u32)(cmdArgU16 + scriptState->value * 2);
+                    /* Sequence bytecode/table words remain big-endian on EE. */
+                    channel->unk_22 = (data[0] << 8) | data[1];
                     break;
 
                 case ASEQ_OP_CHAN_PTRTODYNTBL:
@@ -1664,7 +1666,8 @@ void AudioSeq_SequenceChannelProcessScript(SequenceChannel* channel) {
                     break;
 
                 case ASEQ_OP_CHAN_DYNTBLTOPTR:
-                    channel->unk_22 = ((u16*)(channel->dynTable))[scriptState->value];
+                    data = (*channel->dynTable)[scriptState->value];
+                    channel->unk_22 = (data[0] << 8) | data[1];
                     break;
 
                 case ASEQ_OP_CHAN_DYNTBLV:

@@ -326,7 +326,11 @@ $(BUILD_DIR)/src/platform/ps2/%.o: src/platform/ps2/%.c
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) $(CFLAGS) -Iinclude -Isrc $(PLATFORM_INCLUDES) $(DEPFLAGS) -c $< -o $@
 
-$(BUILD_DIR)/generated/audsrv_irx.c: $(PS2SDK)/iop/irx/audsrv.irx
+$(BUILD_DIR)/iop/audsrv.irx: $(wildcard src/platform/ps2/iop/audsrv/src/*) src/platform/ps2/iop/audsrv/Makefile
+	@mkdir -p $(BUILD_DIR)/iop
+	$(Q)$(MAKE) -C src/platform/ps2/iop/audsrv IOP_BIN=$(abspath $@) IOP_OBJS_DIR=$(abspath $(BUILD_DIR)/iop/obj)/
+
+$(BUILD_DIR)/generated/audsrv_irx.c: $(BUILD_DIR)/iop/audsrv.irx
 	@mkdir -p $(dir $@)
 	$(Q)$(PS2SDK)/bin/bin2c $< $@ audsrv_irx
 

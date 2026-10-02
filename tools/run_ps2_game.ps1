@@ -1,5 +1,6 @@
 param(
-    [string]$Emulator = 'C:\Program Files\PCSX2\pcsx2-qt.exe'
+    [string]$Emulator = 'C:\Program Files\PCSX2\pcsx2-qt.exe',
+    [switch]$Visible
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
@@ -23,10 +24,11 @@ if (Test-Path -LiteralPath $pidFile) {
     }
 }
 if (Test-Path -LiteralPath $log) { Copy-Item -LiteralPath $log -Destination ($log + '.previous') -Force }
+$windowStyle = if ($Visible) { 'Normal' } else { 'Hidden' }
 $process = Start-Process -FilePath $Emulator -ArgumentList @(
     '-batch', '-nofullscreen', '-datapath', ('"' + $dataRoot + '"'),
     '-logfile', ('"' + $log + '"'), '-elf', ('"' + $elf + '"')
-) -WindowStyle Hidden -PassThru
+) -WindowStyle $windowStyle -PassThru
 $process.Id | Set-Content -LiteralPath $pidFile
 Write-Output "Game PCSX2 PID: $($process.Id)"
 Write-Output "Log: $log"

@@ -249,6 +249,30 @@ void Audio_AdsrInit(AdsrState* adsr, EnvelopePoint* envelope, UNUSED s16* volOut
     adsr->envelope = envelope;
     adsr->sustain = 0.0f;
     adsr->current = 0.0f;
+#if PLATFORM_PS2
+    /* unk_18 is unused storage in the original 0x20-byte state. Remember
+     * whether ENV selected bytecode data, rather than a native soundfont
+     * or compiled envelope. Do not swap converted soundfont envelopes. */
+    adsr->unk_18[0] = 0;
+    if (gAudioCtx.sequenceTable) {
+        for (s32 i = 0; i < gAudioCtx.audioBufferParameters.numSequencePlayers; i++) {
+            SequencePlayer* player = &gAudioCtx.seqPlayers[i];
+            u32 id = player->seqId;
+            if (!player->seqData || id >= (u32)gAudioCtx.numSequences) continue;
+            AudioTableEntry* entry = &gAudioCtx.sequenceTable->entries[id];
+            for (s32 aliases = 0; !entry->size && aliases < gAudioCtx.numSequences; aliases++) {
+                id = entry->romAddr;
+                if (id >= (u32)gAudioCtx.numSequences) break;
+                entry = &gAudioCtx.sequenceTable->entries[id];
+            }
+            uintptr_t address = (uintptr_t)envelope, base = (uintptr_t)player->seqData;
+            if (address >= base && address - base < entry->size) {
+                adsr->unk_18[0] = 1;
+                break;
+            }
+        }
+    }
+#endif
     // (An older versions of the audio engine used in Super Mario 64 did
     // adsr->volOut = volOut. That line and associated struct member were
     // removed, but the function parameter was forgotten and remains.)
@@ -276,7 +300,20 @@ f32 Audio_AdsrUpdate(AdsrState* adsr) {
         retry:;
             FALLTHROUGH;
         case ADSR_STATE_LOOP:
-            adsr->delay = adsr->envelope[adsr->envIndex].delay;
+        {
+            s16 envelopeDelay, envelopeArg;
+#if PLATFORM_PS2
+            if (adsr->unk_18[0]) {
+                const u8* point = (const u8*)adsr->envelope + adsr->envIndex * 4;
+                envelopeDelay = (s16)((point[0] << 8) | point[1]);
+                envelopeArg = (s16)((point[2] << 8) | point[3]);
+            } else
+#endif
+            {
+                envelopeDelay = adsr->envelope[adsr->envIndex].delay;
+                envelopeArg = adsr->envelope[adsr->envIndex].arg;
+            }
+            adsr->delay = envelopeDelay;
             switch (adsr->delay) {
                 case ADSR_DISABLE:
                     adsr->action.s.state = ADSR_STATE_DISABLED;
@@ -287,7 +324,7 @@ f32 Audio_AdsrUpdate(AdsrState* adsr) {
                     break;
 
                 case ADSR_GOTO:
-                    adsr->envIndex = adsr->envelope[adsr->envIndex].arg;
+                    adsr->envIndex = envelopeArg;
                     goto retry;
 
                 case ADSR_RESTART:
@@ -299,7 +336,7 @@ f32 Audio_AdsrUpdate(AdsrState* adsr) {
                     if (adsr->delay == 0) {
                         adsr->delay = 1;
                     }
-                    adsr->target = adsr->envelope[adsr->envIndex].arg / 32767.0f;
+                    adsr->target = envelopeArg / 32767.0f;
                     adsr->target = SQ(adsr->target);
                     adsr->velocity = (adsr->target - adsr->current) / adsr->delay;
                     adsr->action.s.state = ADSR_STATE_FADE;
@@ -309,6 +346,7 @@ f32 Audio_AdsrUpdate(AdsrState* adsr) {
             if (adsr->action.s.state != ADSR_STATE_FADE) {
                 break;
             }
+        }
             FALLTHROUGH;
         case ADSR_STATE_FADE:
             adsr->current += adsr->velocity;

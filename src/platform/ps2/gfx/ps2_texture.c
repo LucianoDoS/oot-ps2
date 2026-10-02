@@ -63,6 +63,9 @@ typedef struct TextureCacheEntry {
 static u32 s_textureCacheBytes;
 static TextureCacheEntry s_cache[TEXTURE_CACHE_SLOTS];
 static u32 s_cacheClock;
+/* A FINISH retires all accesses up to this clock, including other textures.
+ * Remember that fence so subsequent uploads do not wait for the same draws. */
+static u32 s_retiredClock;
 static u32 s_textureFrame;
 /* A linear sliding maximum selects the same oldest overlapping region as
  * the old scan over every entry for each of 704 possible starting chunks. */
@@ -155,6 +158,12 @@ static unsigned mirrored_dimensions(const TileDescriptor* tile, int w, int h, in
 void ps2_texture_apply_tile(TileDescriptor* tile, RDPState* rdp) {
     GSGLOBAL* gs = rdp->gs;
     if (!gs) return;
+    /* A still-loaded tile can be drawn again after a different upload has
+     * retired earlier draws. Record each binding, including that reuse. */
+    if (tile->gsTextureLoaded && tile->cacheSlot < TEXTURE_CACHE_SLOTS) {
+        TextureCacheEntry* entry = &s_cache[tile->cacheSlot];
+        if (entry->valid && entry->vram == tile->gsTexture.Vram) entry->used = ++s_cacheClock;
+    }
     /* Region clamp also excludes uninitialized padding in non-power-of-two
      * strips. Region repeat uses the N64 mask without clamping CPU vertices. */
     unsigned modeS = (tile->cms & 2) || !tile->masks ? 2 : 3;
@@ -455,6 +464,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
             cached->used = ++s_cacheClock;
             cached->frame = s_textureFrame;
             texture_descriptor(tile, uploadW, uploadH, cached->vram);
+            tile->cacheSlot = i;
             tile->gsTextureLoaded = true;
             rdp->stats.textureHits++;
             return;
@@ -601,9 +611,17 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         vram = s_cache[slot].vram;
         bestCost = s_cache[slot].used;
     } else vram = cache_region(size, &bestCost);
-    /* Retire reads before overwriting VRAM or forgetting a live descriptor.
-     * Uploads into unused regions need only the normal ordered GIF DMA. */
-    if (bestCost || s_cache[slot].valid) {
+    /* Only overlapping VRAM requires a fence; retiring a descriptor alone
+     * cannot change pending GIF packets. One fence retires every older read. */
+    bool pending = false;
+    for (int i = 0; i < TEXTURE_CACHE_SLOTS; i++) {
+        const TextureCacheEntry* entry = &s_cache[i];
+        if (entry->valid && entry->used > s_retiredClock &&
+            entry->vram < vram + size && vram < entry->vram + entry->size) {
+            pending = true; break;
+        }
+    }
+    if (pending) {
         rdp->stats.textureWaits++;
         gsKit_set_finish(rdp->gs);
         gPS2GfxTraceStage = 2;
@@ -611,6 +629,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         gsKit_queue_exec(rdp->gs);
         gPS2GfxTraceStage = 3;
         gsKit_finish();
+        s_retiredClock = s_cacheClock;
         if (trace) printf("[PS2 TEXTURE TRACE] finish returned\n");
     }
     dmaKit_wait_fast();
@@ -631,6 +650,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
     key.vram = vram; key.size = size; key.used = ++s_cacheClock;
     key.frame = s_textureFrame; key.valid = 1;
     s_cache[slot] = key;
+    tile->cacheSlot = slot;
     static unsigned uploads;
     if (++uploads <= 3 || uploads % 1000 == 0)
         printf("[PS2 TEXTURE] uploads=%u size=%dx%d source=%p slot=%d\n", uploads, w, h, tile->addr, slot);

@@ -4,6 +4,68 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Secuencias de sonido y caché de lecturas — 2026-10-02
+
+- Usuario confirma que el audio interno capturado se escucha limpio, pero
+  los chasquidos aumentan con el lag de salida y no oye las voces de Link.
+  El exterior aún baja a 8–10 FPS; el objetivo de rendimiento no está logrado.
+- Corregidos dos operandos de tablas de secuencias que se leían como u16
+  nativos aunque los scripts permanecen big-endian. Las envolventes ENV
+  dentro de secuencias también conservaban ese orden: ADSR ahora identifica
+  su origen al inicializarse y lee sus puntos correctamente. Las fuentes
+  de sonido ya convertidas y las envolventes compiladas conservan su lectura
+  nativa. El estado ADSR mantiene su tamaño/layout. Pendiente confirmar
+  jugando el efecto sobre las voces y el sonido; no se dan por solucionados.
+- Caché LRU de 64 KiB para pequeñas lecturas repetidas de ROM, compartida
+  bajo el mutex existente. Las cargas grandes no expulsan sectores de audio.
+  El writeback de la lectura limita su rango usando SyncDCache del SDK.
+  Se añade medición de actualización, espera, audio y lecturas/aciertos.
+- Pruebas EE: envolvente BE sin alineación, alias de secuencia, salto ADSR,
+  comparación con fuente nativa y reinicialización; lectura entre sectores,
+  acierto sin E/S, expulsión, final parcial, fuera de rango, reapertura y
+  lectores concurrentes. Diagnóstico completo pasa 120 fotogramas, cero
+  fallos: `build/PS2/pcsx2-rom-cache-envelope-pass.log`.
+
+## Cola PCM y esperas de texturas — 2026-10-01
+
+- Usuario confirma corregido el parpadeo del suelo; sombras y escalones
+  mejoraron. El módulo libsd del SDK redujo los chasquidos, pero el audio
+  sigue defectuoso y el exterior aún puede caer a 10 FPS.
+- El registro anterior mide traducción de gráficos de 55–77 ms en bloques
+  de juego, con 7–19 recargas/esperas de texturas por fotograma muestreado.
+  Hubo 15 bloques PCM descartados en unos siete minutos. Estos tiempos
+  incluyen interrupciones de otros hilos; no son una medida aislada del GS.
+- La caché recuerda qué accesos quedaron retirados por una barrera FINISH.
+  Sobrescribir VRAM con lecturas pendientes conserva la espera; otras
+  texturas retiradas por esa misma barrera evitan esperas duplicadas.
+  Cada nueva vinculación de una textura vuelve a marcarla como pendiente,
+  también si su descriptor seguía cargado. Se conserva Z24, alfa y espejo.
+- Se cachea la decodificación de combinadores por sus palabras y modos,
+  conservando las ecuaciones, colores y factores de cada material.
+- TRI2 agrupa sus triángulos supervivientes con el mismo material en un
+  paquete GS; no agrupa el suelo de dos pasadas ni cruza comandos. Pruebas
+  pasan descarte parcial/total, siguiente TRI1 y orden de las dos pasadas.
+  En una muestra exterior, 1325 dibujos usaron 887 paquetes y 17 subidas
+  tuvieron una espera. El contador seguía en 10 FPS: menos paquetes no
+  equivale a demostrar una mejora suficiente en la tasa de fotogramas.
+- audsrv del SDK podía avanzar más allá de las muestras disponibles y
+  reproducir datos antiguos, confundiendo cola vacía y llena. El proyecto
+  compila una copia local del servidor IOP con ocupación explícita,
+  acceso serializado, lectura circular y relleno de silencio al faltar PCM.
+  Los cambios de formato reinician la cola; se consume al llegar la señal
+  de transferencia SPU2. El SDK instalado permanece sin modificaciones.
+  Fuentes y licencias: `src/platform/ps2/iop/audsrv/UPSTREAM.md`.
+- Pruebas EE pasan cola llena, vuelta circular, veinte agotamientos,
+  recuperación y reinicio, además de retiro compartido y reutilización
+  posterior de texturas. Renderer/audio completo pasa 120 fotogramas:
+  `build/PS2/pcsx2-pcm-ring-fence-pass.log`. Usuario confirma chasquidos
+  iguales tras corregir la cola. En unos cuatro minutos no hubo descartes,
+  pero aparecieron después; partidas distintas impiden comparar la tasa.
+- Captura privada opcional acepta un retraso en bloques PCM; la muestra de
+  partida de dos segundos tiene pico 7223/32768, cero saturaciones y salto
+  máximo 3425. Usuario la escucha limpia. No descarta fallos de síntesis
+  en otros momentos. Bandera de captura retirada tras la prueba.
+
 ## Grabación: sombras, repetición en espejo y salida de audio — 2026-10-01
 
 - Revisada grabación local de 48,42 segundos: selección de partida, casa
@@ -21,7 +83,7 @@ trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
   sesgo de profundidad proporcional a la pendiente únicamente a decals
   con comparación y sin escritura Z. Se limita y satura en Z16/Z24; la
   geometría ordinaria conserva sus profundidades. Es una aproximación a
-  la tolerancia delta-Z de N64, pendiente de comprobar jugando.
+  la tolerancia delta-Z de N64; el usuario confirma mejoría jugando.
 - Colores y combinadores repetidos sin cambios conservan las texturas
   cargadas, evitando hashes y búsquedas adicionales. Los cambios reales
   siguen invalidando; no se modifica la velocidad de simulación.
@@ -31,12 +93,12 @@ trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
   Ese cambio de color es coherente con el comportamiento original.
 - Se incorpora el módulo `freesd.irx` / libsd del SDK antes de audsrv,
   conservando alternativa ROM si falla. Prueba de compatibilidad de salida,
-  no una corrección audible confirmada. El build enlaza 716 objetos.
+  el usuario confirma después menos chasquidos. El build enlaza 716 objetos.
 - Diagnóstico EE completo pasa 120 fotogramas; pruebas de espejo S/T,
   píxeles alfa, variantes de caché, coordenadas, pendientes de decals,
   límites y oclusión dan cero fallos. Registro:
-  `build/PS2/pcsx2-shadow-mirror-pass.log`. Pendiente comparación visual
-  de sombras/escalones y confirmación audible de la nueva versión.
+  `build/PS2/pcsx2-shadow-mirror-pass.log`. Usuario confirma mejoría de
+  sombras/escalones y reducción del ruido, todavía sin solución completa.
 
 ## Diagnóstico de chasquidos — 2026-10-01
 

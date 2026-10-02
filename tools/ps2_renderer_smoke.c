@@ -267,6 +267,37 @@ int ps2_renderer_smoke(void) {
     rdp_setenvcolor(0, 0x87654321, &g_rdpState);
     ps2_texture_upload(&g_rdpState.tile[0], &g_rdpState);
     if (g_rdpState.tile[0].gsTexture.Vram != unchangedVram) failures++;
+    /* A fence for A also retires B's old accesses. Reusing B must not
+     * wait a second time, but a later cache hit makes A live again. */
+    static u8 fencePixels[2][8] = {{1,2,3,255,1,2,3,255},{4,5,6,255,4,5,6,255}};
+    TileDescriptor fenceTiles[2] = {{0}};
+    rdp_setothermode(2u << 20, 0, &g_rdpState);
+    g_rdpState.textureLoads[0].source = NULL;
+    for (int i = 0; i < 2; i++) {
+        fenceTiles[i].width = 2; fenceTiles[i].height = 1;
+        fenceTiles[i].fmt = G_IM_FMT_RGBA; fenceTiles[i].siz = G_IM_SIZ_32b;
+        fenceTiles[i].addr = fencePixels[i];
+        ps2_texture_upload(&fenceTiles[i], &g_rdpState);
+        ps2_texture_apply_tile(&fenceTiles[i], &g_rdpState);
+        gsKit_prim_sprite_texture(g_rdpState.gs, &fenceTiles[i].gsTexture,
+            0,0,0,0,2,1,2,1,0,GS_SETREG_RGBAQ(128,128,128,128,1));
+    }
+    ps2_texture_end_frame(&g_rdpState);
+    unsigned fenceWaits = g_rdpState.stats.textureWaits;
+    fencePixels[0][0]++;
+    ps2_texture_upload(&fenceTiles[0], &g_rdpState);
+    if (g_rdpState.stats.textureWaits != fenceWaits + 1) failures++;
+    fencePixels[1][0]++;
+    ps2_texture_upload(&fenceTiles[1], &g_rdpState);
+    if (g_rdpState.stats.textureWaits != fenceWaits + 1) failures++;
+    ps2_texture_apply_tile(&fenceTiles[0], &g_rdpState);
+    gsKit_prim_sprite_texture(g_rdpState.gs, &fenceTiles[0].gsTexture,
+        0,0,0,0,2,1,2,1,0,GS_SETREG_RGBAQ(128,128,128,128,1));
+    ps2_texture_end_frame(&g_rdpState);
+    fencePixels[0][0]++;
+    ps2_texture_upload(&fenceTiles[0], &g_rdpState);
+    if (g_rdpState.stats.textureWaits != fenceWaits + 2) failures++;
+    printf("[PS2 TEXTURE FENCE TEST] retired reads and later reuse failures=%d\n", failures);
     /* More tint states than LUT slots, then revisit old states with distinct
      * source pointers so a VRAM hit cannot hide a stale combiner lookup. */
     static u8 whites[48][8];
@@ -568,6 +599,40 @@ int ps2_renderer_smoke(void) {
     ps2_texture_apply_tile(&g_rdpState.tile[0], &g_rdpState);
     if (g_rdpState.gs->CurQueue->pool_cur != queueEnd) failures++;
     printf("[PS2 PATH TEST] failures=%d\n", failures);
+    /* TRI2 retains primitive order but shares one GS material packet.
+     * Discarded triangles must neither leak into the next command nor
+     * interfere with the two-pass ground material. */
+    u32 beforePackets = g_rdpState.stats.texturePackets;
+    beforeDraw = g_rdpState.stats.submitted;
+    f3dex2_tri2(0x06000204, 0x00000204, &reflection, &g_rdpState);
+    if (g_rdpState.stats.submitted != beforeDraw + 2 ||
+        g_rdpState.stats.texturePackets != beforePackets + 1) failures++;
+    for (int i = 0; i < 3; i++) {
+        reflection.vtx[i+3] = reflection.vtx[i];
+        reflection.vtx[i+3].clipFlags = 1;
+    }
+    beforePackets = g_rdpState.stats.texturePackets;
+    beforeDraw = g_rdpState.stats.submitted;
+    f3dex2_tri2(0x0606080a, 0x00000204, &reflection, &g_rdpState);
+    if (g_rdpState.stats.submitted != beforeDraw + 1 ||
+        g_rdpState.stats.texturePackets != beforePackets + 1) failures++;
+    beforePackets = g_rdpState.stats.texturePackets;
+    beforeDraw = g_rdpState.stats.submitted;
+    f3dex2_tri2(0x0606080a, 0x0006080a, &reflection, &g_rdpState);
+    if (g_rdpState.stats.submitted != beforeDraw ||
+        g_rdpState.stats.texturePackets != beforePackets) failures++;
+    f3dex2_tri1(0x05000204, 0, &reflection, &g_rdpState);
+    if (g_rdpState.stats.submitted != beforeDraw + 1 ||
+        g_rdpState.stats.texturePackets != beforePackets + 1) failures++;
+    rdp_setothermode(1u << 20, 0xc8112078u, &g_rdpState);
+    rdp_setcombine(0xfc267e04, 0x1ffcfdf8, &g_rdpState);
+    rdp_setenvcolor(0, 128, &g_rdpState);
+    beforePackets = g_rdpState.stats.texturePackets;
+    beforeDraw = g_rdpState.stats.submitted;
+    f3dex2_tri2(0x06000204, 0x00000204, &reflection, &g_rdpState);
+    if (g_rdpState.stats.submitted != beforeDraw + 4 ||
+        g_rdpState.stats.texturePackets != beforePackets + 4) failures++;
+    printf("[PS2 TRI2 TEST] failures=%d\n", failures);
     printf("[PS2 RENDER TEST] %s: matrices, viewport, othermode, textures and palettes (%d)\n",
            failures ? "FAIL" : "PASS", failures);
     return failures;

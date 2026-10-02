@@ -357,6 +357,9 @@ void Graph_TaskSet00(GraphicsContext* gfxCtx) {
 
 void Graph_Update(GraphicsContext* gfxCtx, GameState* gameState) {
     u32 problem;
+#if PLATFORM_PS2
+    OSTime ps2Begin = osGetTime(), ps2Updated, ps2Queued;
+#endif
 
     gameState->inPreNMIState = false;
     Graph_InitTHGA(gfxCtx);
@@ -374,6 +377,9 @@ void Graph_Update(GraphicsContext* gfxCtx, GameState* gameState) {
 
     GameState_ReqPadData(gameState);
     GameState_Update(gameState);
+#if PLATFORM_PS2
+    ps2Updated = osGetTime();
+#endif
 
 #if DEBUG_FEATURES
     OPEN_DISPS(gfxCtx, "../graph.c", 987);
@@ -475,7 +481,34 @@ void Graph_Update(GraphicsContext* gfxCtx, GameState* gameState) {
         gfxCtx->fbIdx++;
     }
 
+#if PLATFORM_PS2
+    ps2Queued = osGetTime();
+#endif
     Audio_Update();
+#if PLATFORM_PS2
+    {
+        static u64 updateTicks, waitTicks, audioTicks, periodTicks, threadTicks;
+        static u32 frames;
+        OSTime now = osGetTime();
+        updateTicks += ps2Updated - ps2Begin;
+        waitTicks += ps2Queued - ps2Updated;
+        audioTicks += now - ps2Queued;
+        threadTicks += gAudioThreadUpdateTimeTotalPerGfxTask;
+        if (sGraphPrevUpdateEndTime) periodTicks += now - sGraphPrevUpdateEndTime;
+        if (++frames % 120 == 0) {
+            extern void ps2_rom_cache_stats(u32*, u32*);
+            u32 hits, reads;
+            ps2_rom_cache_stats(&hits, &reads);
+            osSyncPrintf("[PS2 CPU PERF] updateUs=%u waitUs=%u audioGameUs=%u periodUs=%u audioThreadUs=%u romHits=%u romReads=%u\n",
+                (u32)(updateTicks * 1000000 / (46875000ull * 120)),
+                (u32)(waitTicks * 1000000 / (46875000ull * 120)),
+                (u32)(audioTicks * 1000000 / (46875000ull * 120)),
+                (u32)(periodTicks * 1000000 / (46875000ull * 120)),
+                (u32)(threadTicks * 1000000 / (46875000ull * 120)), hits, reads);
+            updateTicks = waitTicks = audioTicks = periodTicks = threadTicks = 0;
+        }
+    }
+#endif
 
     {
         OSTime timeNow = osGetTime();

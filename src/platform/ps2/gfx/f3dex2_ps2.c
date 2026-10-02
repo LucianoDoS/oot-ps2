@@ -276,6 +276,23 @@ void f3dex2_vtx(u32 w0, u32 w1, RSPState* rsp) {
 /* ───────────────────────────────────────────────────────────────── *
  *  Envío de un triángulo al GS
  * ───────────────────────────────────────────────────────────────── */
+/* TRI2 shares a single material. Submit its surviving/clipped triangles
+ * together, avoiding repeated TEX/PRIM packet setup without reordering DLs. */
+static bool s_tri2Batch;
+static unsigned s_tri2Count;
+static GSPRIMSTQPOINT s_tri2Points[60];
+static GSTEXTURE s_tri2Texture;
+static bool s_tri2Fog;
+static void flush_tri2(RDPState* rdp) {
+    if (!s_tri2Count) return;
+    int previousFog = rdp->gs->PrimFogEnable;
+    rdp->gs->PrimFogEnable = s_tri2Fog;
+    gsKit_prim_list_triangle_goraud_texture_stq_3d(rdp->gs, &s_tri2Texture, s_tri2Count, s_tri2Points);
+    rdp->gs->PrimFogEnable = previousFog;
+    rdp->stats.texturePackets++;
+    s_tri2Count = 0;
+}
+
 static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
                             RSPState* rsp, RDPState* rdp) {
     GSGLOBAL* gs = rdp->gs;
@@ -350,7 +367,15 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
         }
         int previousFog = gs->PrimFogEnable;
         gs->PrimFogEnable = fog;
-        gsKit_prim_list_triangle_goraud_texture_stq_3d(gs, &tile->gsTexture, 3, points);
+        if (s_tri2Batch) {
+            if (s_tri2Count + 3 > 60) flush_tri2(rdp);
+            if (!s_tri2Count) { s_tri2Texture = tile->gsTexture; s_tri2Fog = fog; }
+            memcpy(s_tri2Points + s_tri2Count, points, sizeof(points));
+            s_tri2Count += 3;
+        } else {
+            gsKit_prim_list_triangle_goraud_texture_stq_3d(gs, &tile->gsTexture, 3, points);
+            rdp->stats.texturePackets++;
+        }
         gs->PrimFogEnable = previousFog;
         /* Kokiri ground uses (TEXEL1-TEXEL0)*ENV_ALPHA+TEXEL0, then
          * SHADE. Match that opaque material using a second GS pass with
@@ -370,6 +395,7 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
                 gsKit_set_primalpha(gs, GS_SETREG_ALPHA(0,1,0,1,0x80), 0);
                 gs->PrimFogEnable = fog;
                 gsKit_prim_list_triangle_goraud_texture_stq_3d(gs, &second->gsTexture, 3, points);
+                rdp->stats.texturePackets++;
                 gs->PrimFogEnable = previousFog;
                 gsKit_set_primalpha(gs, rdp->gs_alpha, 0);
                 rdp->stats.submitted++;
@@ -475,6 +501,8 @@ void f3dex2_tri1(u32 w0, u32 w1, RSPState* rsp, RDPState* rdp) {
 }
 
 void f3dex2_tri2(u32 w0, u32 w1, RSPState* rsp, RDPState* rdp) {
+    s_tri2Batch = rsp->texEnabled && !ps2_combiner_texture_lerp(rdp);
+    s_tri2Count = 0;
     int i0 = (int)((w0 >> 17) & 0x7F);
     int i1 = (int)((w0 >>  9) & 0x7F);
     int i2 = (int)((w0 >>  1) & 0x7F);
@@ -483,6 +511,8 @@ void f3dex2_tri2(u32 w0, u32 w1, RSPState* rsp, RDPState* rdp) {
     int i5 = (int)((w1 >>  1) & 0x7F);
     submit_triangle(i0, i1, i2, rsp, rdp);
     submit_triangle(i3, i4, i5, rsp, rdp);
+    flush_tri2(rdp);
+    s_tri2Batch = false;
 }
 
 /* ───────────────────────────────────────────────────────────────── *

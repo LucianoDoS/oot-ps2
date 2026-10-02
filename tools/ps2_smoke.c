@@ -21,7 +21,9 @@ extern int ps2_rom_threads_smoke(void);
 extern int ps2_renderer_smoke(void);
 extern int ps2_audio_smoke(void);
 extern int ps2_audio_driver_smoke(void);
+extern int ps2_pcm_ring_smoke(void);
 extern int ps2_audio_heap_smoke(void);
+extern int ps2_audio_envelope_smoke(void);
 extern int ps2_sram_smoke(void);
 extern int ps2_font_smoke(void);
 extern int ps2_jpeg_smoke(void);
@@ -64,7 +66,7 @@ int main(void) {
         SleepThread();
         return 1;
     }
-    if (ps2_audio_driver_smoke()) { SleepThread(); return 1; }
+    if (ps2_pcm_ring_smoke() || ps2_audio_driver_smoke() || ps2_audio_envelope_smoke()) { SleepThread(); return 1; }
     if (ps2_audio_smoke()) {
         fflush(stdout);
         SleepThread();

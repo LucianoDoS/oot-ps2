@@ -92,6 +92,20 @@ static int  s_romFd   = -1;
 static bool s_romOpen = false;
 static u32 s_romSize;
 static int s_romMutex = -1;
+/* Small sample DMAs repeatedly read overlapping parts of immutable ROM.
+ * Keep 64 KiB of sectors; large scene loads bypass it to retain hot audio. */
+#define ROM_CACHE_BLOCK 4096u
+#define ROM_CACHE_SLOTS 16
+static struct {
+    u32 offset, bytes, used;
+    u8 data[ROM_CACHE_BLOCK];
+} s_romCache[ROM_CACHE_SLOTS] __attribute__((aligned(64)));
+static u32 s_romClock, s_romHits, s_romReads;
+
+void ps2_rom_cache_stats(u32* hits, u32* reads) {
+    if (hits) *hits = s_romHits;
+    if (reads) *reads = s_romReads;
+}
 
 static OSPiHandle s_cartHandle;
 OSPiHandle* __osPiTable = &s_cartHandle;
@@ -179,6 +193,17 @@ OSPiHandle* osDriveRomInit(void) {
  *  a veces lo pasa ya relativo y a veces con la base 0x10000000, así
  *  que normalizamos.
  * ───────────────────────────────────────────────────────────────── */
+static s32 rom_file_read(u32 offset, void* dram, u32 size) {
+    if (lseek(s_romFd, (int)offset, SEEK_SET) < 0) return -1;
+    s_romReads++;
+    for (u32 completed = 0; completed < size;) {
+        int got = read(s_romFd, (u8*)dram + completed, (int)(size - completed));
+        if (got <= 0) return -1;
+        completed += (u32)got;
+    }
+    return 0;
+}
+
 static s32 rom_read(u32 devAddr, void* dram, u32 size) {
     if (!dram || size == 0) return -1;
     if (rom_lock() < 0) return -1;
@@ -189,16 +214,38 @@ static s32 rom_read(u32 devAddr, void* dram, u32 size) {
     if (offset >= 0x10000000u) offset -= 0x10000000u;
     if (offset > s_romSize || size > s_romSize - offset) goto done;
 
-    if (lseek(s_romFd, (int)offset, SEEK_SET) < 0) goto done;
-    for (u32 completed = 0; completed < size;) {
-        int got = read(s_romFd, (u8*)dram + completed, (int)(size - completed));
-        if (got <= 0) goto done;
-        completed += (u32)got;
+    if (size >= ROM_CACHE_BLOCK) {
+        if (rom_file_read(offset, dram, size) < 0) goto done;
+    } else {
+        for (u32 completed = 0; completed < size;) {
+            u32 at = offset + completed, block = at & ~(ROM_CACHE_BLOCK - 1);
+            int slot = -1, oldest = 0;
+            for (int i = 0; i < ROM_CACHE_SLOTS; i++) {
+                if (s_romCache[i].bytes && s_romCache[i].offset == block) { slot = i; break; }
+                if (s_romCache[i].used < s_romCache[oldest].used) oldest = i;
+            }
+            if (slot >= 0) {
+                s_romHits++;
+            } else {
+                slot = oldest;
+                s_romCache[slot].bytes = 0;
+                u32 bytes = s_romSize - block;
+                if (bytes > ROM_CACHE_BLOCK) bytes = ROM_CACHE_BLOCK;
+                if (rom_file_read(block, s_romCache[slot].data, bytes) < 0) goto done;
+                s_romCache[slot].offset = block;
+                s_romCache[slot].bytes = bytes;
+            }
+            s_romCache[slot].used = ++s_romClock;
+            u32 within = at - block, count = s_romCache[slot].bytes - within;
+            if (count > size - completed) count = size - completed;
+            memcpy((u8*)dram + completed, s_romCache[slot].data + within, count);
+            completed += count;
+        }
     }
 
     /* La GIF y el resto de DMAs leen de RAM física: hay que volcar la
      * caché o verán los datos viejos. */
-    FlushCache(0);
+    SyncDCache(dram, (u8*)dram + size);
     result = 0;
 done:
     SignalSema(s_romMutex);
@@ -278,11 +325,8 @@ void ps2_rom_shutdown(void) {
         s_romFd   = -1;
         s_romOpen = false;
         s_romSize = 0;
+        memset(s_romCache, 0, sizeof(s_romCache));
+        s_romClock = s_romHits = s_romReads = 0;
     }
     SignalSema(s_romMutex);
 }
-
-/* MEJORA PENDIENTE (no es un bug, es rendimiento):
- * añadir una caché LRU de bloques de 64 KB delante de rom_read().
- * Las escenas se releen mucho y el CD es ~10x más lento que el
- * cartucho original. */
