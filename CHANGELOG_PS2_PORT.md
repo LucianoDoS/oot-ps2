@@ -4,6 +4,21 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Diagnóstico de chasquidos — 2026-10-01
+
+- Usuario confirma que el árbol ya se oculta correctamente, pero los
+  chasquidos siguen iguales también con salida continua a 48 kHz.
+- Captura privada opcional del PCM estéreo de síntesis antes de enviarlo
+  a audsrv. Crear `ps2-audio-capture.enable` junto al ELF activa una captura
+  de 256000 bytes tras 900 bloques enviados. A 32 kHz son dos segundos.
+  Se acumula en RAM y escribe una sola vez `ps2-audio-native.raw`; esa
+  escritura puede detener brevemente el fotograma diagnóstico.
+  Sin el archivo de activación no se reserva ni copia PCM.
+- Compilación completa y diagnóstico EE pasan, incluyendo las pruebas de
+  audio y 120 fotogramas: `build/PS2/pcsx2-pcm-capture-pass.log`.
+  La captura permite separar defectos en síntesis de fallos de reproducción;
+  aún no se considera resuelto el ruido.
+
 ## Recursos vecinos del bosque inicial — 2026-10-01
 
 - El registro capturó un fallo en `Room_SetupFirstRoom` al entrar en
@@ -29,7 +44,8 @@ trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 - Prueba EE verifica interpolación de una rampa estéreo, salida continua
   frente a corte tras 11 muestras, rechazo sin avanzar estado, 48 kHz
   directo y feedback AI. Diagnóstico completo pasa 120 fotogramas:
-  `build/PS2/pcsx2-output-resample-pass.log`. Falta confirmar calidad audible.
+  `build/PS2/pcsx2-output-resample-pass.log`. El usuario confirma después
+  que los chasquidos persisten: la conversión no resolvió el fallo audible.
 
 ## Oclusión tras ampliar VRAM y filtro de audio — 2026-10-01
 
@@ -52,7 +68,8 @@ trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 - La versión CT16 anterior redujo recargas en el fotograma 600 del título
   de 102 a 1; la media de traducción del bloque pasó de 54003 a 29027 us.
   Es una comparación del título, no una medición del exterior ni una
-  confirmación de calidad audible. Falta validar oclusión y caminos jugando.
+  confirmación de calidad audible. Oclusión confirmada por el usuario;
+  falta validar los caminos jugando.
 
 ## VRAM y retención de texturas animadas — 2026-10-01
 

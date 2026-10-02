@@ -54,6 +54,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 #include "ps2_types.h"
 
@@ -98,6 +99,27 @@ static unsigned s_outputPhase;
 static s16 s_previousL, s_previousR;
 static bool s_outputHistory;
 static s16 s_outputBuffer[8192] __attribute__((aligned(64)));
+/* Opt-in private diagnostic: capture pre-output PCM in RAM, then write
+ * once. No allocation, copies or file writes in normal game sessions. */
+static u8* s_capturePcm;
+static unsigned s_captureBytes, s_captureTicks;
+#define PCM_CAPTURE_BYTES 256000u
+
+static void capture_pcm(const void* buffer, unsigned size, unsigned rate) {
+    if (!s_capturePcm || ++s_captureTicks < 900) return;
+    unsigned remaining = PCM_CAPTURE_BYTES - s_captureBytes;
+    if (size > remaining) size = remaining;
+    memcpy(s_capturePcm + s_captureBytes, buffer, size);
+    s_captureBytes += size;
+    if (s_captureBytes == PCM_CAPTURE_BYTES) {
+        FILE* capture = fopen("host:ps2-audio-native.raw", "wb");
+        unsigned written = capture ? fwrite(s_capturePcm, 1, s_captureBytes, capture) : 0;
+        if (capture) fclose(capture);
+        printf("[PS2 PCM CAPTURE] bytes=%u rate=%d stereo16le; file write may stall this diagnostic frame\n",
+               written, (int)rate);
+        free(s_capturePcm); s_capturePcm = NULL;
+    }
+}
 extern u64 osGetTime(void);
 static s16         s_mixBuf[AUDIO_BUFFER_BYTES / sizeof(s16)]
                             __attribute__((aligned(64)));
@@ -146,6 +168,16 @@ void PS2Audio_Init(void) {
     memset(s_voices, 0, sizeof(s_voices));
     memset(s_mixBuf, 0, sizeof(s_mixBuf));
     s_audioReady = true;
+    if (s_capturePcm) free(s_capturePcm);
+    s_capturePcm = NULL;
+    s_captureBytes = s_captureTicks = 0;
+    FILE* captureFlag = fopen("host:ps2-audio-capture.enable", "rb");
+    if (captureFlag) {
+        fclose(captureFlag);
+        s_capturePcm = malloc(PCM_CAPTURE_BYTES);
+        printf("[PS2 PCM CAPTURE] %s; starts after 900 submitted buffers\n",
+               s_capturePcm ? "armed" : "allocation failed");
+    }
 
     printf("[Audio] Initialized: %d Hz, %d-bit, %d ch\n",
            AUDIO_SAMPLE_RATE, AUDIO_BITS, AUDIO_CHANNELS);
@@ -286,6 +318,7 @@ int PS2Audio_SubmitBuffer(void* buffer, unsigned int size) {
         }
         output = s_outputBuffer;
     }
+    capture_pcm(buffer, size, s_audfmt.freq);
     int result = audsrv_play_audio((const char*)output, outputSize);
     u64 now = osGetTime();
     if (!s_pcmStart) s_pcmStart = now;
