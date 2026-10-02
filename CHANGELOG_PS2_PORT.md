@@ -4,6 +4,17 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Recursos vecinos del bosque inicial — 2026-10-01
+
+- El registro capturó un fallo en `Room_SetupFirstRoom` al entrar en
+  `spot10` (Bosques Perdidos, entrada 011e). La escena no estaba convertida
+  y su lista de habitaciones se leía como punteros nativos inválidos.
+- Perfil `play` añade `spot10` con sus diez habitaciones, casas de los
+  Kokiri y tienda; se extraen también sus dependencias de objetos.
+  La imagen nueva contiene 139 segmentos nativos. Se verifican sus listas
+  de habitaciones y rangos ROM, checksum y conservación byte por byte
+  de los segmentos anteriormente adaptados. Falta recorrer esas escenas.
+
 ## Salida PCM continua a 48 kHz — 2026-10-01
 
 - Usuario confirma que el FIR anterior no eliminó el ruido/chasquidos.

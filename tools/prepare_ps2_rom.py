@@ -77,7 +77,13 @@ profiles['play'] = profiles['title'] + [
 ]
 selected = set(args.segment or profiles[args.profile])
 if not args.segment and args.profile in ('title', 'play'):
-    for scene_prefix in ('jyasinboss', 'spot17', 'hiral_demo'):
+    scene_prefixes = ['jyasinboss', 'spot17', 'hiral_demo']
+    if args.profile == 'play':
+        # These are reachable directly from the initial forest. Raw N64
+        # room-list pointers cannot be consumed by native EE scene code.
+        scene_prefixes += ['spot10', 'kokiri_home', 'kokiri_home3',
+                           'kokiri_home4', 'kokiri_home5', 'kokiri_shop']
+    for scene_prefix in scene_prefixes:
         selected.update(name for name in entries_by_name
                         if name == scene_prefix + '_scene' or name.startswith(scene_prefix + '_room_'))
 object_names = {int(index, 16): name for index, name in re.findall(

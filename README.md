@@ -115,6 +115,9 @@ Para la prueba actual de título y recursos iniciales, después de extraerlos:
 Desde PowerShell, `tools/run_ps2_game.ps1` inicia el ELF. El log queda en
 `build/PS2-ntsc12/pcsx2-game.log`. Los perfiles `title` y `play` son selecciones
 para diagnóstico; `play` aún no contiene todos los recursos de una partida completa.
+Incluye el bosque inicial, Bosques Perdidos, casas de los Kokiri y su tienda.
+La síntesis de audio conserva 32 kHz y el port convierte su PCM de forma continua
+a 48 kHz para audsrv; la calidad audible sigue en comprobación.
 
 ---
 
