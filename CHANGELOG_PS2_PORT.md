@@ -4,6 +4,74 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Perfil de renderizado, texturas y voz — 2026-10-02
+
+- El arranque y los menús limitan ahora la admisión gráfica a 30 Hz como
+  máximo (dos retraces). La partida conserva su updateRate=3, equivalente
+  a un máximo de 20 Hz. VPS=60 del emulador mide retraces y no es la tasa
+  de fotogramas del juego. El planificador de producción pasa los casos
+  updateRate=0/1/2/3, prioridades, DP ocupado y vuelta del contador.
+- Perfil optativo mediante `host:ps2-gfx-profile.enable`, muestreado cada
+  60 fotogramas con COP0 Count. Separa vértices, triángulos, rectángulos,
+  búsquedas de caché, conversión y carga GS. Los tiempos incluyen interrupciones
+  de otros hilos; las fases de textura están incluidas en tri/rect. Sin el
+  archivo privado no se lee el contador en cada comando.
+- Cuello de botella observado: en el exterior una muestra emplea 55 ms
+  en convertir texturas dentro de 93 ms de traducción gráfica; el inventario
+  recarga 85–122 texturas por fotograma y consume 123–244 ms. La actualización
+  de la partida es mucho menor que su espera por el renderizado. Registros
+  previos: `build/PS2/pcsx2-before-lut-runtime.log`.
+- Las tablas del combinador compilan los selectores una vez y evalúan sus
+  referencias simplificadas. Caché ampliada de 16 a 64 materiales. Prueba
+  diferencial contra las ecuaciones anteriores: 31 materiales, tres tipos
+  de ciclo, todos los valores de cada canal, incluidos alfa y transparencias.
+  Usuario confirma cierta mejora, pero sigue observando 12 FPS o menos y
+  lag al abrir el inventario: el objetivo de rendimiento aún no está logrado.
+- Segunda optimización: XXH32 por bloques reemplaza la cadena FNV por byte
+  al comprobar el contenido de texturas. Se siguen leyendo todos los bytes,
+  incluso filas no contiguas y el segundo material de los caminos. Vectores
+  de libxxhash, 16 alineaciones y cambios en cada byte pasan en EE; 2000
+  comparaciones independientes pasan en el host. No se omiten comprobaciones
+  por fotograma que puedan recuperar el parpadeo del suelo.
+- Una lectura inválida de vértices al abrir el inventario producía TLB misses
+  en f3dex2_vtx. Se descarta la carga fuera de RAM EE y se invalidan los
+  vértices afectados; una recarga válida posterior funciona. El origen de
+  ese puntero corrupto todavía requiere diagnóstico.
+- La captura privada acepta `voice` en `host:ps2-audio-capture.enable` y
+  empieza con la primera petición del banco de voz. Se capturó la voz infantil
+  0x6820 antes de la salida: el usuario confirma que también se escucha mal.
+  Esto sitúa ese defecto antes del controlador IOP, aunque no excluye otros
+  fallos de reproducción. Se añaden parámetros de las notas durante la captura.
+- Corregido HILOGAIN: el juego define su argumento como UQ4.4 sin signo.
+  El intérprete lo trataba como int8 y convertía ganancias >=0x80 en negativas.
+  Pruebas de ambas polaridades y saturación para 0x10/0x7f/0x80/0xff pasan.
+  No se da por solucionada la voz hasta confirmar su comportamiento real.
+- Usuario confirma que la ganancia no cambia el corte de la voz ni elimina
+  los golpes durante el inventario; la segunda optimización no mejora su
+  percepción de FPS. El perfil confirma que el menú sigue recargando unas
+  134–137 texturas por fotograma: falta reducir esa carga.
+- Causa concreta encontrada en Audio_ProcessNotes: una comprobación N64
+  rechazaba parentLayer por estar por debajo de 0x7fffffff. Todas las capas
+  válidas de EE viven por debajo de 32 MiB, por lo que las notas activas no
+  actualizaban inicialización, tono y volumen. En PS2 se valida el rango de
+  RAM nativa; N64 conserva su comprobación. Se añade una prueba de producción
+  con capa EE válida que verifica estado inicial, tono, volumen y silencio
+  tras mutear en el siguiente tick.
+  La prueba pasa (tono 0xa000, volumen 723/723 en la primera nota) y el
+  diagnóstico completo pasa 120 fotogramas sin fallos en
+  `build/PS2/pcsx2-live-notes-pass.log`. Versión reconstruida y abierta;
+  respaldo `build/PS2-ntsc12/oot_ps2-before-live-notes.elf`.
+  El usuario confirma: «el audio ya esta corregido» con esta última versión.
+  El registro de la partida ya muestra notas inicializándose durante la
+  captura (antes no aparecían): `build/PS2/pcsx2-live-notes-runtime.log`.
+  Los archivos de activación privada se retiran tras capturar; en los
+  siguientes arranques no se activa el perfil ni la grabación de sonido.
+- Pruebas nuevas de ADPCM con predictor no nulo: decodificación entera frente
+  a bloques separados, historial y A_LOOP. Diagnóstico completo pasa 120
+  fotogramas y cero fallos: `build/PS2/pcsx2-hash-gain-pass.log`.
+  Juego construido con 718 objetos y abierto con la memory card existente.
+  Respaldo anterior: `build/PS2-ntsc12/oot_ps2-before-hash-gain.elf`.
+
 ## Sincronización de fotogramas GS — 2026-10-02
 
 - Usuario confirma que ya oye algunos efectos antes ausentes; la voz de

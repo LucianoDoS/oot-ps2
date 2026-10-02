@@ -24,6 +24,30 @@ static void matrix(short* out, float scale, float translate) {
 
 int ps2_renderer_smoke(void) {
     int failures = 0;
+    /* XXH32 vectors from the independent system libxxhash reference. Verify
+     * short tails, stripes, seeds and every possible word alignment on EE. */
+    const unsigned lengths[] = {0,1,3,4,7,15,16,17,31,32,33,65,257};
+    const u32 reference[][2] = {
+        {0x02cc5d05,0xbd209070},{0x3fe5a29d,0xa0e7a8b7},{0x4021af28,0x763863f5},
+        {0x1eb8f11a,0xe8eb117d},{0x02226fe7,0x4f89101b},{0x162986eb,0x28e7b73d},
+        {0x96ac9fa6,0x4d269dbf},{0x3cdfb1a2,0xa321e227},{0xdf853fbf,0xd71ee24f},
+        {0xda8072dc,0x75048b5b},{0x3c8fd07d,0x845fe473},{0x3922f755,0xc8c31042},
+        {0x0c5d12f1,0x896ebb1d}
+    };
+    static u8 hashInput[273];
+    for (int offset=0;offset<16;offset++) {
+        for (int i=0;i<257;i++) hashInput[offset+i]=(i*37+11)&255;
+        for (unsigned i=0;i<sizeof(lengths)/sizeof(lengths[0]);i++) {
+            if (ps2_texture_hash(hashInput+offset,lengths[i],0)!=reference[i][0] ||
+                ps2_texture_hash(hashInput+offset,lengths[i],0x12345678)!=reference[i][1]) failures++;
+        }
+        for (int i=0;i<257;i++) {
+            hashInput[offset+i]^=1;
+            if (ps2_texture_hash(hashInput+offset,257,0)==reference[12][0]) failures++;
+            hashInput[offset+i]^=1;
+        }
+    }
+    printf("[PS2 TEXTURE HASH TEST] reference vectors, unaligned rows, all-byte mutations (%d)\n",failures);
     int initializedDepth = g_rdpState.gs->PSMZ;
     const int formats[] = {GS_PSMZ_16, GS_PSMZ_16S, GS_PSMZ_24, GS_PSMZ_32};
     for (unsigned format = 0; format < sizeof(formats)/sizeof(formats[0]); format++) {
@@ -80,6 +104,38 @@ int ps2_renderer_smoke(void) {
     rdp_setothermode(2u << 20, 0, &g_rdpState); /* COPY bypass */
     ps2_combiner_color(&g_rdpState, texel, shade, combined);
     if (memcmp(combined, texel, 4)) failures++;
+    /* Differential LUT checks use the original scalar equations, including
+     * both cycles, combined alpha, copy, dynamic alpha and varied constants. */
+    static u8 lookup[4][256];
+    RDPState material = {0};
+    const u32 materials[][2] = {
+        {0,0},{0xfcffffff,0xfffdf6fb},{0xfcffffff,0xfffe793c},
+        {0xfc267e04,0x1ffcfdf8},{0xfc262a04,0x1f5893f8},
+        {0xfc119623,0xff2fffff},{0xfc127e24,0xfffff9fc}
+    };
+    u32 random = 0x79214;
+    for (int fixture = 0; fixture < 31; fixture++) {
+        random = random*1664525u+1013904223u;
+        material.combiner.w0 = fixture < 7 ? materials[fixture][0] : 0xfc000000u | (random & 0xffffff);
+        random = random*1664525u+1013904223u;
+        material.combiner.w1 = fixture < 7 ? materials[fixture][1] : random;
+        material.primColor = random ^ 0xc39820a4u;
+        material.envColor = random ^ 0x142589d3u;
+        for (int cycle = 0; cycle < 3; cycle++) {
+            material.otherMode.hi = cycle << 20;
+            ps2_combiner_build_lookup(&material, lookup);
+            for (int value = 0; value < 256; value++) {
+                u8 input[4] = {value,value,value,255}, full[4] = {255,255,255,255}, expected[4];
+                ps2_combiner_color(&material, input, full, expected);
+                for (int channel = 0; channel < 3; channel++) if (lookup[channel][value] != expected[channel]) failures++;
+                input[0] = input[1] = input[2] = 255; input[3] = value;
+                ps2_combiner_color(&material, input, full, expected);
+                unsigned alpha = ps2_combiner_dynamic_alpha(&material) ? value*128u/255 : expected[3]*128u/255;
+                if (lookup[3][value] != alpha) failures++;
+            }
+        }
+    }
+    printf("[PS2 COMBINER LUT TEST] original equations vs compiled references, all intensities (%d)\n", failures);
     rdp_setcombine(0, 0, &g_rdpState);
     rdp_setothermode(0, 0, &g_rdpState);
     static short projection[32] __attribute__((aligned(16)));
@@ -99,6 +155,12 @@ int ps2_renderer_smoke(void) {
     printf("[PS2 RENDER CHECK] clip=%f,%f screen=%f,%f\n", v->cx, v->cy, v->sx, v->sy);
     if (fabsf(v->cx - 0.75f) > 0.001f || fabsf(v->cy - 0.125f) > 0.001f ||
         fabsf(v->sx - 560.0f) > 0.01f || fabsf(v->sy - 196.0f) > 0.01f) failures++;
+    /* Bad asset pointers must discard the old vertex rather than reading
+     * outside EE RAM or drawing geometry from a previous material. */
+    f3dex2_vtx(0x01001002, 0xe00c0700, &g_rspState);
+    if (v->valid) failures++;
+    f3dex2_vtx(0x01001002, (u32)vertex, &g_rspState);
+    if (!v->valid || fabsf(v->cx - 0.75f) > 0.001f) failures++;
     RSPVertex a = {.cx=-0.5f,.cy=-0.5f,.cw=1,.ca=255};
     RSPVertex b = {.cx=0.5f,.cy=-0.5f,.cw=1,.ca=255};
     RSPVertex c = {.cx=0,.cy=0.5f,.cz=-2,.cw=1,.ca=255};

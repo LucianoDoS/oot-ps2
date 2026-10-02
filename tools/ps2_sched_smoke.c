@@ -67,9 +67,16 @@ int ps2_sched_smoke(void) {
     failures += admit(&sc, &gfx, OS_SC_SP | OS_SC_DP, 0);
     sc.retraceCount = 0;
     failures += admit(&sc, &gfx, OS_SC_SP | OS_SC_DP, 1);
-    cfb.updateRate = 0; /* invalid/uncapped rate still permits at most one per VI */
+    cfb.updateRate = 1; /* boot/menu cannot exceed 30 Hz */
     failures += admit(&sc, &gfx, OS_SC_SP | OS_SC_DP, 0);
     sc.retraceCount = 1;
+    failures += admit(&sc, &gfx, OS_SC_SP | OS_SC_DP, 0);
+    sc.retraceCount = 2;
+    failures += admit(&sc, &gfx, OS_SC_SP | OS_SC_DP, 1);
+    cfb.updateRate = 0;
+    sc.retraceCount = 3;
+    failures += admit(&sc, &gfx, OS_SC_SP | OS_SC_DP, 0);
+    sc.retraceCount = 4;
     failures += admit(&sc, &gfx, OS_SC_SP | OS_SC_DP, 1);
     printf("[PS2 SCHED TEST] %s: 20/30 Hz, late frames, audio priority, DP ownership, flush and wrap (%d)\n",
            failures ? "FAIL" : "PASS", failures);

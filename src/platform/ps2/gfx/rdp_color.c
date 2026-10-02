@@ -283,6 +283,77 @@ void ps2_combiner_color(const RDPState* rdp, const u8 texel[4], const u8 shade[4
     memcpy(output, combined, 4);
 }
 
+/* Build a material's LUT without resolving source selectors thousands of
+ * times. References 0..255 are constants, 256 is the changing texel channel,
+ * and 257..260 refer to the previous cycle's RGBA. Keep the scalar evaluator
+ * above as the general vertex path and an independent diagnostic oracle. */
+typedef struct {
+    u16 source[4];
+    u8 operation;
+} LookupEquation;
+static int lookup_value(u16 source, int value, const u8 combined[4]) {
+    return source < 256 ? source : source == 256 ? value : combined[source - 257];
+}
+void ps2_combiner_build_lookup(const RDPState* rdp, u8 values[4][256]) {
+    const CombinerAnalysis* analysis = combiner_analysis(rdp);
+    bool bypass = analysis->type == 2 || (!analysis->w0 && !analysis->w1);
+    if (bypass) {
+        for (int value = 0; value < 256; value++) {
+            for (int component = 0; component < 3; component++) values[component][value] = value;
+            values[3][value] = value * 128u / 255;
+        }
+        return;
+    }
+    const u8 fullShade[4] = {255,255,255,255};
+    const u8 zero[4] = {0}, previous[4] = {1,2,3,4};
+    int cycles = analysis->type == 1 ? 2 : 1;
+    for (int alphaPass = 0; alphaPass < 2; alphaPass++) {
+        if (alphaPass && analysis->dynamicAlpha) {
+            for (int value = 0; value < 256; value++) values[3][value] = value * 128u / 255;
+            continue;
+        }
+        LookupEquation equations[2][4];
+        u8 texel0[4] = {0,0,0,255}, texel1[4] = {1,1,1,255};
+        int firstComponent = alphaPass ? 3 : 0;
+        if (alphaPass) {
+            texel0[0] = texel0[1] = texel0[2] = 255; texel0[3] = 0;
+            texel1[0] = texel1[1] = texel1[2] = 255; texel1[3] = 1;
+        }
+        for (int cycle = 0; cycle < cycles; cycle++) for (int component = firstComponent; component < 4; component++) {
+            LookupEquation* equation = &equations[cycle][component];
+            const u8* selectors = analysis->sources[cycle][component == 3];
+            for (int slot = 0; slot < 4; slot++) {
+                int base = combiner_input(rdp, selectors[slot], slot, component == 3, component, texel0, fullShade, zero);
+                int variable = combiner_input(rdp, selectors[slot], slot, component == 3, component, texel1, fullShade, zero);
+                int combined = combiner_input(rdp, selectors[slot], slot, component == 3, component, texel0, fullShade, previous);
+                equation->source[slot] = variable != base ? 256 : combined != base ? 256 + combined : base;
+            }
+            equation->operation = equation->source[0] == equation->source[1] || equation->source[2] == 0 ? 1 :
+                                  equation->source[2] == 255 ? 2 : 0;
+        }
+        for (int value = 0; value < 256; value++) {
+            u8 combined[4] = {0};
+            for (int cycle = 0; cycle < cycles; cycle++) {
+                u8 next[4] = {0};
+                for (int component = firstComponent; component < 4; component++) {
+                    const LookupEquation* equation = &equations[cycle][component];
+                    int result = lookup_value(equation->source[3], value, combined);
+                    if (equation->operation != 1) {
+                        int difference = lookup_value(equation->source[0], value, combined) -
+                                         lookup_value(equation->source[1], value, combined);
+                        result += equation->operation == 2 ? difference :
+                                  difference * lookup_value(equation->source[2], value, combined) / 255;
+                    }
+                    next[component] = result < 0 ? 0 : result > 255 ? 255 : result;
+                }
+                memcpy(combined, next, 4);
+            }
+            if (alphaPass) values[3][value] = combined[3] * 128u / 255;
+            else for (int component = 0; component < 3; component++) values[component][value] = combined[component];
+        }
+    }
+}
+
 /* ─────────────────────────────────────────────────────────── *
  *  G_RDPSETOTHERMODE — sets pipeline, cycle, blend formula
  *

@@ -17,3 +17,7 @@ fixtures verifying its history and output samples on the EE.
 The filter uses consecutive native samples and taps on PS2. Upstream's
 unrolled filter directly indexes word-swizzled pairs; an impulse spanning
 two synthesis blocks verifies tap order and preservation of raw history.
+
+OoT's HILOGAIN argument is unsigned UQ4.4, matching NoteSampleState.gain
+and AudioSynth_HiLoGain. The native interpreter preserves positive gain
+above 0x7f; fixtures check both polarities and signed output saturation.

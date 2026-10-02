@@ -7,6 +7,9 @@
 #include "terminal.h"
 #include "ultra64.h"
 #include "audio.h"
+#if PLATFORM_PS2
+extern void PS2Audio_MarkVoice(unsigned sfxId);
+#endif
 
 typedef struct SfxRequest {
     /* 0x00 */ u16 sfxId;
@@ -109,6 +112,9 @@ void Audio_PlaySfxGeneral(u16 sfxId, Vec3f* pos, u8 token, f32* freqScale, f32* 
         req->vol = vol;
         req->reverbAdd = reverbAdd;
         gSfxRequestWriteIndex++;
+#if PLATFORM_PS2
+        if (SFX_BANK_SHIFT(sfxId) == 6) PS2Audio_MarkVoice(sfxId);
+#endif
     }
 }
 

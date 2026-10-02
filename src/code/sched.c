@@ -274,7 +274,10 @@ OSScTask* Sched_GfxTaskFramebufferValid(Scheduler* sc, OSScTask* task) {
 
 #if PLATFORM_PS2
     if (task->list.t.type == M_GFXTASK && task->framebuffer != NULL) {
-        u32 interval = task->framebuffer->updateRate > 0 ? task->framebuffer->updateRate : 1;
+        /* The boot/file menus request one VI, which could run at 60 Hz
+         * after removing the dummy framebuffer wait. Cap those at 30 Hz;
+         * gameplay's three-VI interval remains 20 Hz. */
+        u32 interval = task->framebuffer->updateRate > 2 ? task->framebuffer->updateRate : 2;
         if (sPs2GfxStarted && (u32)((u32)sc->retraceCount - sPs2LastGfxRetrace) < interval) {
             return NULL;
         }

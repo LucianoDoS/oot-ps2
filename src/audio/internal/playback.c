@@ -188,9 +188,19 @@ void Audio_ProcessNotes(void) {
         sampleState2 = &gAudioCtx.sampleStates[gAudioCtx.sampleStateOffset + i];
         playbackState = &note->playbackState;
         if (playbackState->parentLayer != NO_LAYER) {
+#if PLATFORM_PS2
+            /* N64 uses KSEG0 pointers above 0x80000000. Native EE layers
+             * live below 32 MiB; the original check skipped every live note,
+             * leaving synthesis ticks with stale pitch/volume/init state. */
+            u32 layerAddress = (u32)playbackState->parentLayer;
+            if (layerAddress < 0x100000u || layerAddress > 0x2000000u-sizeof(SequenceLayer)) {
+                continue;
+            }
+#else
             if ((u32)playbackState->parentLayer < 0x7FFFFFFF) {
                 continue;
             }
+#endif
 
             if (note != playbackState->parentLayer->note && playbackState->unk_04 == 0) {
                 playbackState->adsr.action.s.release = true;

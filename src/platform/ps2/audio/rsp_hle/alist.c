@@ -578,7 +578,7 @@ void alist_mix(struct hle_t* hle, uint16_t dmemo, uint16_t dmemi, uint16_t count
     }
 }
 
-void alist_multQ44(struct hle_t* hle, uint16_t dmem, uint16_t count, int8_t gain)
+void alist_multQ44(struct hle_t* hle, uint16_t dmem, uint16_t count, uint8_t gain)
 {
     int16_t *dst = (int16_t*)(hle->alist_buffer + dmem);
 

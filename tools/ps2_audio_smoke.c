@@ -11,7 +11,11 @@ static int16_t history[16] __attribute__((aligned(16)));
 static int16_t book[16] __attribute__((aligned(16)));
 static int16_t filterCoefficients[8] __attribute__((aligned(16)));
 static int16_t filterState[16] __attribute__((aligned(16)));
-static uint8_t compressed[16] __attribute__((aligned(16)));
+static uint8_t compressed[64] __attribute__((aligned(16)));
+static int16_t decodedFull[80] __attribute__((aligned(16)));
+static int16_t decodedParts[80] __attribute__((aligned(16)));
+static int16_t continued[48] __attribute__((aligned(16)));
+static int16_t priorHistory[16] __attribute__((aligned(16)));
 static uint32_t commands[12][2] __attribute__((aligned(16)));
 
 int ps2_audio_smoke(void) {
@@ -83,6 +87,63 @@ int ps2_audio_smoke(void) {
         if (output[i] != expected) failures++;
     }
     if (PS2RspAudio_Process(commands, 7) != -1) failures++;
+    /* OoT's HILOGAIN byte is unsigned UQ4.4, including values above 7.9375.
+     * Amplification must preserve polarity and saturate both signs. */
+    const unsigned gains[] = {0x10,0x7f,0x80,0xff};
+    for (unsigned g = 0; g < sizeof(gains)/sizeof(gains[0]); g++) {
+        for (int i = 0; i < 16; i++) input[i] = (i-8)*1024;
+        commands[0][0]=0x14020100; commands[0][1]=(uint32_t)input;
+        commands[1][0]=0x0e000020 | (gains[g]<<16); commands[1][1]=0x01000000;
+        commands[2][0]=0x15020100; commands[2][1]=(uint32_t)output;
+        if (PS2RspAudio_Process(commands,3*8)) failures++;
+        for (int i=0;i<16;i++) {
+            int value=(input[i]*(int)gains[g])>>4;
+            if (value>32767) value=32767;
+            if (value< -32768) value= -32768;
+            if (output[i]!=value) failures++;
+        }
+    }
+    /* Voice samples span synthesis blocks: exercise a nonzero predictor
+     * over four compressed frames, comparing continuous and split decoding.
+     * The second block's prefix must equal the previous decoder history. */
+    for (int i = 0; i < 8; i++) { book[i] = -64 + i*9; book[8+i] = 320-i*13; }
+    for (int frame = 0; frame < 4; frame++) {
+        compressed[frame*9] = 0x50;
+        for (int i = 1; i < 9; i++) compressed[frame*9+i] = (frame*31+i*17) & 255;
+    }
+    commands[0][0] = 0x14040100; commands[0][1] = (uint32_t)compressed;
+    commands[1][0] = 0x0b000020; commands[1][1] = (uint32_t)book;
+    commands[2][0] = 0x08000100; commands[2][1] = 0x02000080;
+    commands[3][0] = 0x01010000; commands[3][1] = (uint32_t)history;
+    commands[4][0] = 0x150a0200; commands[4][1] = (uint32_t)decodedFull;
+    if (PS2RspAudio_Process(commands, 5*8)) failures++;
+    commands[2][1] = 0x02000040;
+    commands[4][0] = 0x15060200; commands[4][1] = (uint32_t)decodedParts;
+    if (PS2RspAudio_Process(commands, 5*8)) failures++;
+    memcpy(priorHistory, history, sizeof(history));
+    /* LOADBUFF rounds the RAM source down to eight bytes, just like the RSP.
+     * The next two frames start two bytes into that aligned transfer. */
+    commands[0][1] = (uint32_t)(compressed + 16);
+    commands[2][0] = 0x08000102;
+    commands[3][0] = 0x01000000;
+    commands[4][1] = (uint32_t)continued;
+    if (PS2RspAudio_Process(commands, 5*8) || memcmp(continued, priorHistory, sizeof(history))) {
+        printf("[PS2 ADPCM TEST] continuation prefix failed\n"); failures++;
+    }
+    memcpy(decodedParts + 48, continued + 16, 64);
+    if (memcmp(decodedFull, decodedParts, sizeof(decodedFull))) {
+        for (int i = 0; i < 80; i++) if (decodedFull[i] != decodedParts[i]) {
+            printf("[PS2 ADPCM TEST] split decoding failed at %d: %d != %d\n", i,decodedFull[i],decodedParts[i]); break;
+        }
+        failures++;
+    }
+    /* A_LOOP selects the supplied loop history, not the note's last block. */
+    commands[1][0] = 0x0f000000; commands[1][1] = (uint32_t)priorHistory;
+    commands[3][0] = 0x01020000;
+    commands[4][1] = (uint32_t)decodedParts;
+    if (PS2RspAudio_Process(commands, 5*8) || memcmp(continued, decodedParts, sizeof(continued))) {
+        printf("[PS2 ADPCM TEST] loop history failed\n"); failures++;
+    }
     printf("[PS2 AUDIO TEST] %s: PCM/mix/stereo, ADPCM/S8, resample/filter continuity and bounds (%d)\n",
            failures ? "FAIL" : "PASS", failures);
     return failures;

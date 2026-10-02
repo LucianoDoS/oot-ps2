@@ -6,6 +6,9 @@
 #include "stack_pad.h"
 #include "ultra64.h"
 #include "audio.h"
+#if PLATFORM_PS2
+extern int PS2Audio_VoiceCaptureActive(void);
+#endif
 
 // DMEM Addresses for the RSP
 #define DMEM_TEMP 0x3C0
@@ -882,6 +885,16 @@ Acmd* AudioSynth_ProcessNote(s32 noteIndex, NoteSampleState* sampleState, NoteSy
         loopInfo = sample->loop;
         loopEndPos = loopInfo->header.end;
         sampleAddr = (u32)sample->sampleAddr;
+#if PLATFORM_PS2
+        if (sampleState->bitField0.needsInit && PS2Audio_VoiceCaptureActive()) {
+            osSyncPrintf("[PS2 VOICE NOTE] note=%d parts=%d pitch=%04x gain=%u vol=%u,%u codec=%u medium=%u bytes=%u loop=%u,%u,%u book=%d,%d filter=%p haas=%u\n",
+                noteIndex,nParts,resamplingRateFixedPoint,sampleState->gain,
+                sampleState->targetVolLeft,sampleState->targetVolRight,sample->codec,sample->medium,sample->size,
+                loopInfo->header.start,loopInfo->header.end,loopInfo->header.count,
+                sample->book ? sample->book->header.order : 0,sample->book ? sample->book->header.numPredictors : 0,
+                sampleState->filter,sampleState->bitField1.useHaasEffect);
+        }
+#endif
         resampledTempLen = 0;
 
         for (curPart = 0; curPart < nParts; curPart++) {

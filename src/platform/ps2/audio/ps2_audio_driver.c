@@ -104,9 +104,25 @@ static s16 s_outputBuffer[8192] __attribute__((aligned(64)));
 static u8* s_capturePcm;
 static unsigned s_captureBytes, s_captureTicks;
 static unsigned s_captureDelay = 900;
+static volatile unsigned s_captureVoice;
+static bool s_captureWaitVoice;
 #define PCM_CAPTURE_BYTES 256000u
 
+/* Called by the game thread; only publish the request here. Allocation,
+ * copying and disposal remain owned by the audio thread. */
+void PS2Audio_MarkVoice(unsigned sfxId) {
+    if (s_captureWaitVoice && !s_captureVoice) s_captureVoice = sfxId;
+}
+int PS2Audio_VoiceCaptureActive(void) {
+    return s_capturePcm && s_captureVoice;
+}
+
 static void capture_pcm(const void* buffer, unsigned size, unsigned rate) {
+    if (s_captureWaitVoice) {
+        if (!s_captureVoice) return;
+        printf("[PS2 PCM CAPTURE] voice=%04x\n", s_captureVoice);
+        s_captureWaitVoice = false;
+    }
     if (!s_capturePcm || ++s_captureTicks < s_captureDelay) return;
     unsigned remaining = PCM_CAPTURE_BYTES - s_captureBytes;
     if (size > remaining) size = remaining;
@@ -172,12 +188,19 @@ void PS2Audio_Init(void) {
     if (s_capturePcm) free(s_capturePcm);
     s_capturePcm = NULL;
     s_captureBytes = s_captureTicks = 0;
+    s_captureVoice = 0;
+    s_captureWaitVoice = false;
     FILE* captureFlag = fopen("host:ps2-audio-capture.enable", "rb");
     if (captureFlag) {
         /* Optional delay in submitted buffers, to capture actual gameplay
          * rather than the quiet title sample used by the earlier test. */
-        unsigned delay;
-        s_captureDelay = fscanf(captureFlag, "%u", &delay) == 1 && delay <= 36000 ? delay : 900;
+        char setting[32] = {0};
+        unsigned delay = 900;
+        if (fscanf(captureFlag, "%31s", setting) == 1) {
+            if (!strcmp(setting, "voice")) { s_captureWaitVoice = true; delay = 0; }
+            else if (sscanf(setting, "%u", &delay) != 1 || delay > 36000) delay = 900;
+        }
+        s_captureDelay = delay;
         fclose(captureFlag);
         s_capturePcm = malloc(PCM_CAPTURE_BYTES);
         printf("[PS2 PCM CAPTURE] %s; starts after %u submitted buffers\n",

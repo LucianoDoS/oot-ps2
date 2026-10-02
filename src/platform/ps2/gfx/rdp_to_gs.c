@@ -33,6 +33,7 @@
 #include <gsKit.h>
 #include <string.h>
 #include <stdio.h>
+#include "ps2_gfx_profile.h"
 #include <kernel.h>
 #include <unistd.h>
 
@@ -188,6 +189,7 @@ void rdp_to_gs_init(GSGLOBAL* gs) {
  * ═══════════════════════════════════════════════════════════════════ */
 void rdp_to_gs_exec(const Gfx* dl) {
     if (!dl) return;
+    ps2_gfx_profile_begin();
     s_s2dex = false;
 
     const Gfx* pc = dl;
@@ -234,22 +236,34 @@ void rdp_to_gs_exec(const Gfx* dl) {
                 case G_NOOP:
                     break;
 
-                case G_VTX:
+                case G_VTX: {
+                    u32 start = ps2_gfx_profile_enter();
                     f3dex2_vtx(w0, w1, &g_rspState);
+                    ps2_gfx_profile_leave(GFX_PROFILE_VTX, start);
                     break;
+                }
 
-                case G_TRI1:
+                case G_TRI1: {
+                    u32 start = ps2_gfx_profile_enter();
                     f3dex2_tri1(w0, w1, &g_rspState, &g_rdpState);
+                    ps2_gfx_profile_leave(GFX_PROFILE_TRI, start);
                     break;
+                }
 
-                case G_TRI2:
+                case G_TRI2: {
+                    u32 start = ps2_gfx_profile_enter();
                     f3dex2_tri2(w0, w1, &g_rspState, &g_rdpState);
+                    ps2_gfx_profile_leave(GFX_PROFILE_TRI, start);
                     break;
+                }
 
-                case G_QUAD:
+                case G_QUAD: {
+                    u32 start = ps2_gfx_profile_enter();
                     /* Un quad son dos triángulos que comparten arista */
                     f3dex2_tri2(w0, w1, &g_rspState, &g_rdpState);
+                    ps2_gfx_profile_leave(GFX_PROFILE_TRI, start);
                     break;
+                }
 
                 case G_CULLDL: {
                     /* Descarta la lista entera si el volumen indicado
@@ -385,10 +399,13 @@ void rdp_to_gs_exec(const Gfx* dl) {
                 case G_SETZIMG:      rdp_setzimg(w0, w1, &g_rdpState);      break;
 
                 case G_TEXRECT:
-                case G_TEXRECTFLIP:
+                case G_TEXRECTFLIP: {
+                    u32 start = ps2_gfx_profile_enter();
                     rdp_texrect(op, w0, w1, pc, &g_rdpState);
+                    ps2_gfx_profile_leave(GFX_PROFILE_RECT, start);
                     pc += 2;   /* TEXRECT ocupa 3 comandos en total */
                     break;
+                }
 
                 case G_RDPHALF_1:
                 case G_RDPHALF_2:
@@ -421,6 +438,7 @@ void rdp_to_gs_exec(const Gfx* dl) {
 void rdp_to_gs_flip(void) {
     GSGLOBAL* gs = g_rdpState.gs;
     if (!gs) return;          /* antes esto reventaba con NULL */
+    ps2_gfx_profile_end();
     static u32 frames;
     if (++frames <= 3 || frames % 300 == 0) {
         printf("[PS2 GEOMETRY] frame=%u tri=%u clipped=%u culled=%u invalid=%u textureFail=%u draw=%u bg=%u mode=%08x,%08x\n",

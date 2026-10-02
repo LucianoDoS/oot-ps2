@@ -235,6 +235,18 @@ void f3dex2_vtx(u32 w0, u32 w1, RSPState* rsp) {
         if (count <= 0) return;
     }
 
+    /* Assets and runtime vertices live in EE user RAM. A corrupt inventory
+     * pointer must not trigger TLB misses or reuse the preceding vertices. */
+    if ((uintptr_t)src < 0x100000u || (uintptr_t)src > 0x2000000u - count*16u) {
+        static unsigned invalidSources;
+        if (invalidSources++ < 4) {
+            printf("[PS2 INVALID VTX] w0=%08x w1=%08x source=%p count=%d\n", w0,w1,src,count);
+            PS2Gfx_DumpTrace();
+        }
+        for (int i = 0; i < count; i++) rsp->vtx[v0+i].valid = false;
+        return;
+    }
+
     for (int i = 0; i < count; i++) {
         RSPVertex* v = &rsp->vtx[v0 + i];
 

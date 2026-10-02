@@ -35,6 +35,8 @@
 #include "ps2_types.h"
 #include "ps2_segment.h"
 #include "rdp_to_gs.h"
+#include "ps2_gfx_profile.h"
+#include "ps2_texture.h"
 
 /* ─────────────────────────────────────────────────────────── *
  *  Scratch conversion buffer (static to avoid heap alloc per frame)
@@ -98,20 +100,20 @@ typedef struct CombinerLookup {
     u32 combine0, combine1, prim, env, cycle, used;
     u8 valid, values[4][256];
 } CombinerLookup;
-static CombinerLookup s_lookups[16];
+#define COMBINER_LOOKUP_SLOTS 64
+static CombinerLookup s_lookups[COMBINER_LOOKUP_SLOTS];
 static u32 s_lookupClock;
 extern volatile unsigned gPS2GfxTraceStage;
 
-/* Many tiles share a combiner. Build its 512 evaluations once rather than
- * repeating them on every texture upload. Preserve the exact old mapping. */
+/* Many tiles share a combiner. Cache its compiled channel mappings rather
+ * than resolving source selectors on every texture upload. */
 static const u8 (*combiner_lookup(const RDPState* rdp))[256] {
     u32 cycle = (rdp->otherMode.hi >> 20) & 3;
     u32 prim, env;
     ps2_combiner_constants(rdp, &prim, &env);
-    bool dynamicAlpha = ps2_combiner_dynamic_alpha(rdp);
-    if (dynamicAlpha) prim &= 0xffffff00u;
+    if (ps2_combiner_dynamic_alpha(rdp)) prim &= 0xffffff00u;
     int slot = 0;
-    for (int i = 0; i < 16; i++) {
+    for (int i = 0; i < COMBINER_LOOKUP_SLOTS; i++) {
         CombinerLookup* entry = &s_lookups[i];
         if (entry->valid && entry->combine0 == rdp->combiner.w0 &&
             entry->combine1 == rdp->combiner.w1 && entry->prim == prim &&
@@ -124,20 +126,7 @@ static const u8 (*combiner_lookup(const RDPState* rdp))[256] {
     CombinerLookup* entry = &s_lookups[slot];
     entry->combine0 = rdp->combiner.w0; entry->combine1 = rdp->combiner.w1;
     entry->prim = prim; entry->env = env; entry->cycle = cycle;
-    const u8 fullShade[4] = {255, 255, 255, 255};
-    for (int value = 0; value < 256; value++) {
-        u8 texel[4] = {value, value, value, 255}, color[4];
-        ps2_combiner_color(rdp, texel, fullShade, color);
-        for (int channel = 0; channel < 3; channel++) entry->values[channel][value] = color[channel];
-        if (dynamicAlpha) {
-            entry->values[3][value] = value * 128u / 255;
-        } else {
-            texel[0] = texel[1] = texel[2] = 255;
-            texel[3] = value;
-            ps2_combiner_color(rdp, texel, fullShade, color);
-            entry->values[3][value] = color[3] * 128u / 255;
-        }
-    }
+    ps2_combiner_build_lookup(rdp, entry->values);
     entry->used = ++s_lookupClock;
     entry->valid = 1;
     return entry->values;
@@ -380,6 +369,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         tile->addr = (void*)rdp->textureLoads[tile->tmem].source;
     }
     if (!tile || !tile->addr) return;
+    u32 lookupStart = ps2_gfx_profile_enter();
 
     const u8* src = (const u8*)tile->addr;
     int w = tile->width;
@@ -431,14 +421,14 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         key.paletteHash = 2166136261u;
         for (unsigned i = 0; i < count; i++) key.paletteHash = (key.paletteHash ^ s_clut[first + i]) * 16777619u;
     }
-    u32 hash = 2166136261u;
-    for (int y = 0; y < h; y++) {
-        const u8* row = src + y * (sourceStride ? sourceStride : rowBytes);
-        for (u32 x = 0; x < rowBytes; x++) hash = (hash ^ row[x]) * 16777619u;
-    }
-    if (pathPair) for (int y = 0; y < h; y++) {
-        const u8* row = secondSrc + y * (key.stride2 ? key.stride2 : rowBytes);
-        for (u32 x = 0; x < rowBytes; x++) hash = (hash ^ row[x]) * 16777619u;
+    /* Still inspect all texel bytes on every binding: pause backgrounds,
+     * animated textures and either input of a ground blend may change in RAM. */
+    u32 hash = 0;
+    if (!sourceStride || sourceStride == rowBytes) hash = ps2_texture_hash(src, rowBytes*h, hash);
+    else for (int y = 0; y < h; y++) hash = ps2_texture_hash(src+y*sourceStride, rowBytes, hash);
+    if (pathPair) {
+        if (!key.stride2 || key.stride2 == rowBytes) hash = ps2_texture_hash(secondSrc, rowBytes*h, hash);
+        else for (int y = 0; y < h; y++) hash = ps2_texture_hash(secondSrc+y*key.stride2, rowBytes, hash);
     }
     key.contentHash = hash;
     int reusable = -1;
@@ -467,9 +457,12 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
             tile->cacheSlot = i;
             tile->gsTextureLoaded = true;
             rdp->stats.textureHits++;
+            ps2_gfx_profile_leave(GFX_PROFILE_LOOKUP, lookupStart);
             return;
         }
     }
+    ps2_gfx_profile_leave(GFX_PROFILE_LOOKUP, lookupStart);
+    u32 convertStart = ps2_gfx_profile_enter();
     if (sourceStride && sourceStride != rowBytes) {
         for (int y = 0; y < h; y++)
             memcpy(s_sourceRows + y * rowBytes, src + y * sourceStride, rowBytes);
@@ -572,6 +565,8 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         }
         memcpy(s_convBuf, s_sourceRows, uploadW * uploadH * 4);
     }
+    ps2_gfx_profile_leave(GFX_PROFILE_CONVERT, convertStart);
+    u32 uploadStart = ps2_gfx_profile_enter();
     /* ── Upload to GS VRAM ──────────────────────────────── */
     GSTEXTURE* gt = &tile->gsTexture;
     gt->Width     = uploadW;
@@ -656,6 +651,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         printf("[PS2 TEXTURE] uploads=%u size=%dx%d source=%p slot=%d\n", uploads, w, h, tile->addr, slot);
     tile->gsTextureLoaded = true;
     rdp->stats.textureUploads++;
+    ps2_gfx_profile_leave(GFX_PROFILE_UPLOAD, uploadStart);
 }
 
 /* ─────────────────────────────────────────────────────────── *

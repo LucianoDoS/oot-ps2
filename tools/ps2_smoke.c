@@ -20,6 +20,7 @@ extern int ps2_rom_smoke(void);
 extern int ps2_rom_threads_smoke(void);
 extern int ps2_renderer_smoke(void);
 extern int ps2_audio_smoke(void);
+extern int ps2_audio_notes_smoke(void);
 extern int ps2_audio_driver_smoke(void);
 extern int ps2_pcm_ring_smoke(void);
 extern int ps2_audio_heap_smoke(void);
@@ -73,6 +74,7 @@ int main(void) {
         SleepThread();
         return 1;
     }
+    if (ps2_audio_notes_smoke()) { fflush(stdout); SleepThread(); return 1; }
     int mathResult = ps2_math_smoke();
     printf("[PS2 MATH TEST] %s: native matrix layout and trigonometry (%d)\n",
            mathResult == 0 ? "PASS" : "FAIL", mathResult);
