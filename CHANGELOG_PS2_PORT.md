@@ -62,6 +62,11 @@ trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
   audio corregido: `build/PS2/pcsx2-fused-textures-pass.log`.
   Juego reconstruido con 718 objetos y abierto para medir FPS reales;
   respaldo `build/PS2-ntsc12/oot_ps2-before-fused-textures.elf`.
+  Tras probarla, el usuario confirma «12 fps ahora 10-12», frente a los
+  8–10 FPS anteriores. Es una mejora parcial; todavía no se alcanzan
+  20 FPS estables. Registro: `build/PS2/pcsx2-fused-textures-runtime.log`.
+  Se retira la activación privada del perfil para que los próximos arranques
+  normales no realicen mediciones por comando.
 
 ## Perfil de renderizado, texturas y voz — 2026-10-02
 
