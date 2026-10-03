@@ -4,6 +4,26 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Lecturas alineadas en comprobación de texturas — 2026-10-02
+
+- Inspección del objeto EE: el memcpy de cuatro bytes del hash generaba
+  cuatro LBU, cuatro SB a la pila y un LW para cada palabra, incluso para
+  fuentes alineadas. El bucle ahora comprueba alineación una sola vez y
+  comunica al compilador la alineación de cuatro bytes. El objeto generado
+  usa un LW por palabra en ese camino; las fuentes sin alinear y las colas
+  conservan la lectura anterior. No cambia el algoritmo XXH32 ni se omiten
+  bytes, filas o fuentes del suelo.
+- Vectores de referencia, 16 alineaciones, dos semillas, colas y mutaciones
+  de cada byte pasan. Para 1000 hashes con semillas distintas y contenido
+  idéntico: 2048 bytes requieren 5678896 ciclos alineados frente a 12931413
+  del camino sin alinear; 4096 bytes, 11259006 frente a 25781022. Los checksums
+  coinciden (aproximadamente 56 % menos ciclos en esa operación aislada).
+- Diagnóstico completo pasa 120 fotogramas y cero fallos:
+  `build/PS2/pcsx2-aligned-hash-pass.log`. Juego reconstruido con 718 objetos
+  y abierto para medir el efecto real; respaldo
+  `build/PS2-ntsc12/oot_ps2-before-aligned-hash.elf`. FPS nuevos pendientes
+  de confirmación; no se extrapola el porcentaje del hash al juego completo.
+
 ## Reutilización de vértices GS — 2026-10-02
 
 - Los grupos consecutivos TRI reutilizan RGBAQ, STQ y XYZ de los vértices
@@ -23,8 +43,11 @@ trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
   y preparación de puntos (incluida en envío). Los contadores muestran
   puntos calculados y reutilizados. El juego compila con 718 objetos y se
   abre para comprobar rendimiento e imagen; respaldo
-  `build/PS2-ntsc12/oot_ps2-before-point-reuse.elf`. FPS reales pendientes
-  de confirmación; no se da por conseguido el objetivo de 20 FPS.
+  `build/PS2-ntsc12/oot_ps2-before-point-reuse.elf`. El usuario confirma
+  cinemática igual, 10–12 FPS caminando y 14–16 quieto: no hay una mejora
+  perceptible de FPS con este cambio. Registro:
+  `build/PS2/pcsx2-point-reuse-runtime.log`. No se da por conseguido el
+  objetivo de 20 FPS.
 
 ## Colores de geometría sin textura — 2026-10-02
 

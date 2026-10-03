@@ -52,6 +52,21 @@ int ps2_renderer_smoke(void) {
         }
     }
     printf("[PS2 TEXTURE HASH TEST] reference vectors, unaligned rows, all-byte mutations (%d)\n",failures);
+    static u8 alignedHash[4096] __attribute__((aligned(128)));
+    static u8 unalignedHash[4097] __attribute__((aligned(128)));
+    for (unsigned i=0;i<4096;i++) alignedHash[i]=unalignedHash[i+1]=(i*37+11)&255;
+    for (unsigned bytes=2048;bytes<=4096;bytes*=2) {
+        volatile u32 alignedChecksum=0, unalignedChecksum=0;
+        u32 start=ps2_gfx_cycles();
+        for (unsigned i=0;i<1000;i++) alignedChecksum+=ps2_texture_hash(alignedHash,bytes,i);
+        u32 alignedCycles=ps2_gfx_cycles()-start;
+        start=ps2_gfx_cycles();
+        for (unsigned i=0;i<1000;i++) unalignedChecksum+=ps2_texture_hash(unalignedHash+1,bytes,i);
+        u32 unalignedCycles=ps2_gfx_cycles()-start;
+        if (alignedChecksum != unalignedChecksum) failures++;
+        printf("[PS2 HASH ALIGN BENCH] bytes=%u alignedCycles=%u unalignedCycles=%u checksum=%08x failures=%d\n",
+            bytes,alignedCycles,unalignedCycles,(u32)alignedChecksum,failures);
+    }
     int initializedDepth = g_rdpState.gs->PSMZ;
     const int formats[] = {GS_PSMZ_16, GS_PSMZ_16S, GS_PSMZ_24, GS_PSMZ_32};
     for (unsigned format = 0; format < sizeof(formats)/sizeof(formats[0]); format++) {
