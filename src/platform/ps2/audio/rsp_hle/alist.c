@@ -25,6 +25,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
+#ifdef _EE
+#include <stdio.h>
+#endif
 
 #include "alist.h"
 #include "arithmetics.h"
@@ -104,6 +107,37 @@ void alist_process(struct hle_t* hle, const acmd_callback_t abi[], unsigned int 
 
     const uint32_t *alist = dram_u32(hle, *dmem_u32(hle, TASK_DATA_PTR));
     const uint32_t *const alist_end = alist + (*dmem_u32(hle, TASK_DATA_SIZE) >> 2);
+
+#ifdef _EE
+    /* Private sampling leaves the normal command loop unchanged. The game
+     * audio-thread counter excludes this scheduler-owned synthesis work. */
+    static bool profile_checked, profile_enabled;
+    static unsigned profile_tasks;
+    if (!profile_checked) {
+        FILE* flag = fopen("host:ps2-audio-profile.enable", "rb");
+        profile_enabled = flag != NULL;
+        if (flag) fclose(flag);
+        profile_checked = true;
+    }
+    if (profile_enabled && ++profile_tasks % 300 == 0) {
+        uint32_t cycles[32] = {0}, calls[32] = {0};
+        while (alist != alist_end) {
+            w1 = *(alist++); w2 = *(alist++);
+            acmd = (w1 >> 24) & 0x7f;
+            if (acmd < abi_size) {
+                uint32_t start, end;
+                __asm__ volatile("mfc0 %0, $9" : "=r"(start) :: "memory");
+                (*abi[acmd])(hle, w1, w2);
+                __asm__ volatile("mfc0 %0, $9" : "=r"(end) :: "memory");
+                if (acmd < 32) { cycles[acmd] += end-start; calls[acmd]++; }
+            } else HleWarnMessage(hle->user_defined, "Invalid ABI command %u", acmd);
+        }
+        for (unsigned op=0;op<32;op++) if (calls[op])
+            printf("[PS2 AUDIO OP PROFILE] task=%u op=%u calls=%u timeUs=%u\n",profile_tasks,op,calls[op],
+                (unsigned)((uint64_t)cycles[op]*1000000/294912000u));
+        return;
+    }
+#endif
 
     while (alist != alist_end) {
         w1 = *(alist++);

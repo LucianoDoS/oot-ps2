@@ -4,6 +4,31 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Coste de síntesis y predictor ADPCM — 2026-10-02
+
+- El contador anterior de audio medía la preparación de notas, pero dejaba
+  fuera la síntesis ejecutada por el scheduler. El nuevo contador mide esa
+  tarea completa: aproximadamente 6–8 ms por bloque a 60 bloques por segundo
+  en las escenas observadas. Ese trabajo interrumpe al renderer y también
+  aparece dentro de sus tiempos. No son tiempos exclusivos de cada hilo.
+- Perfil privado por opcode, activado sólo con
+  `host:ps2-audio-profile.enable`: ADPCM cuesta 2,4–3,7 ms por tarea muestreada,
+  ENVMIXER 1,8–2,7 ms y RESAMPLE 1,3–2 ms. Registros preservados en
+  `build/PS2/pcsx2-dsp-profile-runtime.log` y
+  `build/PS2/pcsx2-audio-op-profile-runtime.log`. El archivo de activación
+  se retiró antes de abrir la versión para jugar.
+- Predictor ADPCM de ocho muestras desplegado para EE: elimina el bucle
+  triangular de productos, conserva suma de 32 bits, saturación e historial.
+  Las entradas parciales y los buffers solapados usan el camino anterior.
+  4096 casos, longitudes 0–8, extremos, desbordamiento y aliasing producen
+  exactamente las mismas muestras. 10000 llamadas: 5541506 ciclos de la
+  referencia frente a 3500004 del nuevo predictor, aproximadamente 37 % menos
+  en esa operación aislada, sin extrapolarlo a los FPS del juego.
+- Diagnóstico completo pasa audio y 120 fotogramas en
+  `build/PS2/pcsx2-adpcm-unrolled-pass.log`. Juego reconstruido con 718 objetos
+  y abierto; respaldo `build/PS2-ntsc12/oot_ps2-before-adpcm-unrolled.elf`.
+  Pendiente comparar los FPS del exterior y comprobar el sonido al jugar.
+
 ## Reutilización del estado enviado al GS — 2026-10-02
 
 - El usuario confirma que las lecturas nativas tampoco cambian los FPS.

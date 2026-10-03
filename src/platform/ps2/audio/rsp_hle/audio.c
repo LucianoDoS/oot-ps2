@@ -106,6 +106,31 @@ int32_t rdot(size_t n, const int16_t *x, const int16_t *y)
     return accu;
 }
 
+#ifdef _EE
+/* OoT decodes two eight-sample halves per ADPCM frame. Fixed tap counts
+ * remove the nested loop/control arithmetic and let EE GCC use straight
+ * MADD chains. Only destination writes need a non-aliasing contract. */
+static void adpcm_residuals8(int16_t* __restrict dst, const int16_t* src,
+                            const int16_t* book, int16_t l1, int16_t l2) {
+    const int16_t* b = book + 8;
+#define BASE(i) (((uint32_t)(int32_t)src[i] << 11) + \
+                (uint32_t)((int32_t)book[i]*l1) + (uint32_t)((int32_t)b[i]*l2))
+#define TAP(j,k) ((uint32_t)((int32_t)b[j]*src[k]))
+#define OUTPUT(i,sum) dst[i] = clamp_s16((int32_t)(BASE(i)+(sum)) >> 11)
+    OUTPUT(0,0);
+    OUTPUT(1,TAP(0,0));
+    OUTPUT(2,TAP(0,1)+TAP(1,0));
+    OUTPUT(3,TAP(0,2)+TAP(1,1)+TAP(2,0));
+    OUTPUT(4,TAP(0,3)+TAP(1,2)+TAP(2,1)+TAP(3,0));
+    OUTPUT(5,TAP(0,4)+TAP(1,3)+TAP(2,2)+TAP(3,1)+TAP(4,0));
+    OUTPUT(6,TAP(0,5)+TAP(1,4)+TAP(2,3)+TAP(3,2)+TAP(4,1)+TAP(5,0));
+    OUTPUT(7,TAP(0,6)+TAP(1,5)+TAP(2,4)+TAP(3,3)+TAP(4,2)+TAP(5,1)+TAP(6,0));
+#undef OUTPUT
+#undef TAP
+#undef BASE
+}
+#endif
+
 void adpcm_compute_residuals(int16_t* dst, const int16_t* src,
         const int16_t* cb_entry, const int16_t* last_samples, size_t count)
 {
@@ -119,10 +144,17 @@ void adpcm_compute_residuals(int16_t* dst, const int16_t* src,
 
     assert(count <= 8);
 
+#ifdef _EE
+    uintptr_t d = (uintptr_t)dst, s = (uintptr_t)src, b = (uintptr_t)cb_entry;
+    if (count == 8 && (d >= s+16 || s >= d+16) && (d >= b+32 || b >= d+16)) {
+        adpcm_residuals8(dst,src,cb_entry,l1,l2);
+        return;
+    }
+#endif
+
     for(i = 0; i < count; ++i) {
         int32_t accu = (int32_t)src[i] << 11;
         accu += book1[i]*l1 + book2[i]*l2 + rdot(i, book2, src);
         dst[i] = clamp_s16(accu >> 11);
    }
 }
-

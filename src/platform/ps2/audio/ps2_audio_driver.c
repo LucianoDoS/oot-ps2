@@ -422,9 +422,24 @@ void PS2Audio_StopVoice(int voiceIdx) {
 void PS2Audio_ProcessTask(void* cmdList, u32 size) {
     extern int PS2RspAudio_Process(void*, unsigned);
     static unsigned tasks;
+    static unsigned long long cyclesTotal;
+    static unsigned commandsTotal, worstCycles;
+    unsigned begin, end;
+    __asm__ volatile("mfc0 %0, $9" : "=r"(begin) :: "memory");
     int result = PS2RspAudio_Process(cmdList, size);
+    __asm__ volatile("mfc0 %0, $9" : "=r"(end) :: "memory");
+    unsigned elapsed = end - begin;
+    cyclesTotal += elapsed;
+    commandsTotal += size / 8;
+    if (elapsed > worstCycles) worstCycles = elapsed;
     if (++tasks <= 3 || (result && tasks % 300 == 0))
         printf("[PS2 DSP] task=%u commands=%u result=%d\n", tasks, size / 8, result);
+    if (tasks % 300 == 0) {
+        printf("[PS2 DSP PERF] avgUs=%u worstUs=%u commands=%u\n",
+            (unsigned)((unsigned long long)cyclesTotal * 1000000 / (294912000ull * 300)),
+            (unsigned)((unsigned long long)worstCycles * 1000000 / 294912000u),commandsTotal / 300);
+        cyclesTotal = commandsTotal = worstCycles = 0;
+    }
 }
 
 /* NOTA: aquí había dos funciones más, AudioThread_NotifyTaskDone() y
