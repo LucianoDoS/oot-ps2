@@ -86,23 +86,31 @@ static void graphics_worker(void* arg) {
         u64 begin = osGetTime();
         rdp_to_gs_exec((const Gfx*)s_graphicsTask.t.data_ptr);
         u64 translated = osGetTime();
-        rdp_to_gs_flip();
-        u64 flipped = osGetTime();
-        static unsigned frames;
-        static u64 translationTicks, flipTicks, worstTicks;
-        translationTicks += translated - begin;
-        flipTicks += flipped - translated;
-        if (translated - begin > worstTicks) worstTicks = translated - begin;
-        if (++frames % 300 == 0) {
-            printf("[PS2 GFX PERF] translateUs=%u flipUs=%u worstTranslateUs=%u\n",
-                (unsigned)(translationTicks * 1000000 / (46875000ull * 300)),
-                (unsigned)(flipTicks * 1000000 / (46875000ull * 300)),
-                (unsigned)(worstTicks * 1000000 / 46875000));
-            translationTicks = flipTicks = worstTicks = 0;
-        }
+        rdp_to_gs_submit();
+        u64 submitted = osGetTime();
+        /* FINISH has retired GS reads, so the CPU can reuse its task data
+         * while we wait for presentation. Free the one pending mailbox
+         * before DP_DONE: the higher-priority scheduler must never block
+         * behind this vblank wait. We no longer read s_graphicsTask here. */
         s_dpStatus &= ~(1u << 5);
         SignalSema(s_gfxFree);
         ps2_os_fire_event(PS2_OS_EVENT_DP);
+        rdp_to_gs_present();
+        u64 flipped = osGetTime();
+        static unsigned frames;
+        static u64 translationTicks, submitTicks, flipTicks, worstTicks;
+        translationTicks += translated - begin;
+        submitTicks += submitted - translated;
+        flipTicks += flipped - submitted;
+        if (translated - begin > worstTicks) worstTicks = translated - begin;
+        if (++frames % 300 == 0) {
+            printf("[PS2 GFX PERF] translateUs=%u submitUs=%u flipUs=%u worstTranslateUs=%u\n",
+                (unsigned)(translationTicks * 1000000 / (46875000ull * 300)),
+                (unsigned)(submitTicks * 1000000 / (46875000ull * 300)),
+                (unsigned)(flipTicks * 1000000 / (46875000ull * 300)),
+                (unsigned)(worstTicks * 1000000 / 46875000));
+            translationTicks = submitTicks = flipTicks = worstTicks = 0;
+        }
     }
 }
 

@@ -47,6 +47,7 @@
 extern const u64 gspS2DEX2d_fifoTextStart[] __attribute__((weak));
 extern void ps2_background_draw(const PS2Background*, int, RDPState*);
 static bool s_s2dex;
+static bool s_presentWait;
 
 uintptr_t gRspSegments[PS2_NUM_SEGMENTS];
 volatile unsigned gPS2GfxTraceStage;
@@ -451,7 +452,7 @@ void rdp_to_gs_exec(const Gfx* dl) {
 /* ═══════════════════════════════════════════════════════════════════ *
  *  rdp_to_gs_flip — vuelca la cola y cambia de buffer
  * ═══════════════════════════════════════════════════════════════════ */
-void rdp_to_gs_flip(void) {
+void rdp_to_gs_submit(void) {
     GSGLOBAL* gs = g_rdpState.gs;
     if (!gs) return;          /* antes esto reventaba con NULL */
     ps2_gfx_profile_end();
@@ -471,9 +472,35 @@ void rdp_to_gs_flip(void) {
     memset(&g_rdpState.stats, 0, sizeof(g_rdpState.stats));
 
     gPS2GfxTraceStage = 7;
+    gsKit_set_finish(gs);
     gsKit_queue_exec(gs);
     gPS2GfxTraceStage = 8;
-    gsKit_sync_flip(gs);
-    gPS2GfxTraceStage = 9;
+    gsKit_finish();
     ps2_texture_end_frame(&g_rdpState);
+    /* Arm vblank before DP_DONE wakes the CPU. A retrace occurring during
+     * its next update must remain visible, rather than being cleared later
+     * by gsKit_sync_flip when the lower-priority worker resumes. */
+    s_presentWait = !gs->FirstFrame;
+    if (s_presentWait) gsKit_vsync_nowait();
+}
+
+void rdp_to_gs_present(void) {
+    GSGLOBAL* gs = g_rdpState.gs;
+    if (!gs) return;
+    if (s_presentWait) {
+        while (!(*GS_CSR & 8)) {}
+        if (gs->DoubleBuffering == GS_SETTING_ON) {
+            gsKit_display_buffer(gs);
+            gs->ActiveBuffer ^= 1;
+        }
+    }
+    /* Same buffer/context setup as gsKit_sync_flip, with the vblank clear
+     * moved to submit. switch_context also toggles PrimContext, so avoid it. */
+    gsKit_setactive(gs);
+    gPS2GfxTraceStage = 9;
+}
+
+void rdp_to_gs_flip(void) {
+    rdp_to_gs_submit();
+    rdp_to_gs_present();
 }

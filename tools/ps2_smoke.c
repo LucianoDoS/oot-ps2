@@ -4,6 +4,7 @@
 #include <dmaKit.h>
 #include <gsKit.h>
 #include <stdio.h>
+#include <unistd.h>
 #include "ps2_types.h"
 #include "rdp_to_gs.h"
 #include "ps2_segment.h"
@@ -172,6 +173,26 @@ int main(void) {
                           GS_SETREG_RGBAQ(255, 255, 255, 128, 0));
         rdp_to_gs_flip();
         if (frame == 119) {
+            unsigned failures=0, worstCycles=0;
+            for (unsigned delayed=0; delayed<3; delayed++) {
+                rdp_to_gs_exec((const Gfx*)commands);
+                unsigned oldBuffer=gs->ActiveBuffer;
+                rdp_to_gs_submit();
+                /* Simulate CPU work spanning a retrace before the worker
+                 * resumes. Present must retain that retrace, not wait again. */
+                usleep(20000);
+                if (!(*GS_CSR & 8)) failures++;
+                unsigned begin,end;
+                __asm__ volatile("mfc0 %0, $9" : "=r"(begin) :: "memory");
+                rdp_to_gs_present();
+                __asm__ volatile("mfc0 %0, $9" : "=r"(end) :: "memory");
+                unsigned elapsed=end-begin;
+                if (elapsed>worstCycles) worstCycles=elapsed;
+                if (elapsed>294912000u/200 || gs->ActiveBuffer!=(oldBuffer^1)) failures++;
+            }
+            printf("[PS2 PRESENT TEST] %s: retained retrace, three buffer flips, worstCycles=%u failures=%u\n",
+                failures ? "FAIL" : "PASS",worstCycles,failures);
+            if (failures) { fflush(stdout); SleepThread(); }
             printf("[PS2 SEGMENT TEST] PASS: independent CPU/RSP mappings\n");
             printf("[PS2 SMOKE] PASS: 120 frames submitted\n");
             fflush(stdout);

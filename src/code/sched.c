@@ -66,10 +66,11 @@ OSTime sRSPOtherTimeStart;
 OSTime sRDPTimeStart;
 
 #if PLATFORM_PS2
-/* GS owns the real double buffers and DP_DONE arrives after its flip. The
+/* GS owns the real double buffers and DP_DONE arrives after its FINISH. The
  * CPU-side N64 framebuffer pointers are bookkeeping only. Pace admission
- * from the previous task's start, rather than delaying it again after GS
- * has already waited for vblank. Late frames do not accumulate catch-up. */
+ * from the previous task's start without adding dummy VI-buffer waits.
+ * CPU updates may overlap the GS vblank wait; the worker
+ * serializes flips and the next render. Late frames do not accumulate catch-up. */
 static u32 sPs2LastGfxRetrace;
 static u8 sPs2GfxStarted;
 #endif
@@ -404,8 +405,9 @@ s32 Sched_Schedule(Scheduler* sc, OSScTask** spTaskOut, OSScTask** dpTaskOut, s3
  */
 void Sched_SetNextFramebufferFromTask(Scheduler* sc, OSScTask* task) {
 #if PLATFORM_PS2
-    /* The worker has completed the real GS flip before signalling DP_DONE.
-     * Preserve VI/fault bookkeeping without a second presentation wait. */
+    /* The worker has retired all GS reads before signalling DP_DONE, and
+     * owns the upcoming GS flip. Preserve VI/fault bookkeeping without
+     * blocking CPU updates on presentation of the independent GS buffers. */
     Sched_SwapFrameBuffer(sc, task->framebuffer);
     sc->curBuf = task->framebuffer;
     sc->pendingSwapBuf1 = sc->pendingSwapBuf2 = NULL;

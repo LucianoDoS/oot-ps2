@@ -207,6 +207,10 @@ extern RSPState g_rspState;
 void rdp_to_gs_init(GSGLOBAL* gs);
 void rdp_to_gs_exec(const Gfx* dl);
 void rdp_to_gs_flip(void);
+/* Submit and retire all GS reads before releasing CPU task data. Present
+ * remains serialized by the graphics worker and may wait for vblank. */
+void rdp_to_gs_submit(void);
+void rdp_to_gs_present(void);
 
 /* RDP command handlers (implemented in rdp_to_gs.c and f3dex2_ps2.c) */
 void rdp_settimg(u32 w0, u32 w1, RDPState* rdp);

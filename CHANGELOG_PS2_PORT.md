@@ -4,6 +4,37 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Actualización de CPU durante la presentación GS — 2026-10-02
+
+- Resultado confirmado por el usuario tras las optimizaciones de audio:
+  sonido correcto, 16–18 FPS quieto con máximos de 20; caminando, 10–14 FPS.
+  El objetivo sigue pendiente durante el movimiento. El registro muestra
+  actualización CPU de unos 4–6 ms y presentación de unos 10 ms, además
+  de traducción gráfica y síntesis de audio.
+- Se separan envío/retiro y presentación. El worker emite FINISH, ejecuta
+  la cola y espera al GS antes de liberar los datos de la tarea y avisar
+  DP_DONE. Libera primero el buzón para aceptar una tarea pendiente sin
+  bloquear al scheduler. La CPU puede avanzar durante la espera del refresco;
+  el worker termina de presentar antes de interpretar la siguiente lista.
+  Se conservan prioridades de audio y límites de juego/menú de 20/30 Hz.
+- Se arma el refresco antes de DP_DONE. La presentación conserva un refresco
+  ocurrido mientras la CPU actualiza, evitando borrarlo y esperar otro al
+  reanudarse el worker. El cambio de buffer y setactive siguen la secuencia
+  del SDK instalado, comprobada también frente al código oficial de gsKit:
+  https://github.com/ps2dev/gsKit/blob/master/ee/gs/src/gsCore.c.
+- Prueba del puente real de tareas: 64 fotogramas con traducción y presentación
+  artificialmente lentas. Audio antes de DP, envío pendiente sin esperar la
+  presentación, buffers de comandos distintos y presentación serializada:
+  cero fallos en `build/PS2/pcsx2-present-task-pass.log`.
+- Diagnóstico GS real: tres presentaciones tras esperar 20 ms conservan
+  el refresco y alternan los buffers sin otra espera de vblank (máximo
+  153 ciclos medidos en esa llamada). Audio/renderizado completos y 120
+  fotogramas pasan en `build/PS2/pcsx2-present-gs-pass.log`. Juego reconstruido
+  con 718 objetos y abierto; respaldo
+  `build/PS2-ntsc12/oot_ps2-before-present-overlap.elf`. Pendiente comparación
+  del exterior e inventario por el usuario; no se afirma una mejora de FPS
+  a partir de estas pruebas aisladas.
+
 ## Reutilización de controles del mezclador NEAD — 2026-10-02
 
 - La mezcla conserva ganancias y máscaras XOR en variables locales durante
