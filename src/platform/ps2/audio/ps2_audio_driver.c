@@ -419,6 +419,9 @@ void PS2Audio_StopVoice(int voiceIdx) {
  *  El scheduler notifica la finalización; osAiSetNextBuffer envía el
  *  PCM estéreo resultante a audsrv.
  * ─────────────────────────────────────────────────────────── */
+/* One EE writer; profile snapshots retry if synthesis preempted their read.
+ * Unsigned accumulation and subtraction preserve the COP0 wrap semantics. */
+volatile u32 gPS2DspCyclesTotal;
 void PS2Audio_ProcessTask(void* cmdList, u32 size) {
     extern int PS2RspAudio_Process(void*, unsigned);
     static unsigned tasks;
@@ -429,6 +432,7 @@ void PS2Audio_ProcessTask(void* cmdList, u32 size) {
     int result = PS2RspAudio_Process(cmdList, size);
     __asm__ volatile("mfc0 %0, $9" : "=r"(end) :: "memory");
     unsigned elapsed = end - begin;
+    gPS2DspCyclesTotal += elapsed;
     cyclesTotal += elapsed;
     commandsTotal += size / 8;
     if (elapsed > worstCycles) worstCycles = elapsed;

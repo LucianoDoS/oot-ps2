@@ -301,6 +301,10 @@ static bool s_tri2Batch;
 static bool s_triangleRun;
 static unsigned s_tri2Count;
 static GSPRIMSTQPOINT s_tri2Points[60];
+static GSPRIMPOINT s_triColorPoints[60];
+static bool s_runColored;
+static u64 s_runColorValid;
+static u64 s_runColors[RSP_VTX_CACHE_SIZE];
 static GSTEXTURE s_tri2Texture;
 static bool s_tri2Fog;
 static bool s_runTileBound;
@@ -317,7 +321,23 @@ static void capture_points(const GSPRIMSTQPOINT* points) {
         memcpy(s_capturePoints+s_captureCount, points, 3*sizeof(*points)); s_captureCount += 3;
     }
 }
+static void capture_color_points(const GSPRIMPOINT* points) {
+    GSPRIMSTQPOINT canonical[3];
+    memset(canonical,0,sizeof(canonical));
+    for (unsigned i=0;i<3;i++) {
+        canonical[i].rgbaq=points[i].rgbaq;
+        canonical[i].xyz2=points[i].xyz2;
+    }
+    capture_points(canonical);
+}
 #endif
+
+static int run_vertex_slot(const RSPState* rsp, const RSPVertex* vertex) {
+    uintptr_t address=(uintptr_t)vertex, base=(uintptr_t)rsp->vtx;
+    if (!s_triangleRun || address<base || address>=base+sizeof(rsp->vtx) ||
+        (address-base)%sizeof(*vertex)) return -1;
+    return (address-base)/sizeof(*vertex);
+}
 
 static void prepare_texture_point(const TileDescriptor* tile, const RSPState* rsp,
     RDPState* rdp, const RSPVertex* vertex, u32 color, u32 depth, bool fog,
@@ -346,21 +366,28 @@ static void flush_tri2(RDPState* rdp) {
     if (!s_tri2Count) return;
     int previousFog = rdp->gs->PrimFogEnable;
     rdp->gs->PrimFogEnable = s_tri2Fog;
-    gsKit_prim_list_triangle_goraud_texture_stq_3d(rdp->gs, &s_tri2Texture, s_tri2Count, s_tri2Points);
+    if (s_runColored) {
+        gsKit_prim_list_triangle_gouraud_3d(rdp->gs,s_tri2Count,s_triColorPoints);
+        rdp->stats.colorPackets++;
+    } else {
+        gsKit_prim_list_triangle_goraud_texture_stq_3d(rdp->gs, &s_tri2Texture, s_tri2Count, s_tri2Points);
+        rdp->stats.texturePackets++;
+    }
     rdp->gs->PrimFogEnable = previousFog;
-    rdp->stats.texturePackets++;
     s_tri2Count = 0;
 }
 
 bool f3dex2_batch_begin(RSPState* rsp, RDPState* rdp) {
     /* The ground blend draws two ordered passes with different tiles and
      * alpha state. Keep that material on the immediate submission path. */
-    if (!rsp->texEnabled || ps2_combiner_texture_lerp(rdp)) return false;
+    if (rsp->texEnabled && ps2_combiner_texture_lerp(rdp)) return false;
     s_triangleRun = true;
     s_tri2Batch = true;
     s_tri2Count = 0;
     s_runTileBound = false;
     s_runVertexValid = 0;
+    s_runColorValid = 0;
+    s_runColored = !rsp->texEnabled;
     return true;
 }
 
@@ -398,6 +425,12 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
     bool alphaShade = rsp->texEnabled && ps2_combiner_uses_shade(rdp, true);
     for (int i = 0; i < 3; i++) {
         RSPVertex* v = vertices[i];
+        int colorSlot = rsp->texEnabled ? -1 : run_vertex_slot(rsp,v);
+        if (colorSlot>=0 && (s_runColorValid & (1ull<<colorSlot))) {
+            *colors[i]=s_runColors[colorSlot];
+            rdp->stats.colorVertexHits++;
+            continue;
+        }
         u8 shade[4] = {v->cr, v->cg, v->cb, v->ca}, color[4];
         if (rsp->texEnabled) {
             color[0] = rgbShade ? (shade[0] * 128u / 255) : 128;
@@ -409,8 +442,12 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
             ps2_combiner_vertex_color(rdp, shade, color);
             ps2_gfx_profile_leave(GFX_PROFILE_VERTEX_COLOR, start);
             color[3] = color[3] * 128u / 255;
+            rdp->stats.colorVertexBuilds++;
         }
         *colors[i] = GS_SETREG_RGBAQ(color[0], color[1], color[2], color[3], 1.0f);
+        if (colorSlot>=0) {
+            s_runColors[colorSlot]=*colors[i]; s_runColorValid |= 1ull<<colorSlot;
+        }
     }
 
     /* ── Profundidad ──────────────────────────────────────────────
@@ -484,24 +521,28 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
                 rdp->stats.submitted++;
             } else rdp->stats.textureFailed++;
         }
-    } else if (fog) {
+    } else {
         GSPRIMPOINT points[3];
         u32 depths[3] = {z0,z1,z2};
         for (int i = 0; i < 3; i++) {
             points[i].rgbaq = rgba_to_RGBAQ((u32)*colors[i], 1);
             points[i].xyz2 = vertex_to_XYZ2(gs, vertices[i]->sx, vertices[i]->sy, depths[i]);
-            ps2_fog_apply_xyz(&points[i].xyz2, vertices[i]->cz / vertices[i]->cw, rsp);
+            if (fog) ps2_fog_apply_xyz(&points[i].xyz2, vertices[i]->cz / vertices[i]->cw, rsp);
         }
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+        capture_color_points(points);
+#endif
         int previousFog = gs->PrimFogEnable;
-        gs->PrimFogEnable = 1;
-        gsKit_prim_list_triangle_gouraud_3d(gs, 3, points);
+        gs->PrimFogEnable = fog;
+        if (s_tri2Batch) {
+            if (s_tri2Count+3>60) flush_tri2(rdp);
+            if (!s_tri2Count) s_tri2Fog=fog;
+            memcpy(s_triColorPoints+s_tri2Count,points,sizeof(points)); s_tri2Count+=3;
+        } else {
+            gsKit_prim_list_triangle_gouraud_3d(gs,3,points);
+            rdp->stats.colorPackets++;
+        }
         gs->PrimFogEnable = previousFog;
-    } else {
-        gsKit_prim_triangle_gouraud_3d(
-            gs,
-            v0->sx, v0->sy, z0,
-            v1->sx, v1->sy, z1,
-            v2->sx, v2->sy, z2, c0, c1, c2);
     }
     rdp->stats.submitted++;
 }
@@ -595,6 +636,7 @@ void f3dex2_tri1(u32 w0, u32 w1, RSPState* rsp, RDPState* rdp) {
 void f3dex2_tri2(u32 w0, u32 w1, RSPState* rsp, RDPState* rdp) {
     if (!s_triangleRun) {
         s_tri2Batch = rsp->texEnabled && !ps2_combiner_texture_lerp(rdp);
+        s_runColored = !rsp->texEnabled;
         s_tri2Count = 0;
     }
     int i0 = (int)((w0 >> 17) & 0x7F);

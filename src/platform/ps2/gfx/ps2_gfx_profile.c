@@ -1,6 +1,7 @@
 /* Private, opt-in sampling; no timer reads during normal game sessions.
  * COP0 Count advances once per EE cycle (294.912 MHz). Unsigned subtraction
- * permits wrap within a frame. Times include preemption by audio/other threads. */
+ * permits wrap within a frame. DSP preemption is excluded; audio preparation
+ * and other interrupts/threads remain included in these elapsed times. */
 #include <stdio.h>
 #include <string.h>
 #include "ps2_gfx_profile.h"
@@ -11,6 +12,7 @@ u32 gPS2GfxProfileCalls[GFX_PROFILE_COUNT];
 static unsigned sFrame;
 static bool sChecked, sEnabled;
 static u32 sStart;
+static u32 sWallStart;
 typedef struct {
     u32 source, prim, env;
     unsigned width, height, fmt, siz, reason, paired;
@@ -35,14 +37,18 @@ void ps2_gfx_profile_begin(void) {
     if (gPS2GfxProfileActive) {
         memset(gPS2GfxProfileCycles, 0, sizeof(gPS2GfxProfileCycles));
         memset(gPS2GfxProfileCalls, 0, sizeof(gPS2GfxProfileCalls));
-        sStart = ps2_gfx_cycles();
+        sWallStart = ps2_gfx_cycles();
+        sStart = ps2_gfx_profile_enter();
         sMissCount = 0;
     }
 }
 void ps2_gfx_profile_end(void) {
     if (!gPS2GfxProfileActive) return;
-    u32 total = ps2_gfx_cycles() - sStart;
+    u32 total = ps2_gfx_profile_enter() - sStart;
+    u32 wall = ps2_gfx_cycles() - sWallStart;
     gPS2GfxProfileActive = false;
+    printf("[PS2 PROFILE PREEMPTION] frame=%u wallUs=%u dspExcludedUs=%u (other preemption included)\n",
+        sFrame,micros(wall),micros(wall-total));
     printf("[PS2 GFX PROFILE] frame=%u totalUs=%u vtxUs=%u triUs=%u rectUs=%u lookupUs=%u convertUs=%u uploadUs=%u calls=%u,%u,%u,%u,%u,%u (texture phases included in tri/rect)\n",
         sFrame, micros(total), micros(gPS2GfxProfileCycles[0]), micros(gPS2GfxProfileCycles[1]),
         micros(gPS2GfxProfileCycles[2]), micros(gPS2GfxProfileCycles[3]),

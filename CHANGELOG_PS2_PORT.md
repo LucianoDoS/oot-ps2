@@ -4,6 +4,41 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Perfil sin síntesis y lotes de geometría sin textura — 2026-10-03
+
+- El usuario confirma la mejora de presentación: 16–18 FPS caminando,
+  alrededor de 20 quieto (a veces 18 según cámara); tienda a 14–16 FPS.
+  Registro de esa versión: `build/PS2/pcsx2-present-overlap-runtime.log`.
+- El perfil optativo descuenta los ciclos de síntesis DSP de sus tiempos
+  gráficos. Una lectura repetida del contador evita capturar un inicio
+  interrumpido a mitad de la medición. Preparación de notas, otros hilos e
+  interrupciones siguen incluidos; no son tiempos exclusivos completos.
+  La captura de la tienda resta 8–13 ms de DSP: quedan aproximadamente
+  45 ms, con 12 ms de carga/proceso de vértices y 25 ms de triángulos.
+  Unas 2577 evaluaciones de color sin textura cuestan 4 ms por fotograma.
+  Registro: `build/PS2/pcsx2-shop-self-profile-runtime.log`.
+- Los grupos TRI consecutivos ahora agrupan también geometría sin textura,
+  hasta 20 triángulos por paquete, y reutilizan el color de los vértices
+  originales compartidos. Cualquier cambio de estado/carga/salto termina
+  el grupo. La profundidad de decal sigue calculándose por triángulo;
+  los vértices temporales de recorte conservan su evaluación independiente.
+  El suelo de dos pases texturados mantiene su orden anterior.
+- Referencia de puntos GS entre envío inmediato y lotes: color, alfa,
+  niebla, profundidad de decal, recorte, culling, capacidad y cambio de
+  material/vértice. La primera pasada detectó que el envío TRI2 inmediato
+  debía restablecer su tipo después de un lote sin textura; se corrigió
+  antes de instalar. Microprueba final: 397057 frente a 247976 ciclos (38 % menos
+  en el envío aislado de geometría sin textura, sin extrapolar a FPS).
+- La segunda pasada completa pasa renderizado, audio, fondo de inventario
+  y 120 fotogramas sin fallos en `build/PS2/pcsx2-color-run-pass.log`.
+  La transición posterior hacia TRI2 texturado también pasa: 100 paquetes
+  inmediatos frente a 10 en lotes, sin diferencias. Juego reconstruido
+  con 718 objetos. La comparación de FPS en tienda/exterior sigue pendiente.
+- Revisión independiente del cambio: se corrigió el modo de la fixture de
+  niebla para activarla realmente y se comprueba que los puntos usan XYZF2.
+  Esa última pasada completa también pasa. Versión abierta con perfil
+  desactivado; respaldo `build/PS2-ntsc12/oot_ps2-before-color-runs.elf`.
+
 ## Actualización de CPU durante la presentación GS — 2026-10-02
 
 - Resultado confirmado por el usuario tras las optimizaciones de audio:

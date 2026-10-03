@@ -11,17 +11,25 @@ enum { GFX_PROFILE_VTX, GFX_PROFILE_TRI, GFX_PROFILE_RECT,
 extern bool gPS2GfxProfileActive;
 extern u32 gPS2GfxProfileCycles[GFX_PROFILE_COUNT];
 extern u32 gPS2GfxProfileCalls[GFX_PROFILE_COUNT];
+extern volatile u32 gPS2DspCyclesTotal;
 static inline u32 ps2_gfx_cycles(void) {
     u32 cycles;
     __asm__ volatile("mfc0 %0, $9" : "=r"(cycles) :: "memory");
     return cycles;
 }
 static inline u32 ps2_gfx_profile_enter(void) {
-    return gPS2GfxProfileActive ? ps2_gfx_cycles() : 0;
+    if (!gPS2GfxProfileActive) return 0;
+    u32 before, cycles, after;
+    do {
+        before = gPS2DspCyclesTotal;
+        cycles = ps2_gfx_cycles();
+        after = gPS2DspCyclesTotal;
+    } while (before != after);
+    return cycles - before;
 }
 static inline void ps2_gfx_profile_leave(unsigned category, u32 start) {
     if (gPS2GfxProfileActive) {
-        gPS2GfxProfileCycles[category] += ps2_gfx_cycles() - start;
+        gPS2GfxProfileCycles[category] += ps2_gfx_profile_enter() - start;
         gPS2GfxProfileCalls[category]++;
     }
 }

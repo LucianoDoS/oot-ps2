@@ -468,6 +468,8 @@ void rdp_to_gs_submit(void) {
             g_rdpState.stats.textureWaits, g_rdpState.stats.texturePackets,
             g_rdpState.stats.textureVertexBuilds, g_rdpState.stats.textureVertexHits);
         printf("[PS2 STATE PERF] writes=%u reused=%u\n", g_rdpState.stats.stateWrites, g_rdpState.stats.stateReuse);
+        printf("[PS2 COLOR PERF] packets=%u vertexBuilds=%u vertexHits=%u\n",
+            g_rdpState.stats.colorPackets,g_rdpState.stats.colorVertexBuilds,g_rdpState.stats.colorVertexHits);
     }
     memset(&g_rdpState.stats, 0, sizeof(g_rdpState.stats));
 

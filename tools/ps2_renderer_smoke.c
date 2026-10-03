@@ -970,6 +970,73 @@ int ps2_renderer_smoke(void) {
     rdp_setcombine(0xfcffffff,0xfffdf6fb,&g_rdpState);
     rdp_setprimcolor(0,0xffffffff,&g_rdpState);
     printf("[PS2 POINT REUSE TEST] GS points, fog, perspective, fade, decals, clipping and invalidation failures=%d\n",failures);
+
+    /* Color-only actor meshes use the same ordering and vertex values as
+     * the immediate path, including fog tags and per-triangle decal bias. */
+    for (unsigned fixture=0;fixture<7;fixture++) {
+        g_rspState=pointState; g_rspState.texEnabled=false;
+        g_rspState.geometryMode=(fixture==6 ? 0x600u : 0)|(fixture==1 ? 0x10000u : 0);
+        g_rspState.fogMul=100; g_rspState.fogOff=120;
+        rdp_setothermode(fixture==1 ? 1u<<20 : fixture==2 ? 2u<<20 : 0,
+            fixture==1 ? 0xc8000030u : fixture==3 ? 0xc10u : 0x30u,&g_rdpState);
+        rdp_setcombine(fixture==5 ? 0xfc119623u : 0xfcffffffu,
+            fixture==5 ? 0xff2fffffu : 0xfffdf6fbu,&g_rdpState);
+        rdp_setprimcolor(0,0x792acf71u,&g_rdpState);
+        if (fixture==4) { g_rspState.vtx[0].cz=-2*g_rspState.vtx[0].cw; g_rspState.vtx[0].clipFlags=16; }
+        f3dex2_test_capture(true);
+        for (unsigned i=0;i<21;i++) f3dex2_tri2(0x06000204,0x00000204,&g_rspState,&g_rdpState);
+        unsigned referenceCount,cachedCount;
+        const GSPRIMSTQPOINT* points=f3dex2_test_points(&referenceCount);
+        if (fixture==1) {
+            if (!referenceCount || !ps2_fog_enabled(&g_rdpState,&g_rspState)) failures++;
+            for (unsigned i=0;i<referenceCount;i++) if (points[i].xyz2.tag!=GS_XYZF2) failures++;
+        }
+        memcpy(referencePoints,points,referenceCount*sizeof(*points));
+        f3dex2_test_capture(true);
+        u32 builds=g_rdpState.stats.colorVertexBuilds,hits=g_rdpState.stats.colorVertexHits;
+        u32 packets=g_rdpState.stats.colorPackets;
+        if (!f3dex2_batch_begin(&g_rspState,&g_rdpState)) failures++;
+        for (unsigned i=0;i<21;i++) f3dex2_tri2(0x06000204,0x00000204,&g_rspState,&g_rdpState);
+        f3dex2_batch_end(&g_rdpState);
+        points=f3dex2_test_points(&cachedCount);
+        if (cachedCount!=referenceCount || memcmp(referencePoints,points,cachedCount*sizeof(*points))) failures++;
+        if (fixture!=4 && fixture!=6 && (g_rdpState.stats.colorVertexBuilds-builds!=3 ||
+            g_rdpState.stats.colorVertexHits-hits!=123 || g_rdpState.stats.colorPackets-packets!=3)) failures++;
+        f3dex2_test_capture(false);
+        /* A new run must recalculate colors after shade/material changes. */
+        g_rspState.vtx[0].cr^=0x81; g_rspState.vtx[0].ca^=0x55;
+        rdp_setprimcolor(0,0xbaf03129u,&g_rdpState);
+        f3dex2_test_capture(true);
+        f3dex2_tri1(0x05000204,0,&g_rspState,&g_rdpState);
+        points=f3dex2_test_points(&referenceCount);
+        memcpy(referencePoints,points,referenceCount*sizeof(*points));
+        f3dex2_test_capture(true);
+        f3dex2_batch_begin(&g_rspState,&g_rdpState);
+        f3dex2_tri1(0x05000204,0,&g_rspState,&g_rdpState);
+        f3dex2_batch_end(&g_rdpState);
+        points=f3dex2_test_points(&cachedCount);
+        if (cachedCount!=referenceCount || memcmp(referencePoints,points,cachedCount*sizeof(*points))) failures++;
+        f3dex2_test_capture(false);
+    }
+    g_rspState=pointState; g_rspState.texEnabled=false; g_rspState.geometryMode=0;
+    rdp_setothermode(0,0x30,&g_rdpState);
+    u32 packets=g_rdpState.stats.colorPackets;
+    rdp_to_gs_exec((const Gfx*)boundaryDL);
+    if (g_rdpState.stats.colorPackets-packets!=3) failures++;
+    u32 start=ps2_gfx_cycles();
+    for (unsigned i=0;i<100;i++) f3dex2_tri2(0x06000204,0x00000204,&g_rspState,&g_rdpState);
+    u32 immediate=ps2_gfx_cycles()-start;
+    start=ps2_gfx_cycles();
+    f3dex2_batch_begin(&g_rspState,&g_rdpState);
+    for (unsigned i=0;i<100;i++) f3dex2_tri2(0x06000204,0x00000204,&g_rspState,&g_rdpState);
+    f3dex2_batch_end(&g_rdpState);
+    u32 batched=ps2_gfx_cycles()-start;
+    printf("[PS2 COLOR RUN TEST] immediateCycles=%u batchedCycles=%u; color, alpha, fog, decals, clipping, culling, capacity and invalidation failures=%d\n",
+        immediate,batched,failures);
+    g_rspState=pointState;
+    rdp_setothermode(1u<<20,0xc8112078u,&g_rdpState);
+    rdp_setcombine(0xfcffffff,0xfffdf6fb,&g_rdpState);
+    rdp_setprimcolor(0,0xffffffff,&g_rdpState);
 #endif
     /* Compare identical EE work with the old per-TRI2 path and native runs. */
     beforePackets = g_rdpState.stats.texturePackets;
