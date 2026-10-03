@@ -260,6 +260,10 @@ void PS2Gfx_DumpTrace(void);
 void ps2_light_load(u32 index, const u8* src, RSPState* rsp);
 void ps2_light_set_count(u32 numLights, RSPState* rsp);
 void ps2_light_apply_vertex(RSPVertex* v, const RSPState* rsp);
+/* Prepare once before processing a G_VTX load; the light table must remain
+ * unchanged until its prepared vertices have all been processed. */
+void ps2_light_prepare_batch(const RSPState* rsp);
+void ps2_light_apply_prepared_vertex(RSPVertex* v, const RSPState* rsp);
 
 /* Niebla (ps2_fog.c) */
 void ps2_fog_update(RDPState* rdp);

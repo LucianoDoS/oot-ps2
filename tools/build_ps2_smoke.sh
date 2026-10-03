@@ -10,7 +10,7 @@ flags=(-D_EE -DPLATFORM_PS2=1 -DPS2_RENDERER_SMOKE_CAPTURE=1 -G0 -O2 -std=gnu11 
        -fno-strict-aliasing '-DPS2_ROM_TEST_PATH="host:ps2-rom-smoke.bin"' -Iinclude/ps2 -I"$PS2SDK/ee/include"
        -I"$PS2SDK/common/include" -I"$PS2SDK/ports/include" -I"$GSKIT/include")
 objects=()
-for src in tools/ps2_pcm_ring_smoke.c tools/ps2_audio_driver_smoke.c src/platform/ps2/audio/ps2_audio_driver.c tools/ps2_jpeg_smoke.c tools/ps2_smoke.c tools/ps2_os_smoke.c tools/ps2_rom_threads_smoke.c tools/ps2_renderer_smoke.c tools/ps2_audio_smoke.c tools/ps2_sram_smoke.c src/platform/ps2/io/ps2_sram.c src/platform/ps2/gfx/*.c \
+for src in tools/ps2_pcm_ring_smoke.c tools/ps2_audio_driver_smoke.c src/platform/ps2/audio/ps2_audio_driver.c tools/ps2_jpeg_smoke.c tools/ps2_smoke.c tools/ps2_os_smoke.c tools/ps2_rom_threads_smoke.c tools/ps2_renderer_smoke.c tools/ps2_lighting_smoke.c tools/ps2_audio_smoke.c tools/ps2_sram_smoke.c src/platform/ps2/io/ps2_sram.c src/platform/ps2/gfx/*.c \
     src/platform/ps2/audio/ps2_rsp_audio.c src/platform/ps2/audio/rsp_hle/*.c \
     src/platform/ps2/libultra_stub/osMessage.c src/platform/ps2/libultra_stub/osTimer.c \
     src/platform/ps2/libultra_stub/osInterrupt.c src/platform/ps2/libultra_stub/osPrintf.c \

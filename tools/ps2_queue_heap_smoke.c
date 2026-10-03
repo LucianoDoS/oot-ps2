@@ -13,6 +13,25 @@ int ps2_queue_heap_smoke(void) {
     OSMesg survivorMessage;
     osCreateMesgQueue(&survivor, &survivorMessage, 1);
     CHECK(osSendMesg(&survivor, (OSMesg)42, OS_MESG_NOBLOCK) == 0);
+    /* Completed one-shot queues are not necessarily heap allocations. Use
+     * more distinct addresses than the side table can retain, just like
+     * temporary DMA queues and reused animation-task union slots. */
+    static struct {
+        OSMesgQueue queue;
+        OSMesg message;
+    } completed[96];
+    for (int pass = 0; pass < 4; pass++) {
+        for (int i = 0; i < 96; i++) {
+            OSMesgQueue* queue = &completed[i].queue;
+            osCreateMesgQueue(queue, &completed[i].message, 1);
+            CHECK(osSendMesg(queue, (OSMesg)(i + 1), OS_MESG_NOBLOCK) == 0);
+            OSMesg result;
+            CHECK(osRecvMesg(queue, &result, OS_MESG_BLOCK) == 0 && result == (OSMesg)(i + 1));
+            ps2_os_release_queues(queue, sizeof(*queue));
+            CHECK(osSendMesg(queue, (OSMesg)7, OS_MESG_NOBLOCK) == -1);
+            CHECK(osSendMesg(&survivor, (OSMesg)43, OS_MESG_NOBLOCK) == -1);
+        }
+    }
     /* Distinct embedded queue addresses expose the original 64-entry leak.
      * Exercise both freeing an allocation and discarding a whole scene heap. */
     for (int scene = 0; scene < 8; scene++) {
@@ -36,6 +55,6 @@ int ps2_queue_heap_smoke(void) {
     OSMesg result;
     CHECK(osRecvMesg(&survivor, &result, OS_MESG_NOBLOCK) == 0 && result == (OSMesg)42);
     ps2_os_release_queues(&survivor, sizeof(survivor));
-    printf("[PS2 QUEUE HEAP TEST] PASS: 768 queue lifetimes, scene cleanup, surviving queue\n");
+    printf("[PS2 QUEUE HEAP TEST] PASS: 384 completed + 768 heap queue lifetimes, scene cleanup, surviving queue\n");
     return 0;
 }

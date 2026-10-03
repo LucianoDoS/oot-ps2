@@ -20,6 +20,9 @@
 
 #include "libu64/debug.h"
 #include "ultra64.h"
+#if PLATFORM_PS2
+#include "ps2/ps2_queue.h"
+#endif
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -1001,6 +1004,10 @@ void AnimTask_LoadPlayerFrame(PlayState* play, AnimTaskData* data) {
     AnimTaskLoadPlayerFrame* task = &data->loadPlayerFrame;
 
     osRecvMesg(&task->msgQueue, NULL, OS_MESG_BLOCK);
+#if PLATFORM_PS2
+    /* The DMA is complete and this union slot can become a different task. */
+    ps2_os_release_queues(&task->msgQueue, sizeof(task->msgQueue));
+#endif
 }
 
 /**

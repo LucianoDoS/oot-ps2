@@ -1,4 +1,7 @@
 #include "ultra64.h"
+#if PLATFORM_PS2
+#include "ps2/ps2_queue.h"
+#endif
 
 void Sleep_Cycles(OSTime cycles) {
     OSMesgQueue mq;
@@ -8,6 +11,9 @@ void Sleep_Cycles(OSTime cycles) {
     osCreateMesgQueue(&mq, &msg, 1);
     osSetTimer(&timer, cycles, 0, &mq, NULL);
     osRecvMesg(&mq, NULL, OS_MESG_BLOCK);
+#if PLATFORM_PS2
+    ps2_os_release_queues(&mq, sizeof(mq));
+#endif
 }
 
 void Sleep_Nsec(u32 nsec) {

@@ -1,5 +1,8 @@
 #include "ultra64.h"
 #include "sched.h"
+#if PLATFORM_PS2
+#include "ps2/ps2_queue.h"
+#endif
 
 /**
  * Blocks the current thread until all queued scheduler tasks have completed.
@@ -25,4 +28,7 @@ void Sched_FlushTaskQueue(void) {
     // Wait until the task has been processed, indicating that no task is
     // running and the task queue is now empty.
     osRecvMesg(&queue, NULL, OS_MESG_BLOCK);
+#if PLATFORM_PS2
+    ps2_os_release_queues(&queue, sizeof(queue));
+#endif
 }

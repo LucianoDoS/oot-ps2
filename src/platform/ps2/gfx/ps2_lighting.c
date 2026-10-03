@@ -79,6 +79,12 @@ void ps2_light_apply_vertex(RSPVertex* v, const RSPState* rsp) {
      * Actually, in F3DEX2, ambient is light 'numLights', and dir lights are 0 to numLights-1 */
     
     u32 ambientIdx = rsp->numLights;
+    if (!ambientIdx) {
+        v->cr = rsp->lights[0].r;
+        v->cg = rsp->lights[0].g;
+        v->cb = rsp->lights[0].b;
+        return;
+    }
     float r = (float)rsp->lights[ambientIdx].r;
     float g = (float)rsp->lights[ambientIdx].g;
     float b = (float)rsp->lights[ambientIdx].b;
@@ -111,8 +117,67 @@ void ps2_light_apply_vertex(RSPVertex* v, const RSPState* rsp) {
     }
 
     /* Clamp colors to 255 */
-    v->cr = (r > 255.0f) ? 255 : (u8)r;
-    v->cg = (g > 255.0f) ? 255 : (u8)g;
-    v->cb = (b > 255.0f) ? 255 : (u8)b;
+    /* Ambient and positive diffuse contributions are nonnegative. After
+     * the upper clamp these conversions are in 0..255; use signed integer
+     * conversion so the EE does not generate the unsigned 2^31 split. */
+    v->cr = (r > 255.0f) ? 255 : (u8)(s32)r;
+    v->cg = (g > 255.0f) ? 255 : (u8)(s32)g;
+    v->cb = (b > 255.0f) ? 255 : (u8)(s32)b;
     /* Alpha remains unchanged (v->ca) */
+}
+
+/* A G_VTX batch has one immutable light table. Verify its actual contents
+ * once before loading vertices: light commands, direct color writes and
+ * state copies then all invalidate this cache without separate hooks.
+ * Normal RGB bytes are its only per-vertex input; alpha is never cached. */
+static RSPLight s_batchLights[8];
+static u32 s_batchLightCount;
+static bool s_batchValid;
+static u32 s_lightGeneration;
+static struct {
+    u32 normal;
+    u32 rgb;
+    u32 generation;
+} s_normalColors[256];
+
+void ps2_light_prepare_batch(const RSPState* rsp) {
+    if (!(rsp->geometryMode & 0x00020000u) || !rsp->numLights) return;
+    size_t bytes = (rsp->numLights + 1u) * sizeof(RSPLight);
+    if (!s_batchValid || s_batchLightCount != rsp->numLights ||
+        memcmp(s_batchLights, rsp->lights, bytes)) {
+        memcpy(s_batchLights, rsp->lights, bytes);
+        s_batchLightCount = rsp->numLights;
+        /* Most material/light changes invalidate in O(1). A wrapped tag
+         * requires clearing once, before generation one can be reused. */
+        if (!++s_lightGeneration) {
+            memset(s_normalColors, 0, sizeof(s_normalColors));
+            s_lightGeneration = 1;
+        }
+        s_batchValid = true;
+    }
+}
+
+void ps2_light_apply_prepared_vertex(RSPVertex* v, const RSPState* rsp) {
+    if (!(rsp->geometryMode & 0x00020000u)) return;
+    if (!rsp->numLights) {
+        v->cr = rsp->lights[0].r;
+        v->cg = rsp->lights[0].g;
+        v->cb = rsp->lights[0].b;
+        return;
+    }
+    if (!s_batchValid) ps2_light_prepare_batch(rsp);
+    u32 normal = (u32)v->cr | ((u32)v->cg << 8) | ((u32)v->cb << 16);
+    unsigned slot = (normal * 0x9e3779b1u) >> 24;
+    if (s_normalColors[slot].generation == s_lightGeneration &&
+        s_normalColors[slot].normal == normal) {
+        u32 rgb = s_normalColors[slot].rgb;
+        v->cr = (u8)rgb;
+        v->cg = (u8)(rgb >> 8);
+        v->cb = (u8)(rgb >> 16);
+        return;
+    }
+    ps2_light_apply_vertex(v, rsp);
+    s_normalColors[slot].normal = normal;
+    s_normalColors[slot].rgb = (u32)v->cr | ((u32)v->cg << 8) | ((u32)v->cb << 16);
+    s_normalColors[slot].generation = s_lightGeneration;
 }

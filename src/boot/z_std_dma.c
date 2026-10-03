@@ -44,6 +44,9 @@
 #endif
 #include "dma.h"
 #include "thread.h"
+#if PLATFORM_PS2
+#include "ps2/ps2_queue.h"
+#endif
 
 #pragma increment_block_number "gc-eu:0 gc-eu-mq:0 gc-jp:0 gc-jp-ce:0 gc-jp-mq:0 gc-us:0 gc-us-mq:0 ntsc-1.2:82" \
                                "pal-1.0:80 pal-1.1:80"
@@ -199,6 +202,9 @@ s32 DmaMgr_DmaRomToRam(uintptr_t rom, void* ram, size_t size) {
 end:
     osInvalICache(ram, size);
     osInvalDCache(ram, size);
+#if PLATFORM_PS2
+    ps2_os_release_queues(&queue, sizeof(queue));
+#endif
 
     return ret;
 }
@@ -265,6 +271,9 @@ void DmaMgr_DmaFromDriveRom(void* ram, uintptr_t rom, size_t size) {
 
     osEPiStartDma(handle, &ioMsg, OS_READ);
     osRecvMesg(&queue, NULL, OS_MESG_BLOCK);
+#if PLATFORM_PS2
+    ps2_os_release_queues(&queue, sizeof(queue));
+#endif
 }
 
 #if DEBUG_FEATURES
@@ -617,10 +626,16 @@ s32 DmaMgr_RequestSync(void* ram, uintptr_t vrom, size_t size) {
     osCreateMesgQueue(&queue, &msg, 1);
     ret = DmaMgr_RequestAsync(&req, ram, vrom, size, 0, &queue, NULL);
     if (ret == -1) { // DmaMgr_RequestAsync only returns 0
+#if PLATFORM_PS2
+        ps2_os_release_queues(&queue, sizeof(queue));
+#endif
         return ret;
     }
 
     osRecvMesg(&queue, NULL, OS_MESG_BLOCK);
+#if PLATFORM_PS2
+    ps2_os_release_queues(&queue, sizeof(queue));
+#endif
     return 0;
 }
 
@@ -710,10 +725,16 @@ s32 DmaMgr_RequestSyncDebug(void* ram, uintptr_t vrom, size_t size, const char* 
     osCreateMesgQueue(&queue, &msg, 1);
     ret = DmaMgr_RequestAsync(&req, ram, vrom, size, 0, &queue, NULL);
     if (ret == -1) { // DmaMgr_RequestAsync only returns 0
+#if PLATFORM_PS2
+        ps2_os_release_queues(&queue, sizeof(queue));
+#endif
         return ret;
     }
 
     osRecvMesg(&queue, NULL, OS_MESG_BLOCK);
+#if PLATFORM_PS2
+    ps2_os_release_queues(&queue, sizeof(queue));
+#endif
     return 0;
 }
 #endif

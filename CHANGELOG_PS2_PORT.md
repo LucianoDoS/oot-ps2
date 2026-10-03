@@ -4,6 +4,57 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Reutilización temprana de puntos e iluminación — 2026-10-03
+
+- Resultado de la versión anterior confirmado por el usuario: tienda a
+  20 FPS quieto y 14–16 caminando; exterior normalmente 14–16, llegando a
+  20 según la cámara. La primera vista del exterior todavía provoca una
+  caída mayor antes de estabilizarse. Se percibe mejora, pero aún no se
+  mantiene la velocidad natural en todas las vistas.
+- La búsqueda del punto GS texturado compartido se hace antes de repetir
+  su color y profundidad. Los indicadores de SHADE y niebla se calculan
+  una vez por grupo TRI. Los puntos temporales de recorte y decals siguen
+  preparando sus valores completos; el suelo de dos pases conserva su
+  orden. La referencia añade SHADE RGB/alfa, límites de profundidad,
+  índices repetidos y comprobación efectiva del tag de niebla.
+- La iluminación reutiliza RGB por normal bajo la misma tabla de luces,
+  comprobada una vez por G_VTX. 256 entradas ocupan 3 KiB; la generación
+  invalida en O(1), con borrado sólo al desbordarse el contador. Alfa y
+  demás campos del vértice se conservan. Sin luces direccionales se copia
+  directamente el ambiente. La conversión a entero con signo conserva
+  el resultado de colores limitados a 0–255 y evita ramas del EE.
+- La primera pasada compara 133650 casos de iluminación, cada uno con
+  ruta escalar, caché y repetición con otro alfa: cero diferencias.
+  Microprueba con las mismas luces/normales: 5003932 frente a 3476681 ciclos
+  (30 % menos en ese trabajo aislado). Puntos GS, audio y 120 fotogramas
+  pasan en `build/PS2/pcsx2-lighting-point-pass.log`. No se extrapola a FPS.
+- Revisión independiente del lookup temprano: no se leen colores ni
+  profundidades descartados cuando se reutiliza un punto; los cambios de
+  estado siguen terminando los grupos TRI. La prueba del envío texturado
+  en lotes baja de 309397 ciclos en la captura anterior a 187347 en esta;
+  ambas capturas son micropruebas, no medidas del juego completo.
+
+## Vida de colas temporales tras cargas y animaciones — 2026-10-03
+
+- El registro de la sesión anterior acumula errores de tabla de colas
+  llena al prolongar el juego. Las colas locales de DMA y las posiciones
+  de la cola de animación conservaban su registro de semáforos después de
+  completar la tarea; la liberación del heap no cubre sus vidas cortas.
+- En PS2 se liberan tras su último mensaje las colas de cuatro rutas DMA,
+  la espera de temporizador, la tarea de sincronización del scheduler y
+  la carga de un fotograma de animación. Se incluyen las salidas de error
+  DMA. No se amplía el límite de 64 ni se liberan colas dentro del receive
+  genérico. La lógica de otras plataformas se conserva.
+- La prueba de vida de colas añade 384 tareas terminadas en 96 direcciones
+  distintas, manteniendo una cola pendiente independiente, además de las
+  768 vidas de heap ya cubiertas. La última pasada pasa esos 1152 ciclos,
+  iluminación, renderizado, audio y 120 fotogramas sin fallos:
+  `build/PS2/pcsx2-lighting-queue-pass.log`. El juego con los siete callsites
+  se reconstruye con 718 objetos. Versión instalada y abierta sin perfil;
+  respaldo `build/PS2-ntsc12/oot_ps2-before-lighting-queues.elf`, registro
+  anterior en `build/PS2/pcsx2-color-runs-runtime.log`. Pendiente comparar
+  FPS y comprobar una sesión larga con los callsites corregidos.
+
 ## Perfil sin síntesis y lotes de geometría sin textura — 2026-10-03
 
 - El usuario confirma la mejora de presentación: 16–18 FPS caminando,
@@ -33,7 +84,8 @@ trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
   y 120 fotogramas sin fallos en `build/PS2/pcsx2-color-run-pass.log`.
   La transición posterior hacia TRI2 texturado también pasa: 100 paquetes
   inmediatos frente a 10 en lotes, sin diferencias. Juego reconstruido
-  con 718 objetos. La comparación de FPS en tienda/exterior sigue pendiente.
+  con 718 objetos. Comparación posterior: tienda quieto 20, caminando
+  14–16; exterior normalmente 14–16, con algunas vistas a 20.
 - Revisión independiente del cambio: se corrigió el modo de la fixture de
   niebla para activarla realmente y se comprueba que los puntos usan XYZF2.
   Esa última pasada completa también pasa. Versión abierta con perfil

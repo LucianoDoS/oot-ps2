@@ -15,6 +15,7 @@ const u64 gspS2DEX2d_fifoTextStart[1] = {0};
 extern const void* ps2_prerender_fixture(int);
 extern void ps2_prerender_mutate(void);
 extern int ps2_prerender_failures(void);
+extern int ps2_lighting_smoke(void);
 
 static void matrix(short* out, float scale, float translate) {
     memset(out, 0, 64);
@@ -48,7 +49,7 @@ static __attribute__((noinline)) u32 asset_read_reference(const volatile u8* p) 
 }
 
 int ps2_renderer_smoke(void) {
-    int failures = 0;
+    int failures = ps2_lighting_smoke();
     static u8 readInputs[4112] __attribute__((aligned(128)));
     for (unsigned i=0;i<sizeof(readInputs);i++) readInputs[i]=(i*73+159)&255;
     for (unsigned offset=0;offset<16;offset++) for (unsigned i=0;i<256;i++) {
@@ -921,34 +922,49 @@ int ps2_renderer_smoke(void) {
      * including perspective, fog, dynamic alpha, decal bias and clipping. */
     static GSPRIMSTQPOINT referencePoints[600];
     RSPState pointState=g_rspState;
-    for (unsigned fixture=0;fixture<6;fixture++) {
+    for (unsigned fixture=0;fixture<8;fixture++) {
         g_rspState=pointState;
         rdp_setothermode((1u<<19)|(fixture == 1 ? 1u<<20 : 0),
             fixture == 1 ? 0xc8000030u : fixture == 3 ? 0xc10u : 0x30u,&g_rdpState);
-        rdp_setcombine(fixture == 2 ? 0xfc119623u : 0,
-            fixture == 2 ? 0xff2fffffu : 0,&g_rdpState);
+        rdp_setcombine(fixture == 2 ? 0xfc119623u : fixture == 6 ? 0xfc121800u : 0,
+            fixture == 2 ? 0xff2fffffu : fixture == 6 ? 0xf003fe00u : 0,&g_rdpState);
         rdp_setprimcolor(0,0xffffff71u,&g_rdpState);
         g_rspState.geometryMode=(g_rspState.geometryMode&~0x10000u)|(fixture == 1 ? 0x10000u : 0);
         g_rspState.fogMul=100; g_rspState.fogOff=120;
         if (fixture == 4) { g_rspState.vtx[0].cz=-2*g_rspState.vtx[0].cw; g_rspState.vtx[0].clipFlags=16; }
+        if (fixture == 5) {
+            g_rspState.vtx[0].sz=-0.5f; g_rspState.vtx[1].sz=1.5f;
+            g_rspState.vtx[2].cr=7; g_rspState.vtx[2].cg=229; g_rspState.vtx[2].ca=93;
+        }
+        if (fixture == 6 && (!ps2_combiner_uses_shade(&g_rdpState,false) ||
+            !ps2_combiner_uses_shade(&g_rdpState,true))) failures++;
+        if (fixture == 7) g_rspState.geometryMode=0;
+        u32 triangle0=fixture == 7 ? 0x06000004 : 0x06000204;
+        u32 triangle1=fixture == 7 ? 0x00000004 : 0x00000204;
         f3dex2_test_capture(true);
         u32 builds=g_rdpState.stats.textureVertexBuilds, hits=g_rdpState.stats.textureVertexHits;
-        for (unsigned i=0;i<21;i++) f3dex2_tri2(0x06000204,0x00000204,&g_rspState,&g_rdpState);
+        for (unsigned i=0;i<21;i++) f3dex2_tri2(triangle0,triangle1,&g_rspState,&g_rdpState);
         unsigned referenceCount;
         const GSPRIMSTQPOINT* captured=f3dex2_test_points(&referenceCount);
+        if (fixture == 1) {
+            if (!referenceCount || !ps2_fog_enabled(&g_rdpState,&g_rspState)) failures++;
+            for (unsigned i=0;i<referenceCount;i++) if (captured[i].xyz2.tag!=GS_XYZF2) failures++;
+        }
         if (referenceCount>600) failures++;
         else memcpy(referencePoints,captured,referenceCount*sizeof(*captured));
         f3dex2_test_capture(true);
         if (!f3dex2_batch_begin(&g_rspState,&g_rdpState)) failures++;
-        for (unsigned i=0;i<21;i++) f3dex2_tri2(0x06000204,0x00000204,&g_rspState,&g_rdpState);
+        for (unsigned i=0;i<21;i++) f3dex2_tri2(triangle0,triangle1,&g_rspState,&g_rdpState);
         f3dex2_batch_end(&g_rdpState);
         unsigned cachedCount;
         captured=f3dex2_test_points(&cachedCount);
         if (cachedCount != referenceCount || memcmp(referencePoints,captured,cachedCount*sizeof(*captured))) failures++;
-        if (fixture != 3 && fixture != 4 &&
+        if (fixture != 3 && fixture != 4 && fixture != 7 &&
             (g_rdpState.stats.textureVertexBuilds-builds != 129 ||
              g_rdpState.stats.textureVertexHits-hits != 123)) failures++;
         if ((fixture == 3 || fixture == 4) && g_rdpState.stats.textureVertexHits != hits) failures++;
+        if (fixture == 7 && (g_rdpState.stats.textureVertexBuilds-builds!=128 ||
+            g_rdpState.stats.textureVertexHits-hits!=124)) failures++;
         f3dex2_test_capture(false);
         /* A following run must see new vertex/texture/alpha state. */
         g_rspState.vtx[0].tc_s+=16; g_rspState.vtx[0].sx+=3;
