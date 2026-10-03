@@ -64,6 +64,25 @@ typedef struct TextureCacheEntry {
 #define TEXTURE_CACHE_BYTES (1792u * 1024)
 static u32 s_textureCacheBytes;
 static TextureCacheEntry s_cache[TEXTURE_CACHE_SLOTS];
+/* Bindings usually revisit a handful of entries with the same RAM address.
+ * Index those candidates instead of comparing all 256 materials each time.
+ * Evictions unlink descriptors before reusing their slot or VRAM. */
+#define TEXTURE_CACHE_BUCKETS 64
+#define TEXTURE_CACHE_END 0xffffu
+static u16 s_cacheHeads[TEXTURE_CACHE_BUCKETS];
+static u16 s_cacheNext[TEXTURE_CACHE_SLOTS];
+static bool s_cacheIndexReady;
+static unsigned cache_bucket(uintptr_t source) {
+    u32 bits = (u32)(source >> 4);
+    return (bits ^ (bits >> 8) ^ (bits >> 16)) & (TEXTURE_CACHE_BUCKETS - 1);
+}
+static void cache_unlink(unsigned slot) {
+    u16* link = &s_cacheHeads[cache_bucket(s_cache[slot].source)];
+    while (*link != TEXTURE_CACHE_END) {
+        if (*link == slot) { *link = s_cacheNext[slot]; return; }
+        link = &s_cacheNext[*link];
+    }
+}
 static u32 s_cacheClock;
 /* A FINISH retires all accesses up to this clock, including other textures.
  * Remember that fence so subsequent uploads do not wait for the same draws. */
@@ -99,6 +118,7 @@ static u32 cache_region(u32 size, u32* costOut) {
 typedef struct CombinerLookup {
     u32 combine0, combine1, prim, env, cycle, used;
     u8 valid, values[4][256];
+    u32 rgba16[4][32]; /* packed mapped channels of a 5-5-5-1 source */
 } CombinerLookup;
 #define COMBINER_LOOKUP_SLOTS 64
 static CombinerLookup s_lookups[COMBINER_LOOKUP_SLOTS];
@@ -107,7 +127,7 @@ extern volatile unsigned gPS2GfxTraceStage;
 
 /* Many tiles share a combiner. Cache its compiled channel mappings rather
  * than resolving source selectors on every texture upload. */
-static const u8 (*combiner_lookup(const RDPState* rdp))[256] {
+static const CombinerLookup* combiner_lookup(const RDPState* rdp) {
     u32 cycle = (rdp->otherMode.hi >> 20) & 3;
     u32 prim, env;
     ps2_combiner_constants(rdp, &prim, &env);
@@ -119,7 +139,7 @@ static const u8 (*combiner_lookup(const RDPState* rdp))[256] {
             entry->combine1 == rdp->combiner.w1 && entry->prim == prim &&
             entry->env == env && entry->cycle == cycle) {
             entry->used = ++s_lookupClock;
-            return entry->values;
+            return entry;
         }
         if (!entry->valid || (s_lookups[slot].valid && entry->used < s_lookups[slot].used)) slot = i;
     }
@@ -127,9 +147,13 @@ static const u8 (*combiner_lookup(const RDPState* rdp))[256] {
     entry->combine0 = rdp->combiner.w0; entry->combine1 = rdp->combiner.w1;
     entry->prim = prim; entry->env = env; entry->cycle = cycle;
     ps2_combiner_build_lookup(rdp, entry->values);
+    for (unsigned channel = 0; channel < 3; channel++) for (unsigned value = 0; value < 32; value++)
+        entry->rgba16[channel][value] = (u32)entry->values[channel][(value << 3) | (value >> 2)] << (channel*8);
+    entry->rgba16[3][0] = (u32)entry->values[3][0] << 24;
+    entry->rgba16[3][1] = (u32)entry->values[3][255] << 24;
     entry->used = ++s_lookupClock;
     entry->valid = 1;
-    return entry->values;
+    return entry;
 }
 
 /* The GS has region repeat but no mirrored repeat. Store one forward and
@@ -184,15 +208,25 @@ void ps2_texture_apply_tile(TileDescriptor* tile, RDPState* rdp) {
 }
 
 static float texture_shift(float coordinate, u8 shift) {
-    return shift <= 10 ? coordinate / (1u << shift) : coordinate * (1u << (16 - shift));
+    /* Four-bit RDP shift: exact powers of two, with no per-corner division. */
+    static const float scale[16] = {1,0.5f,0.25f,0.125f,0.0625f,0.03125f,
+        0.015625f,0.0078125f,0.00390625f,0.001953125f,0.0009765625f,32,16,8,4,2};
+    return coordinate * scale[shift & 15];
+}
+
+static float texture_extent_reciprocal(unsigned extent) {
+    unsigned size = 1;
+    while (size < extent) size <<= 1;
+    return 1.0f / size;
 }
 
 void ps2_texture_build_vertex(const TileDescriptor* tile, const RSPState* rsp,
     const RDPState* rdp, const RSPVertex* vertex, u32 color, u32 depth,
     GSPRIMSTQPOINT* output) {
-    unsigned width = 1, height = 1;
-    while (width < (tile->gsTexture.Width ? tile->gsTexture.Width : tile->width)) width <<= 1;
-    while (height < (tile->gsTexture.Height ? tile->gsTexture.Height : tile->height)) height <<= 1;
+    float invWidth = tile->gsInvWidth ? tile->gsInvWidth :
+        texture_extent_reciprocal(tile->gsTexture.Width ? tile->gsTexture.Width : tile->width);
+    float invHeight = tile->gsInvHeight ? tile->gsInvHeight :
+        texture_extent_reciprocal(tile->gsTexture.Height ? tile->gsTexture.Height : tile->height);
     float u = texture_shift(vertex->tc_s * rsp->texScaleS / 32.0f, tile->shifts) - tile->uls / 4.0f;
     float v = texture_shift(vertex->tc_t * rsp->texScaleT / 32.0f, tile->shiftt) - tile->ult / 4.0f;
     float q = (rdp->otherMode.hi & (1u << 19)) && vertex->cw > 0.0001f ? 1.0f / vertex->cw : 1.0f;
@@ -201,7 +235,7 @@ void ps2_texture_build_vertex(const TileDescriptor* tile, const RSPState* rsp,
         color = (color & 0xffffffu) | (alpha << 24);
     }
     output->rgbaq = rgba_to_RGBAQ(color, q);
-    output->stq = vertex_to_STQ(u * q / width, v * q / height);
+    output->stq = vertex_to_STQ(u * q * invWidth, v * q * invHeight);
     output->xyz2 = vertex_to_XYZ2(rdp->gs, vertex->sx, vertex->sy, depth);
 }
 
@@ -219,6 +253,18 @@ static void texture_descriptor(TileDescriptor* tile, int w, int h, u32 vram) {
     gt->Clut = NULL; gt->Vram = vram;
     /* Upload normally computes this; cache hits must also restore it. */
     gt->TBW = (w + 63) / 64;
+    tile->gsInvWidth = texture_extent_reciprocal(w);
+    tile->gsInvHeight = texture_extent_reciprocal(h);
+}
+
+static void convert_rgba16_mapped(const u8* source, u8* destination, int pixels,
+                                  const CombinerLookup* lookup) {
+    u32* output = (u32*)destination;
+    for (int i = 0; i < pixels; i++) {
+        u16 raw = read_be16(source + i*2);
+        output[i] = lookup->rgba16[0][raw >> 11] | lookup->rgba16[1][(raw >> 6) & 31] |
+                    lookup->rgba16[2][(raw >> 1) & 31] | lookup->rgba16[3][raw & 1];
+    }
 }
 
 /* ─────────────────────────────────────────────────────────── *
@@ -431,8 +477,12 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         else for (int y = 0; y < h; y++) hash = ps2_texture_hash(secondSrc+y*key.stride2, rowBytes, hash);
     }
     key.contentHash = hash;
+    if (!s_cacheIndexReady) {
+        memset(s_cacheHeads, 0xff, sizeof(s_cacheHeads));
+        s_cacheIndexReady = true;
+    }
     int reusable = -1;
-    for (int i = 0; i < TEXTURE_CACHE_SLOTS; i++) {
+    for (unsigned i = s_cacheHeads[cache_bucket(key.source)]; i != TEXTURE_CACHE_END; i = s_cacheNext[i]) {
         TextureCacheEntry* cached = &s_cache[i];
         /* Retain variants used together in this frame, but replace an older
          * frame's version of the same source/material instead of filling
@@ -469,10 +519,16 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         src = s_sourceRows;
     }
 
+    /* Map RGBA16 channels while decoding them, avoiding a full RGBA scratch
+     * write/read pass. The two-source path retains its combined-alpha math. */
+    const CombinerLookup* mapping = pathPair ? NULL : combiner_lookup(rdp);
+    bool mappedRGBA16 = !pathPair && tile->fmt == G_IM_FMT_RGBA && tile->siz == G_IM_SIZ_16b;
     /* ── Format conversion ──────────────────────────────── */
     switch (tile->fmt) {
         case G_IM_FMT_RGBA:
-            if (tile->siz == G_IM_SIZ_16b)
+            if (mappedRGBA16)
+                convert_rgba16_mapped(src, s_convBuf, w*h, mapping);
+            else if (tile->siz == G_IM_SIZ_16b)
                 convert_rgba16_to_rgba32(src, s_convBuf, w, h);
             else if (tile->siz == G_IM_SIZ_32b)
                 convert_rgba32_to_rgba32(src, s_convBuf, w, h);
@@ -538,8 +594,8 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
             alpha += texel[3] * key.lodFrac / 255;
             pixel[3] = alpha > 128 ? 128 : alpha;
         }
-    } else {
-      const u8 (*lookup)[256] = combiner_lookup(rdp);
+    } else if (!mappedRGBA16) {
+      const u8 (*lookup)[256] = mapping->values;
       for (int i = 0; i < w * h; i++) {
         u8* pixel = s_convBuf + i * 4;
         pixel[0] = lookup[0][pixel[0]];
@@ -569,12 +625,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
     u32 uploadStart = ps2_gfx_profile_enter();
     /* ── Upload to GS VRAM ──────────────────────────────── */
     GSTEXTURE* gt = &tile->gsTexture;
-    gt->Width     = uploadW;
-    gt->Height    = uploadH;
-    gt->PSM       = GS_PSM_CT32;
-    gt->Mem       = (void*)s_convBuf;
-    gt->Filter    = GS_FILTER_LINEAR;
-    gt->Clut      = NULL;
+    texture_descriptor(tile, uploadW, uploadH, 0);
 
     /* A zero-initialized GSTEXTURE points at the first framebuffer in VRAM.
      * Reserve a texture-only region and retire draws before reusing it. */
@@ -633,6 +684,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         if (entry->valid && (i == slot || (entry->vram < vram + size && vram < entry->vram + entry->size))) {
             for (int tileIndex = 0; tileIndex < MAX_TILES; tileIndex++)
                 if (rdp->tile[tileIndex].gsTexture.Vram == entry->vram) rdp->tile[tileIndex].gsTextureLoaded = false;
+            cache_unlink(i);
             entry->valid = 0;
         }
     }
@@ -645,6 +697,9 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
     key.vram = vram; key.size = size; key.used = ++s_cacheClock;
     key.frame = s_textureFrame; key.valid = 1;
     s_cache[slot] = key;
+    unsigned bucket = cache_bucket(key.source);
+    s_cacheNext[slot] = s_cacheHeads[bucket];
+    s_cacheHeads[bucket] = slot;
     tile->cacheSlot = slot;
     static unsigned uploads;
     if (++uploads <= 3 || uploads % 1000 == 0)

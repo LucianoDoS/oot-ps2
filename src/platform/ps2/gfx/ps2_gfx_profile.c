@@ -35,4 +35,10 @@ void ps2_gfx_profile_end(void) {
         micros(gPS2GfxProfileCycles[4]), micros(gPS2GfxProfileCycles[5]),
         gPS2GfxProfileCalls[0],gPS2GfxProfileCalls[1],gPS2GfxProfileCalls[2],
         gPS2GfxProfileCalls[3],gPS2GfxProfileCalls[4],gPS2GfxProfileCalls[5]);
+    printf("[PS2 GEOMETRY PROFILE] frame=%u matrixUs=%u transformUs=%u lightUs=%u texgenUs=%u clipUs=%u submitUs=%u calls=%u,%u,%u,%u,%u,%u (submit includes textures, vertex phases included in vtx)\n",
+        sFrame, micros(gPS2GfxProfileCycles[6]), micros(gPS2GfxProfileCycles[7]),
+        micros(gPS2GfxProfileCycles[8]), micros(gPS2GfxProfileCycles[9]),
+        micros(gPS2GfxProfileCycles[10]), micros(gPS2GfxProfileCycles[11]),
+        gPS2GfxProfileCalls[6],gPS2GfxProfileCalls[7],gPS2GfxProfileCalls[8],
+        gPS2GfxProfileCalls[9],gPS2GfxProfileCalls[10],gPS2GfxProfileCalls[11]);
 }

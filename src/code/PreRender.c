@@ -13,6 +13,19 @@
 #include "printf.h"
 #include "regs.h"
 
+/* The native PS2 renderer reads source RAM directly instead of copying it
+ * through N64's 4 KiB TMEM. Use full GS page heights for framebuffer strips:
+ * 320x6 and 320x32 both reserve 40 KiB in CT32, but the latter needs 8 uploads
+ * for a 240-row image instead of 40. Keep within the conversion scratch space. */
+static s32 PreRender_StripRows(s32 width) {
+#if PLATFORM_PS2
+    s32 rows = 65536 / width;
+    return rows < 32 ? rows : 32;
+#else
+    return TMEM_SIZE / (width * G_IM_SIZ_16b_BYTES);
+#endif
+}
+
 void PreRender_SetValuesSave(PreRender* this, u32 width, u32 height, void* fbuf, void* zbuf, void* cvg) {
     this->widthSave = width;
     this->heightSave = height;
@@ -74,7 +87,7 @@ void PreRender_CopyImage(PreRender* this, Gfx** gfxP, void* img, void* imgDst) {
     gDPSetScissor(gfx++, G_SC_NON_INTERLACE, 0, 0, this->width, this->height);
 
     // Calculate the max number of rows that can fit into TMEM at once
-    nRows = TMEM_SIZE / (this->width * G_IM_SIZ_16b_BYTES);
+    nRows = PreRender_StripRows(this->width);
 
     rowsRemaining = this->height;
     curRow = 0;
@@ -137,7 +150,7 @@ void PreRender_CopyImageRegionImpl(PreRender* this, Gfx** gfxP) {
     gDPSetScissor(gfx++, G_SC_NON_INTERLACE, this->ulx, this->uly, this->lrx + 1, this->lry + 1);
 
     // Calculate the max number of rows that can fit into TMEM at once
-    nRows = TMEM_SIZE / ((this->lrxSave - this->ulxSave + 1) * G_IM_SIZ_16b_BYTES);
+    nRows = PreRender_StripRows(this->lrxSave - this->ulxSave + 1);
 
     rowsRemaining = (this->lrySave - this->ulySave) + 1;
     curRow = 0;
@@ -211,7 +224,7 @@ void func_800C170C(PreRender* this, Gfx** gfxP, void* buf, void* bufSave, u32 r,
     gDPSetScissor(gfx++, G_SC_NON_INTERLACE, 0, 0, this->width, this->height);
 
     // Calculate the max number of rows that can fit into TMEM at once
-    nRows = TMEM_SIZE / (this->width * G_IM_SIZ_16b_BYTES);
+    nRows = PreRender_StripRows(this->width);
 
     rowsRemaining = this->height;
     curRow = 0;
@@ -288,7 +301,7 @@ void PreRender_CoverageRgba16ToI8(PreRender* this, Gfx** gfxP, void* img, void* 
     gDPSetScissor(gfx++, G_SC_NON_INTERLACE, 0, 0, this->width, this->height);
 
     // Calculate the max number of rows that can fit into TMEM at once
-    nRows = TMEM_SIZE / (this->width * G_IM_SIZ_16b_BYTES);
+    nRows = PreRender_StripRows(this->width);
 
     // Set up the number of remaining rows
     rowsRemaining = this->height;
@@ -466,7 +479,15 @@ void func_800C213C(PreRender* this, Gfx** gfxP) {
         // The last 0x500 bytes of the remaining 0x600 bytes of TMEM is for coverage data (TEXEL1, I8)
         // In total it needs to simultaneously fit
         // SCREEN_WIDTH * (RGBA16 pixel + I8 pixel) = SCREEN_WIDTH * (2 bytes + 1 byte)
+#if PLATFORM_PS2
+        /* TMEM addresses identify independent sources in the native renderer;
+         * they do not impose a physical storage limit or overlap in RAM. */
+#define FB_ROWS PreRender_StripRows(this->width)
+#define CVG_TMEM 256
+#else
 #define FB_ROWS (TMEM_SIZE / (3 * SCREEN_WIDTH))
+#define CVG_TMEM ((TMEM_SIZE - SCREEN_WIDTH * FB_ROWS) / 8)
+#endif
         nRows = FB_ROWS;
 
         rowsRemaining = this->height;
@@ -493,7 +514,7 @@ void func_800C213C(PreRender* this, Gfx** gfxP) {
             rtile = rtile; // Fake match?
 
             // Load the coverage line
-            gDPLoadMultiTile(gfx++, this->cvgSave, (TMEM_SIZE - SCREEN_WIDTH * FB_ROWS) / 8, rtile, G_IM_FMT_I,
+            gDPLoadMultiTile(gfx++, this->cvgSave, CVG_TMEM, rtile, G_IM_FMT_I,
                              G_IM_SIZ_8b, this->width, this->height, uls, ult, lrs, lrt, 0, G_TX_NOMIRROR | G_TX_WRAP,
                              G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
 
@@ -508,6 +529,7 @@ void func_800C213C(PreRender* this, Gfx** gfxP) {
             rowsRemaining -= nRows;
         }
 #undef FB_ROWS
+#undef CVG_TMEM
 
         gDPPipeSync(gfx++);
         *gfxP = gfx;

@@ -55,6 +55,7 @@
 #include "ps2_segment.h"
 #include "rdp_to_gs.h"
 #include "f3dex2_ps2.h"
+#include "ps2_gfx_profile.h"
 #include "ps2_texture.h"
 
 /* ───────────────────────────────────────────────────────────────── *
@@ -264,9 +265,15 @@ void f3dex2_vtx(u32 w0, u32 w1, RSPState* rsp) {
         v->ca   = src[15];
         v->valid = true;
 
+        u32 start = ps2_gfx_profile_enter();
         transform_vertex(v, rsp);
+        ps2_gfx_profile_leave(GFX_PROFILE_TRANSFORM, start);
+        start = ps2_gfx_profile_enter();
         generate_texture_coordinates(v, rsp);
+        ps2_gfx_profile_leave(GFX_PROFILE_TEXGEN, start);
+        start = ps2_gfx_profile_enter();
         ps2_light_apply_vertex(v, rsp);
+        ps2_gfx_profile_leave(GFX_PROFILE_LIGHT, start);
 
         /* Bounded diagnostics for room geometry, independent of actor vertices. */
         static unsigned roomTrace;
@@ -291,6 +298,7 @@ void f3dex2_vtx(u32 w0, u32 w1, RSPState* rsp) {
 /* TRI2 shares a single material. Submit its surviving/clipped triangles
  * together, avoiding repeated TEX/PRIM packet setup without reordering DLs. */
 static bool s_tri2Batch;
+static bool s_triangleRun;
 static unsigned s_tri2Count;
 static GSPRIMSTQPOINT s_tri2Points[60];
 static GSTEXTURE s_tri2Texture;
@@ -303,6 +311,22 @@ static void flush_tri2(RDPState* rdp) {
     rdp->gs->PrimFogEnable = previousFog;
     rdp->stats.texturePackets++;
     s_tri2Count = 0;
+}
+
+bool f3dex2_batch_begin(RSPState* rsp, RDPState* rdp) {
+    /* The ground blend draws two ordered passes with different tiles and
+     * alpha state. Keep that material on the immediate submission path. */
+    if (!rsp->texEnabled || ps2_combiner_texture_lerp(rdp)) return false;
+    s_triangleRun = true;
+    s_tri2Batch = true;
+    s_tri2Count = 0;
+    return true;
+}
+
+void f3dex2_batch_end(RDPState* rdp) {
+    flush_tri2(rdp);
+    s_triangleRun = false;
+    s_tri2Batch = false;
 }
 
 static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
@@ -446,6 +470,13 @@ static float clip_distance(const RSPVertex* v, int plane) {
     }
 }
 
+static void profiled_submit(RSPVertex* a, RSPVertex* b, RSPVertex* c,
+                            RSPState* rsp, RDPState* rdp) {
+    u32 start = ps2_gfx_profile_enter();
+    submit_vertices(a,b,c,rsp,rdp);
+    ps2_gfx_profile_leave(GFX_PROFILE_SUBMIT,start);
+}
+
 /* Clip before dividing by W. Projecting a vertex behind the camera directly
  * produces enormous inverted polygons even when the GS scissor is correct. */
 int ps2_clip_triangle(const RSPVertex* a, const RSPVertex* b, const RSPVertex* c,
@@ -490,14 +521,16 @@ static void submit_triangle(int i0, int i1, int i2, RSPState* rsp, RDPState* rdp
     if (!a->valid || !b->valid || !c->valid) { rdp->stats.invalid++; return; }
     if (a->clipFlags & b->clipFlags & c->clipFlags) { rdp->stats.clipped++; return; }
     if (!(a->clipFlags | b->clipFlags | c->clipFlags)) {
-        submit_vertices(a, b, c, rsp, rdp); return;
+        profiled_submit(a, b, c, rsp, rdp); return;
     }
     RSPVertex polygon[12];
+    u32 start = ps2_gfx_profile_enter();
     int count = ps2_clip_triangle(a, b, c, polygon);
+    ps2_gfx_profile_leave(GFX_PROFILE_CLIP,start);
     if (count < 3) { rdp->stats.clipped++; return; }
     for (int i = 0; i < count; i++) project_vertex(&polygon[i], rsp);
     for (int i = 1; i + 1 < count; i++)
-        submit_vertices(&polygon[0], &polygon[i], &polygon[i + 1], rsp, rdp);
+        profiled_submit(&polygon[0], &polygon[i], &polygon[i + 1], rsp, rdp);
 }
 
 /* ───────────────────────────────────────────────────────────────── *
@@ -513,8 +546,10 @@ void f3dex2_tri1(u32 w0, u32 w1, RSPState* rsp, RDPState* rdp) {
 }
 
 void f3dex2_tri2(u32 w0, u32 w1, RSPState* rsp, RDPState* rdp) {
-    s_tri2Batch = rsp->texEnabled && !ps2_combiner_texture_lerp(rdp);
-    s_tri2Count = 0;
+    if (!s_triangleRun) {
+        s_tri2Batch = rsp->texEnabled && !ps2_combiner_texture_lerp(rdp);
+        s_tri2Count = 0;
+    }
     int i0 = (int)((w0 >> 17) & 0x7F);
     int i1 = (int)((w0 >>  9) & 0x7F);
     int i2 = (int)((w0 >>  1) & 0x7F);
@@ -523,8 +558,10 @@ void f3dex2_tri2(u32 w0, u32 w1, RSPState* rsp, RDPState* rdp) {
     int i5 = (int)((w1 >>  1) & 0x7F);
     submit_triangle(i0, i1, i2, rsp, rdp);
     submit_triangle(i3, i4, i5, rsp, rdp);
-    flush_tri2(rdp);
-    s_tri2Batch = false;
+    if (!s_triangleRun) {
+        flush_tri2(rdp);
+        s_tri2Batch = false;
+    }
 }
 
 /* ───────────────────────────────────────────────────────────────── *

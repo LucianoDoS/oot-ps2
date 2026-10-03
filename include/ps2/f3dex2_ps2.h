@@ -12,6 +12,10 @@
 void f3dex2_vtx(u32 w0, u32 w1, RSPState* rsp);
 void f3dex2_tri1(u32 w0, u32 w1, RSPState* rsp, RDPState* rdp);
 void f3dex2_tri2(u32 w0, u32 w1, RSPState* rsp, RDPState* rdp);
+/* Only consecutive primitive commands may share a batch. Flush before any
+ * state change, vertex load, display-list branch or end command. */
+bool f3dex2_batch_begin(RSPState* rsp, RDPState* rdp);
+void f3dex2_batch_end(RDPState* rdp);
 void f3dex2_mtx(u32 w0, u32 w1, RSPState* rsp);
 void f3dex2_popmtx(u32 w0, u32 w1, RSPState* rsp);
 void f3dex2_geometrymode(u32 w0, u32 w1, RSPState* rsp);

@@ -195,6 +195,7 @@ void rdp_to_gs_exec(const Gfx* dl) {
     const Gfx* pc = dl;
     const Gfx* callStack[DL_STACK_DEPTH];
     int depth = 0;
+    bool triangleRun = false;
 
     /* Guardia contra listas corruptas: si una DL se desboca, mejor
      * cortar que colgar la consola. */
@@ -203,6 +204,7 @@ void rdp_to_gs_exec(const Gfx* dl) {
 
     for (;;) {
         if (++guard > GUARD_MAX) {
+            if (triangleRun) f3dex2_batch_end(&g_rdpState);
             printf("[DL] ABORTADA: mas de %lu comandos, lista corrupta?\n",
                    GUARD_MAX);
             return;
@@ -213,6 +215,15 @@ void rdp_to_gs_exec(const Gfx* dl) {
         u32 w0 = GFX_READ_W0(pc);
         u32 w1 = GFX_READ_W1(pc);
         u8  op = (u8)(w0 >> 24);
+        bool triangle = op == G_TRI1 || op == G_TRI2 || op == G_QUAD;
+        if (triangleRun && !triangle) {
+            u32 start = ps2_gfx_profile_enter();
+            f3dex2_batch_end(&g_rdpState);
+            ps2_gfx_profile_leave(GFX_PROFILE_TRI, start);
+            triangleRun = false;
+        }
+        if (!triangleRun && triangle)
+            triangleRun = f3dex2_batch_begin(&g_rspState, &g_rdpState);
         if (s_s2dex && (op == 0x09 || op == 0x0a)) {
             ps2_background_draw(ps2_segmented_to_virtual(w1), op == 0x09, &g_rdpState);
             pc++;
@@ -306,9 +317,12 @@ void rdp_to_gs_exec(const Gfx* dl) {
                     f3dex2_geometrymode(w0, w1, &g_rspState);
                     break;
 
-                case G_MTX:
+                case G_MTX: {
+                    u32 start = ps2_gfx_profile_enter();
                     f3dex2_mtx(w0, w1, &g_rspState);
+                    ps2_gfx_profile_leave(GFX_PROFILE_MATRIX, start);
                     break;
+                }
 
                 case G_MOVEWORD:
                     f3dex2_moveword(w0, w1, &g_rspState);

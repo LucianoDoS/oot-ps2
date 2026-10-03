@@ -4,6 +4,65 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Franjas del inventario y agrupación de geometría — 2026-10-02
+
+- El usuario confirma que el audio está corregido y que, con la nueva
+  agrupación de franjas, «El inventario ahora va bien». El exterior sigue
+  a 8–10 FPS y todavía requiere optimización. Primero se estabilizará la
+  versión en PCSX2; las pruebas en PS2 real serán una fase posterior.
+- PreRender deja de limitar sus cargas a los 4 KiB de TMEM de N64 en PS2:
+  el traductor nativo lee la RAM fuente directamente. Usa franjas de hasta
+  32 filas, acotadas por el búfer de conversión de 256 KiB. Una copia de
+  320x240 pasa de 40 a 8 franjas; la composición con cobertura, de 60 a 8.
+  En CT32, gsKit reserva 40 KiB tanto para una franja de 320x6 como para
+  una de 320x32: el fondo pasa de 1600 KiB a 320 KiB. La cobertura utiliza
+  otra dirección TMEM lógica para mantener separados ambos orígenes.
+- TEXRECT descuenta el origen de LOADTILE antes de dibujar la subregión,
+  como ya hacían los vértices 3D. Conserva las coordenadas del dibujo y
+  evita muestrear fuera de una franja cuya fuente ya está desplazada.
+- Prueba con las listas generadas por PreRender de producción: copia,
+  composición con cobertura, tinte y copia de región cubren las 240 filas
+  con ocho rectángulos. El primer dibujo carga ocho texturas; el siguiente
+  carga cero, incluso después de introducir 64 iconos adicionales. Cambiar
+  un píxel recarga únicamente una franja. Diagnósticos completos pasan
+  120 fotogramas: `build/PS2/pcsx2-prerender-pass.log` y
+  `build/PS2/pcsx2-indexed-cache-pass.log`.
+- Las búsquedas de caché se indexan en 64 grupos por dirección de origen,
+  conservando las comprobaciones de contenido, paleta y material. Los
+  reemplazos desvinculan las entradas expulsadas antes de reutilizarlas.
+  Las pruebas de colisiones, cambios de RAM, reemplazos y cercas GS pasan.
+  El usuario no percibe una mejora adicional de FPS en el exterior con
+  este índice; no se da por resuelto ese cuello de botella.
+- Los comandos consecutivos TRI1/TRI2/QUAD comparten paquetes de hasta
+  20 triángulos. Se vacían antes de cualquier cambio de estado, carga de
+  vértices, salto o fin de lista; los materiales de dos pasadas del suelo
+  siguen dibujándose por separado. Pruebas de comandos mezclados, límites
+  de capacidad, polígonos descartados y cambios de estado pasan. Una
+  comparación de 200 triángulos reduce 100 paquetes a 10 y pasa de 450379
+  a 418223 ciclos EE (alrededor del 7 % en esa prueba aislada). El usuario
+  sigue observando 8–10 FPS en el exterior: el ahorro no resuelve el lag.
+  Diagnóstico: `build/PS2/pcsx2-triangle-runs-pass.log`.
+- El perfil detallado separa matrices, transformación, luces, generación
+  de coordenadas, recorte y preparación de triángulos. En una vista quieta
+  del exterior, 3555 vértices requieren unos 2–3 ms de transformación y
+  2–3 ms de luces; las matrices y el recorte rondan 1 ms cada uno. La
+  preparación de triángulos consume 22–40 ms, incluidas búsquedas y
+  conversiones de texturas. Las interrupciones pueden aumentar cualquier
+  muestra; no deben sumarse tiempos de fases incluidas unas dentro de otras.
+  Registro: `build/PS2/pcsx2-geometry-profile-runtime.log`.
+- La conversión RGBA16 combina la expansión 5-5-5-1 y la tabla del material
+  en una sola pasada, usando canales empaquetados; los caminos que combinan
+  dos texturas conservan su cálculo anterior de alfa. Las escalas recíprocas
+  de las dimensiones GS se preparan al cargar o recuperar una textura y los
+  desplazamientos de coordenadas usan potencias de dos exactas. No se cambia
+  la resolución ni el formato de color. Pruebas exhaustivas de 65536 entradas
+  para copia, tinte y dos ciclos pasan, al igual que 512 combinaciones de
+  desplazamientos y perspectiva con coordenadas negativas y orígenes de tile.
+  El diagnóstico completo pasa 120 fotogramas, incluyendo la prueba del
+  audio corregido: `build/PS2/pcsx2-fused-textures-pass.log`.
+  Juego reconstruido con 718 objetos y abierto para medir FPS reales;
+  respaldo `build/PS2-ntsc12/oot_ps2-before-fused-textures.elf`.
+
 ## Perfil de renderizado, texturas y voz — 2026-10-02
 
 - El arranque y los menús limitan ahora la admisión gráfica a 30 Hz como

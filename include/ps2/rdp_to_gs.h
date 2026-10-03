@@ -47,6 +47,7 @@ typedef struct {
 
     /* PS2-specific: converted GS texture (uploaded to VRAM) */
     GSTEXTURE  gsTexture;
+    float      gsInvWidth, gsInvHeight; /* reciprocal GS power-of-two extents */
     bool       gsTextureLoaded;
     u16        cacheSlot;
 } TileDescriptor;

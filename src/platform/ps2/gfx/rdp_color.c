@@ -634,6 +634,10 @@ void rdp_texrect(u8 op, u32 w0, u32 w1, const Gfx* pc, RDPState* rdp) {
 
     if (!tile->gsTextureLoaded) return;
     ps2_texture_apply_tile(tile, rdp);
+    /* LOADTILE uploads only the selected subregion. Rectangle coordinates
+     * are still relative to the complete source image, as with 3D vertices. */
+    s0 -= tile->uls / 4.0f;
+    t0 -= tile->ult / 4.0f;
     u8 alpha = ps2_combiner_dynamic_alpha(rdp) ? n64_alpha_to_gs(rdp->primColor & 255) : 128;
     /* TEXRECTFLIP exchanges screen axes for the texture derivatives. */
     float s1 = s0 + ((op == 0xE5) ? (y1 - y0) : (x1 - x0)) * ds;

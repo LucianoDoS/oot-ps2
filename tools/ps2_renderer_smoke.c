@@ -8,8 +8,12 @@
 #include "rdp_to_gs.h"
 #include "ps2_texture.h"
 #include "ps2_background.h"
+#include "ps2_gfx_profile.h"
 const u64 gspS2DEX2d_fifoTextStart[1] = {0};
 #include "f3dex2_ps2.h"
+extern const void* ps2_prerender_fixture(int);
+extern void ps2_prerender_mutate(void);
+extern int ps2_prerender_failures(void);
 
 static void matrix(short* out, float scale, float translate) {
     memset(out, 0, 64);
@@ -519,6 +523,23 @@ int ps2_renderer_smoke(void) {
     rdp_setothermode(0, 0, &g_rdpState);
     ps2_texture_build_vertex(&repeating, &g_rspState, &g_rdpState, &mapped, 0, 0, &point);
     if (point.rgbaq.color.q != 1.0f || point.stq.st.s != 1.0f) failures++;
+    /* All encoded shifts, signed UVs, offsets and perspective modes retain
+     * the scalar division path's exact values (all divisors are powers of 2). */
+    for (int perspective = 0; perspective < 2; perspective++) {
+        rdp_setothermode(perspective << 19, 0, &g_rdpState);
+        repeating.uls = 12; repeating.ult = 20;
+        for (unsigned s = 0; s < 16; s++) for (unsigned t = 0; t < 16; t++) {
+            repeating.shifts = s; repeating.shiftt = t;
+            float u = mapped.tc_s / 32.0f, v = mapped.tc_t / 32.0f;
+            u = (s <= 10 ? u / (1u << s) : u * (1u << (16-s))) - 3;
+            v = (t <= 10 ? v / (1u << t) : v * (1u << (16-t))) - 5;
+            float q = perspective ? 0.5f : 1;
+            ps2_texture_build_vertex(&repeating,&g_rspState,&g_rdpState,&mapped,0,0,&point);
+            if (point.stq.st.s != u*q/32 || point.stq.st.t != v*q/16 || point.rgbaq.color.q != q) failures++;
+        }
+    }
+    rdp_setothermode(0,0,&g_rdpState);
+    printf("[PS2 UV SCALE TEST] all shifts, offsets and perspective failures=%d\n",failures);
     RSPState reflection = g_rspState;
     memset(reflection.modelview, 0, sizeof(reflection.modelview));
     reflection.modelview[0] = reflection.modelview[5] = reflection.modelview[10] = reflection.modelview[15] = 1;
@@ -695,6 +716,123 @@ int ps2_renderer_smoke(void) {
     if (g_rdpState.stats.submitted != beforeDraw + 4 ||
         g_rdpState.stats.texturePackets != beforePackets + 4) failures++;
     printf("[PS2 TRI2 TEST] failures=%d\n", failures);
+    g_rspState = reflection;
+    /* Two-pass ground materials must never join a run. */
+    if (f3dex2_batch_begin(&g_rspState, &g_rdpState)) {
+        failures++;
+        f3dex2_batch_end(&g_rdpState);
+    }
+    rdp_setcombine(0xfcffffff, 0xfffdf6fb, &g_rdpState);
+    rdp_setprimcolor(0, 0xffffffff, &g_rdpState);
+    const u32 runDL[][2] __attribute__((aligned(8))) = {
+        {0x06000204,0x00000204},{0x05000204,0},{0x06000204,0x00000204},{0xdf000000,0}
+    };
+    beforePackets = g_rdpState.stats.texturePackets;
+    beforeDraw = g_rdpState.stats.submitted;
+    rdp_to_gs_exec((const Gfx*)runDL);
+    if (g_rdpState.stats.submitted != beforeDraw + 5 ||
+        g_rdpState.stats.texturePackets != beforePackets + 1) failures++;
+    const u32 boundaryDL[][2] __attribute__((aligned(8))) = {
+        {0x05000204,0},{0xfb000000,0x80808080},{0x05000204,0},
+        {0xe7000000,0},{0x05000204,0},{0xdf000000,0}
+    };
+    beforePackets = g_rdpState.stats.texturePackets;
+    beforeDraw = g_rdpState.stats.submitted;
+    rdp_to_gs_exec((const Gfx*)boundaryDL);
+    if (g_rdpState.stats.submitted != beforeDraw + 3 ||
+        g_rdpState.stats.texturePackets != beforePackets + 3) failures++;
+    u32 capacityDL[23][2] __attribute__((aligned(8)));
+    for (int i = 0; i < 21; i++) {
+        capacityDL[i][0] = 0x05000204; capacityDL[i][1] = 0;
+    }
+    capacityDL[21][0] = 0x0506080a; capacityDL[21][1] = 0; /* rejected */
+    capacityDL[22][0] = 0xdf000000; capacityDL[22][1] = 0;
+    beforePackets = g_rdpState.stats.texturePackets;
+    beforeDraw = g_rdpState.stats.submitted;
+    rdp_to_gs_exec((const Gfx*)capacityDL);
+    if (g_rdpState.stats.submitted != beforeDraw + 21 ||
+        g_rdpState.stats.texturePackets != beforePackets + 2) failures++;
+    printf("[PS2 TRI RUN TEST] mixed commands, state fences, capacity and rejection failures=%d\n", failures);
+    /* Compare identical EE work with the old per-TRI2 path and native runs. */
+    beforePackets = g_rdpState.stats.texturePackets;
+    u32 benchStart = ps2_gfx_cycles();
+    for (int i = 0; i < 100; i++) f3dex2_tri2(0x06000204,0x00000204,&g_rspState,&g_rdpState);
+    u32 immediateCycles = ps2_gfx_cycles() - benchStart;
+    u32 immediatePackets = g_rdpState.stats.texturePackets - beforePackets;
+    beforePackets = g_rdpState.stats.texturePackets;
+    benchStart = ps2_gfx_cycles();
+    if (!f3dex2_batch_begin(&g_rspState, &g_rdpState)) failures++;
+    for (int i = 0; i < 100; i++) f3dex2_tri2(0x06000204,0x00000204,&g_rspState,&g_rdpState);
+    f3dex2_batch_end(&g_rdpState);
+    u32 batchedCycles = ps2_gfx_cycles() - benchStart;
+    u32 batchedPackets = g_rdpState.stats.texturePackets - beforePackets;
+    if (immediatePackets != 100 || batchedPackets != 10) failures++;
+    printf("[PS2 TRI RUN BENCH] immediateCycles=%u batchedCycles=%u packets=%u,%u failures=%d\n",
+        immediateCycles,batchedCycles,immediatePackets,batchedPackets,failures);
+    static u8 inventoryIcons[64][32*32*2] __attribute__((aligned(128)));
+    for (unsigned i = 0; i < sizeof(inventoryIcons); i++)
+        ((u8*)inventoryIcons)[i] = (i * 29 + 7) & 255;
+    for (int variant = 0; variant < 4; variant++) {
+        const Gfx* background = ps2_prerender_fixture(variant);
+        ps2_texture_end_frame(&g_rdpState);
+        u32 uploads = g_rdpState.stats.textureUploads;
+        rdp_to_gs_exec(background);
+        u32 firstUploads = g_rdpState.stats.textureUploads - uploads;
+        if (firstUploads != 8) failures++;
+        /* The background must survive other inventory textures, with index
+         * collisions, slot replacements and VRAM eviction from prior cases. */
+        TileDescriptor icon = {.width=32,.height=32,.fmt=G_IM_FMT_RGBA,.siz=G_IM_SIZ_16b};
+        for (int i = 0; i < 64; i++) {
+            g_rdpState.textureLoads[0].source = inventoryIcons[i];
+            g_rdpState.textureLoads[0].stride = 0;
+            ps2_texture_upload(&icon, &g_rdpState);
+        }
+        ps2_texture_end_frame(&g_rdpState);
+        uploads = g_rdpState.stats.textureUploads;
+        rdp_to_gs_exec(background);
+        u32 repeatUploads = g_rdpState.stats.textureUploads - uploads;
+        if (repeatUploads) failures++;
+        ps2_prerender_mutate();
+        ps2_texture_end_frame(&g_rdpState);
+        uploads = g_rdpState.stats.textureUploads;
+        rdp_to_gs_exec(background);
+        u32 mutatedUploads = g_rdpState.stats.textureUploads - uploads;
+        if (mutatedUploads != 1) failures++;
+        printf("[PS2 PRERENDER CACHE TEST] variant=%d first=%u repeat=%u changed=%u failures=%d\n",
+            variant,firstUploads,repeatUploads,mutatedUploads,failures);
+    }
+    failures += ps2_prerender_failures();
+    /* Exhaustive 5-5-5-1 input coverage compares the fused decoder against
+     * the independently tested 8-bit LUT, including transparent inputs. */
+    static u8 rgba16All[65536*2] __attribute__((aligned(128)));
+    for (unsigned raw = 0; raw < 65536; raw++) {
+        rgba16All[raw*2] = raw >> 8; rgba16All[raw*2+1] = raw;
+    }
+    const u32 mapCases[][4] = {
+        {2u<<20,0,0,0xffffffff},
+        {0,0xfc119623,0xff2fffff,0x8f734f81},
+        {1u<<20,0xfcffffff,0xfffdf6fb,0x39275340}
+    };
+    for (unsigned material=0;material<3;material++) {
+        rdp_setothermode(mapCases[material][0],0,&g_rdpState);
+        rdp_setcombine(mapCases[material][1],mapCases[material][2],&g_rdpState);
+        rdp_setprimcolor(0,mapCases[material][3],&g_rdpState);
+        u8 reference[4][256];
+        ps2_combiner_build_lookup(&g_rdpState,reference);
+        TileDescriptor exhaustive = {.width=256,.height=256,.fmt=G_IM_FMT_RGBA,.siz=G_IM_SIZ_16b};
+        g_rdpState.textureLoads[0].source = rgba16All;
+        g_rdpState.textureLoads[0].stride = 0;
+        ps2_texture_upload(&exhaustive,&g_rdpState);
+        if (!exhaustive.gsTextureLoaded || exhaustive.gsInvWidth != 1.0f/256 || exhaustive.gsInvHeight != 1.0f/256) failures++;
+        const u8* converted = (const u8*)exhaustive.gsTexture.Mem;
+        for (unsigned raw=0;raw<65536;raw++) {
+            unsigned channels[4] = {raw>>11,(raw>>6)&31,(raw>>1)&31,(raw&1)?255:0};
+            for (unsigned channel=0;channel<3;channel++) channels[channel] = (channels[channel]<<3)|(channels[channel]>>2);
+            for (unsigned channel=0;channel<4;channel++)
+                if (converted[raw*4+channel] != reference[channel][channels[channel]]) failures++;
+        }
+    }
+    printf("[PS2 RGBA16 FUSED TEST] 65536 inputs, copy, tint, two-cycle and alpha failures=%d\n",failures);
     printf("[PS2 RENDER TEST] %s: matrices, viewport, othermode, textures and palettes (%d)\n",
            failures ? "FAIL" : "PASS", failures);
     return failures;
