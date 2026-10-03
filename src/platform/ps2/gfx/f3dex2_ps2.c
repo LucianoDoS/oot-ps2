@@ -364,8 +364,9 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
             color[2] = rgbShade ? (shade[2] * 128u / 255) : 128;
             color[3] = alphaShade ? (shade[3] * 128u / 255) : 128;
         } else {
-            const u8 texel[4] = {255,255,255,255};
-            ps2_combiner_color(rdp, texel, shade, color);
+            u32 start = ps2_gfx_profile_enter();
+            ps2_combiner_vertex_color(rdp, shade, color);
+            ps2_gfx_profile_leave(GFX_PROFILE_VERTEX_COLOR, start);
             color[3] = color[3] * 128u / 255;
         }
         *colors[i] = GS_SETREG_RGBAQ(color[0], color[1], color[2], color[3], 1.0f);

@@ -214,6 +214,7 @@ void rdp_loadtexture(u8 op, u32 w0, u32 w1, RDPState* rdp);
 void rdp_loadtlut(u32 w0, u32 w1, RDPState* rdp);
 void rdp_setcombine(u32 w0, u32 w1, RDPState* rdp);
 void ps2_combiner_color(const RDPState* rdp, const u8 texel[4], const u8 shade[4], u8 output[4]);
+void ps2_combiner_vertex_color(const RDPState* rdp, const u8 shade[4], u8 output[4]);
 void ps2_combiner_build_lookup(const RDPState* rdp, u8 values[4][256]);
 bool ps2_combiner_uses_shade(const RDPState* rdp, bool alpha);
 void ps2_combiner_constants(const RDPState* rdp, u32* prim, u32* env);

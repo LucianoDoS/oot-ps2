@@ -140,6 +140,49 @@ int ps2_renderer_smoke(void) {
         }
     }
     printf("[PS2 COMBINER LUT TEST] original equations vs compiled references, all intensities (%d)\n", failures);
+    /* White texels are the production untextured path. Vary each shade
+     * channel independently, plus mixed RGBA, to cover combined-alpha RGB
+     * dependencies, both clamps and material changes without setter calls. */
+    for (int fixture=0;fixture<64;fixture++) {
+        random=random*1664525u+1013904223u;
+        material.combiner.w0=fixture<7 ? materials[fixture][0] : 0xfc000000u|(random&0xffffff);
+        random=random*1664525u+1013904223u;
+        material.combiner.w1=fixture<7 ? materials[fixture][1] : random;
+        material.primColor=random^0x319c70e5u; material.envColor=random^0x7a520d93u;
+        for (unsigned cycle=0;cycle<4;cycle++) {
+            material.otherMode.hi=cycle<<20;
+            for (unsigned pattern=0;pattern<5;pattern++) for (unsigned value=0;value<256;value++) {
+                u8 input[4]={19,83,147,211}, white[4]={255,255,255,255}, expected[4], actual[4];
+                if (pattern<4) input[pattern]=value;
+                else for (unsigned c=0;c<4;c++) input[c]=(value*(2*c+1)+c*29)&255;
+                ps2_combiner_color(&material,white,input,expected);
+                ps2_combiner_vertex_color(&material,input,actual);
+                if (memcmp(expected,actual,4)) failures++;
+            }
+        }
+    }
+    printf("[PS2 VERTEX COLOR TEST] 64 materials, four cycles, independent/mixed shade RGBA failures=%d\n",failures);
+    for (unsigned fixture=0;fixture<3;fixture++) {
+        material.combiner.w0=materials[fixture+1][0]; material.combiner.w1=materials[fixture+1][1];
+        material.otherMode.hi=fixture == 2 ? 1u<<20 : 0;
+        u8 input[4]={19,83,147,211}, white[4]={255,255,255,255}, actual[4];
+        volatile unsigned checksum=0;
+        ps2_combiner_vertex_color(&material,input,actual);
+        u32 start=ps2_gfx_cycles();
+        for (unsigned i=0;i<10000;i++) {
+            input[fixture]=i;
+            ps2_combiner_color(&material,white,input,actual); checksum+=actual[fixture];
+        }
+        u32 scalarCycles=ps2_gfx_cycles()-start;
+        start=ps2_gfx_cycles();
+        for (unsigned i=0;i<10000;i++) {
+            input[fixture]=i;
+            ps2_combiner_vertex_color(&material,input,actual); checksum+=actual[fixture];
+        }
+        u32 compiledCycles=ps2_gfx_cycles()-start;
+        printf("[PS2 VERTEX COLOR BENCH] material=%u scalarCycles=%u compiledCycles=%u checksum=%u\n",
+            fixture,scalarCycles,compiledCycles,checksum);
+    }
     rdp_setcombine(0, 0, &g_rdpState);
     rdp_setothermode(0, 0, &g_rdpState);
     static short projection[32] __attribute__((aligned(16)));

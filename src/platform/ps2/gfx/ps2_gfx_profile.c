@@ -56,6 +56,9 @@ void ps2_gfx_profile_end(void) {
         gPS2GfxProfileCalls[6],gPS2GfxProfileCalls[7],gPS2GfxProfileCalls[8],
         gPS2GfxProfileCalls[9],gPS2GfxProfileCalls[10],gPS2GfxProfileCalls[11]);
     ps2_texture_profile_cache();
+    printf("[PS2 VERTEX COLOR PROFILE] frame=%u timeUs=%u calls=%u (included in submit)\n",
+        sFrame,micros(gPS2GfxProfileCycles[GFX_PROFILE_VERTEX_COLOR]),
+        gPS2GfxProfileCalls[GFX_PROFILE_VERTEX_COLOR]);
     for (unsigned i=0;i<sMissCount;i++) {
         const TextureMiss* miss=&sMisses[i];
         printf("[PS2 TEXTURE MISS] frame=%u source=%08x size=%ux%u fmt=%u siz=%u reason=%u paired=%u prim=%08x env=%08x\n",

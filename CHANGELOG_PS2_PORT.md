@@ -4,6 +4,30 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Colores de geometría sin textura — 2026-10-02
+
+- Tras la conversión por tablas, el usuario confirma 14–16 FPS quieto y
+  alrededor de 12 FPS al moverse; antes observaba 10–12 FPS. También indica
+  caídas cuando Link aparece en la cinemática. No se atribuyen todas esas
+  caídas al modelo sin medir otros factores.
+- Los polígonos sin textura compilan selectores y constantes del combinador
+  por material, conservando los cuatro canales de sombreado, dependencias
+  de alfa combinado, dos ciclos y saturación en cada ciclo. SHADE se aplica
+  directamente cuando la ecuación final lo permite. La clave comprueba los
+  dos comandos, tipo de ciclo, PRIM y ENV incluso si se restaura el estado
+  sin llamar a setters. El evaluador escalar anterior se conserva como oráculo.
+- Prueba diferencial: 64 materiales, cuatro tipos de ciclo, todos los valores
+  de cada canal de sombreado por separado y mezclados, sin diferencias. Para
+  10000 evaluaciones, los tres casos medidos pasan de 8114418/7983042/15601124
+  a 2469549/1188681/5104464 ciclos EE (aproximadamente 67–85 % menos trabajo
+  en ese cálculo aislado; no representa el aumento de FPS del juego).
+  Diagnóstico completo: `build/PS2/pcsx2-vertex-color-pass.log`, 120 fotogramas
+  y cero fallos, incluido audio y las pruebas de texturas existentes.
+- El perfil privado añade tiempo y número de evaluaciones de colores sin
+  textura, incluidos en la preparación de triángulos. El juego compila con
+  718 objetos; respaldo `build/PS2-ntsc12/oot_ps2-before-vertex-color.elf`.
+  Falta confirmar el efecto real en cinemática y exterior.
+
 ## Conversión de intensidad y paletas — 2026-10-02
 
 - Diagnóstico optativo de ocupación y motivos de recarga de texturas, limitado
@@ -25,9 +49,9 @@ trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
   paletas CI4 0/3/15 coinciden con la conversión anterior. El diagnóstico
   completo pasa 120 fotogramas, incluido audio, guardado y renderer:
   `build/PS2/pcsx2-compact-textures-pass.log`.
-- Esta optimización no da por alcanzados los 20 FPS del juego. El último
-  rendimiento confirmado por el usuario sigue siendo 10–12 FPS; el ahorro
-  de esta nueva versión se debe medir en la misma vista del exterior.
+- El usuario confirma 14–16 FPS quieto y unos 12 al moverse, frente a los
+  10–12 FPS anteriores. Es otra mejora parcial; todavía no se alcanzan
+  20 FPS estables. Registro: `build/PS2/pcsx2-compact-textures-runtime.log`.
 
 ## Franjas del inventario y agrupación de geometría — 2026-10-02
 

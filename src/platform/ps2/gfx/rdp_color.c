@@ -291,6 +291,76 @@ typedef struct {
     u16 source[4];
     u8 operation;
 } LookupEquation;
+
+static int vertex_color_value(u16 source, const u8 shade[4], const u8 combined[4]) {
+    return source < 256 ? source : source < 260 ? shade[source - 256] : combined[source - 260];
+}
+
+/* Untextured polygons use white texels. Compile their fixed selectors and
+ * constants once, retaining all four shade channels and both cycle clamps.
+ * The scalar evaluator above remains the independent reference. */
+void ps2_combiner_vertex_color(const RDPState* rdp, const u8 shade[4], u8 output[4]) {
+    static struct {
+        bool valid, shadeOnly;
+        u32 w0, w1, type, prim, env;
+        int cycles;
+        LookupEquation equations[2][4];
+    } cache;
+    u32 type = (rdp->otherMode.hi >> 20) & 3;
+    if (type == 2 || (!rdp->combiner.w0 && !rdp->combiner.w1)) {
+        memset(output, 255, 4); return;
+    }
+    if (!cache.valid || cache.w0 != rdp->combiner.w0 || cache.w1 != rdp->combiner.w1 ||
+        cache.type != type || cache.prim != rdp->primColor || cache.env != rdp->envColor) {
+        cache.valid = true; cache.w0 = rdp->combiner.w0; cache.w1 = rdp->combiner.w1;
+        cache.type = type; cache.prim = rdp->primColor; cache.env = rdp->envColor;
+        cache.cycles = type == 1 ? 2 : 1;
+        const u8 white[4] = {255,255,255,255}, zero[4] = {0}, markers[4] = {1,2,3,4};
+        for (int cycle = 0; cycle < cache.cycles; cycle++) for (int component = 0; component < 4; component++) {
+            LookupEquation* equation = &cache.equations[cycle][component];
+            u8 selectors[4];
+            combiner_sources(rdp, cycle, component == 3, selectors);
+            for (int slot = 0; slot < 4; slot++) {
+                int base = combiner_input(rdp, selectors[slot], slot, component == 3, component, white, zero, zero);
+                int variable = combiner_input(rdp, selectors[slot], slot, component == 3, component, white, markers, zero);
+                int combined = cycle ? combiner_input(rdp, selectors[slot], slot, component == 3, component, white, zero, markers) : base;
+                equation->source[slot] = variable != base ? 255 + variable : combined != base ? 259 + combined : base;
+            }
+            equation->operation = equation->source[0] == equation->source[1] || equation->source[2] == 0 ? 1 :
+                                  equation->source[2] == 255 ? 2 : 0;
+            if (equation->source[0] < 256 && equation->source[1] < 256 &&
+                equation->source[2] < 256 && equation->source[3] < 256) {
+                int result = equation->source[3] + ((int)equation->source[0] - equation->source[1]) * equation->source[2] / 255;
+                equation->source[3] = result < 0 ? 0 : result > 255 ? 255 : result;
+                equation->operation = 1;
+            }
+        }
+        cache.shadeOnly = true;
+        for (int component = 0; component < 4; component++) {
+            const LookupEquation* equation = &cache.equations[cache.cycles - 1][component];
+            if (equation->operation != 1 || equation->source[3] != 256 + component) cache.shadeOnly = false;
+        }
+    }
+    if (cache.shadeOnly) { memcpy(output, shade, 4); return; }
+    u8 combined[4] = {0};
+    for (int cycle = 0; cycle < cache.cycles; cycle++) {
+        u8 next[4];
+        for (int component = 0; component < 4; component++) {
+            const LookupEquation* equation = &cache.equations[cycle][component];
+            int result = vertex_color_value(equation->source[3], shade, combined);
+            if (equation->operation != 1) {
+                int difference = vertex_color_value(equation->source[0], shade, combined) -
+                                 vertex_color_value(equation->source[1], shade, combined);
+                result += equation->operation == 2 ? difference :
+                          difference * vertex_color_value(equation->source[2], shade, combined) / 255;
+            }
+            next[component] = result < 0 ? 0 : result > 255 ? 255 : result;
+        }
+        memcpy(combined, next, 4);
+    }
+    memcpy(output, combined, 4);
+}
+
 static int lookup_value(u16 source, int value, const u8 combined[4]) {
     return source < 256 ? source : source == 256 ? value : combined[source - 257];
 }
