@@ -303,6 +303,45 @@ static unsigned s_tri2Count;
 static GSPRIMSTQPOINT s_tri2Points[60];
 static GSTEXTURE s_tri2Texture;
 static bool s_tri2Fog;
+static bool s_runTileBound;
+static u64 s_runVertexValid;
+static GSPRIMSTQPOINT s_runVertices[RSP_VTX_CACHE_SIZE];
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+static bool s_captureEnabled;
+static unsigned s_captureCount;
+static GSPRIMSTQPOINT s_capturePoints[600];
+void f3dex2_test_capture(bool enabled) { s_captureEnabled = enabled; s_captureCount = 0; }
+const GSPRIMSTQPOINT* f3dex2_test_points(unsigned* count) { *count = s_captureCount; return s_capturePoints; }
+static void capture_points(const GSPRIMSTQPOINT* points) {
+    if (s_captureEnabled && s_captureCount + 3 <= 600) {
+        memcpy(s_capturePoints+s_captureCount, points, 3*sizeof(*points)); s_captureCount += 3;
+    }
+}
+#endif
+
+static void prepare_texture_point(const TileDescriptor* tile, const RSPState* rsp,
+    RDPState* rdp, const RSPVertex* vertex, u32 color, u32 depth, bool fog,
+    GSPRIMSTQPOINT* output) {
+    int slot = -1;
+    uintptr_t address = (uintptr_t)vertex, base = (uintptr_t)rsp->vtx;
+    /* Runs contain only TRI commands, so vertex/material/fog state cannot
+     * change. Clipped temporary vertices and slope-dependent decals bypass
+     * reuse. Capacity flushes retain the cache; all state commands end it. */
+    if (s_triangleRun && (rdp->otherMode.lo & 0xc30) != 0xc10 &&
+        address >= base && address < base + sizeof(rsp->vtx) &&
+        (address - base) % sizeof(*vertex) == 0) {
+        slot = (address - base) / sizeof(*vertex);
+        if (s_runVertexValid & (1ull << slot)) {
+            *output = s_runVertices[slot]; rdp->stats.textureVertexHits++; return;
+        }
+    }
+    u32 start = ps2_gfx_profile_enter();
+    ps2_texture_build_vertex(tile,rsp,rdp,vertex,color,depth,output);
+    if (fog) ps2_fog_apply_xyz(&output->xyz2,vertex->cz/vertex->cw,rsp);
+    ps2_gfx_profile_leave(GFX_PROFILE_POINT,start);
+    rdp->stats.textureVertexBuilds++;
+    if (slot >= 0) { s_runVertices[slot] = *output; s_runVertexValid |= 1ull << slot; }
+}
 static void flush_tri2(RDPState* rdp) {
     if (!s_tri2Count) return;
     int previousFog = rdp->gs->PrimFogEnable;
@@ -320,6 +359,8 @@ bool f3dex2_batch_begin(RSPState* rsp, RDPState* rdp) {
     s_triangleRun = true;
     s_tri2Batch = true;
     s_tri2Count = 0;
+    s_runTileBound = false;
+    s_runVertexValid = 0;
     return true;
 }
 
@@ -394,14 +435,16 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
         if (!tile->gsTextureLoaded) { rdp->stats.textureFailed++; return; }
 
         GSPRIMSTQPOINT points[3];
-        ps2_texture_apply_tile(tile, rdp);
-        ps2_texture_build_vertex(tile, rsp, rdp, v0, (u32)c0, z0, &points[0]);
-        ps2_texture_build_vertex(tile, rsp, rdp, v1, (u32)c1, z1, &points[1]);
-        ps2_texture_build_vertex(tile, rsp, rdp, v2, (u32)c2, z2, &points[2]);
-        if (fog) {
-            for (int i = 0; i < 3; i++)
-                ps2_fog_apply_xyz(&points[i].xyz2, vertices[i]->cz / vertices[i]->cw, rsp);
+        if (!s_triangleRun || !s_runTileBound) {
+            ps2_texture_apply_tile(tile, rdp);
+            if (s_triangleRun) s_runTileBound = true;
         }
+        prepare_texture_point(tile,rsp,rdp,v0,(u32)c0,z0,fog,&points[0]);
+        prepare_texture_point(tile,rsp,rdp,v1,(u32)c1,z1,fog,&points[1]);
+        prepare_texture_point(tile,rsp,rdp,v2,(u32)c2,z2,fog,&points[2]);
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+        capture_points(points);
+#endif
         int previousFog = gs->PrimFogEnable;
         gs->PrimFogEnable = fog;
         if (s_tri2Batch) {
@@ -429,6 +472,9 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
                     ps2_texture_build_vertex(second, rsp, rdp, vertices[i], color, depths[i], &points[i]);
                     if (fog) ps2_fog_apply_xyz(&points[i].xyz2, vertices[i]->cz / vertices[i]->cw, rsp);
                 }
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+                capture_points(points);
+#endif
                 gsKit_set_primalpha(gs, GS_SETREG_ALPHA(0,1,0,1,0x80), 0);
                 gs->PrimFogEnable = fog;
                 gsKit_prim_list_triangle_goraud_texture_stq_3d(gs, &second->gsTexture, 3, points);

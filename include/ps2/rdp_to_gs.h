@@ -128,6 +128,7 @@ typedef struct {
     struct {
         u32 triangles, clipped, culled, invalid, textureFailed, submitted, backgrounds;
         u32 textureHits, textureUploads, textureWaits, texturePackets;
+        u32 textureVertexBuilds, textureVertexHits;
     } stats;
 } RDPState;
 

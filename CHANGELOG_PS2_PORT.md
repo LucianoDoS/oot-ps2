@@ -4,6 +4,28 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Reutilización de vértices GS — 2026-10-02
+
+- Los grupos consecutivos TRI reutilizan RGBAQ, STQ y XYZ de los vértices
+  originales compartidos. También conservan su niebla y evitan repetir la
+  aplicación del mismo tile. La caché dura sólo el grupo: cualquier comando
+  de estado, carga de vértices, salto o fin de lista lo termina. Vaciar un
+  paquete por capacidad conserva los datos. Los vértices temporales de
+  recorte y decals con sesgo de profundidad por pendiente quedan excluidos;
+  el suelo de dos pasadas mantiene su camino anterior.
+- Captura exclusiva del diagnóstico compara los puntos GS completos con
+  el camino inmediato, incluyendo perspectiva, niebla, alfa dinámico,
+  decals, recorte y cambios de coordenadas/PRIM entre grupos. Coinciden sin
+  diferencias. En 42 triángulos con tres vértices compartidos, 126
+  preparaciones pasan a 3 y 123 reutilizaciones. El diagnóstico completo
+  pasa 120 fotogramas: `build/PS2/pcsx2-point-reuse-pass.log`.
+- El perfil privado separa compilación de material (incluida en conversión)
+  y preparación de puntos (incluida en envío). Los contadores muestran
+  puntos calculados y reutilizados. El juego compila con 718 objetos y se
+  abre para comprobar rendimiento e imagen; respaldo
+  `build/PS2-ntsc12/oot_ps2-before-point-reuse.elf`. FPS reales pendientes
+  de confirmación; no se da por conseguido el objetivo de 20 FPS.
+
 ## Colores de geometría sin textura — 2026-10-02
 
 - Tras la conversión por tablas, el usuario confirma 14–16 FPS quieto y
@@ -26,7 +48,10 @@ trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 - El perfil privado añade tiempo y número de evaluaciones de colores sin
   textura, incluidos en la preparación de triángulos. El juego compila con
   718 objetos; respaldo `build/PS2-ntsc12/oot_ps2-before-vertex-color.elf`.
-  Falta confirmar el efecto real en cinemática y exterior.
+  El usuario responde «No noto diferencia»: no se atribuye una mejora de
+  FPS a este cambio. El perfil real muestra que el cálculo de colores sin
+  textura ya ocupa poco tiempo; sigue investigándose el resto del envío.
+  Registro: `build/PS2/pcsx2-vertex-color-runtime.log`.
 
 ## Conversión de intensidad y paletas — 2026-10-02
 

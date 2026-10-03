@@ -152,6 +152,7 @@ static const CombinerLookup* combiner_lookup(const RDPState* rdp) {
         if (!entry->valid || (s_lookups[slot].valid && entry->used < s_lookups[slot].used)) slot = i;
     }
     CombinerLookup* entry = &s_lookups[slot];
+    u32 materialStart = ps2_gfx_profile_enter();
     entry->combine0 = rdp->combiner.w0; entry->combine1 = rdp->combiner.w1;
     entry->prim = prim; entry->env = env; entry->cycle = cycle;
     ps2_combiner_build_lookup(rdp, entry->values);
@@ -161,6 +162,7 @@ static const CombinerLookup* combiner_lookup(const RDPState* rdp) {
     entry->rgba16[3][1] = (u32)entry->values[3][255] << 24;
     entry->used = ++s_lookupClock;
     entry->valid = 1;
+    ps2_gfx_profile_leave(GFX_PROFILE_MATERIAL, materialStart);
     return entry;
 }
 

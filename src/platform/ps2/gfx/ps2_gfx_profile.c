@@ -59,6 +59,9 @@ void ps2_gfx_profile_end(void) {
     printf("[PS2 VERTEX COLOR PROFILE] frame=%u timeUs=%u calls=%u (included in submit)\n",
         sFrame,micros(gPS2GfxProfileCycles[GFX_PROFILE_VERTEX_COLOR]),
         gPS2GfxProfileCalls[GFX_PROFILE_VERTEX_COLOR]);
+    printf("[PS2 MATERIAL POINT PROFILE] frame=%u materialUs=%u materialCalls=%u pointUs=%u pointCalls=%u (material included in convert, points in submit)\n",
+        sFrame,micros(gPS2GfxProfileCycles[GFX_PROFILE_MATERIAL]),gPS2GfxProfileCalls[GFX_PROFILE_MATERIAL],
+        micros(gPS2GfxProfileCycles[GFX_PROFILE_POINT]),gPS2GfxProfileCalls[GFX_PROFILE_POINT]);
     for (unsigned i=0;i<sMissCount;i++) {
         const TextureMiss* miss=&sMisses[i];
         printf("[PS2 TEXTURE MISS] frame=%u source=%08x size=%ux%u fmt=%u siz=%u reason=%u paired=%u prim=%08x env=%08x\n",

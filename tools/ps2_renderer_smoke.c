@@ -796,6 +796,61 @@ int ps2_renderer_smoke(void) {
     if (g_rdpState.stats.submitted != beforeDraw + 21 ||
         g_rdpState.stats.texturePackets != beforePackets + 2) failures++;
     printf("[PS2 TRI RUN TEST] mixed commands, state fences, capacity and rejection failures=%d\n", failures);
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+    /* Compare the actual GS points against the uncached immediate path,
+     * including perspective, fog, dynamic alpha, decal bias and clipping. */
+    static GSPRIMSTQPOINT referencePoints[600];
+    RSPState pointState=g_rspState;
+    for (unsigned fixture=0;fixture<6;fixture++) {
+        g_rspState=pointState;
+        rdp_setothermode((1u<<19)|(fixture == 1 ? 1u<<20 : 0),
+            fixture == 1 ? 0xc8000030u : fixture == 3 ? 0xc10u : 0x30u,&g_rdpState);
+        rdp_setcombine(fixture == 2 ? 0xfc119623u : 0,
+            fixture == 2 ? 0xff2fffffu : 0,&g_rdpState);
+        rdp_setprimcolor(0,0xffffff71u,&g_rdpState);
+        g_rspState.geometryMode=(g_rspState.geometryMode&~0x10000u)|(fixture == 1 ? 0x10000u : 0);
+        g_rspState.fogMul=100; g_rspState.fogOff=120;
+        if (fixture == 4) { g_rspState.vtx[0].cz=-2*g_rspState.vtx[0].cw; g_rspState.vtx[0].clipFlags=16; }
+        f3dex2_test_capture(true);
+        u32 builds=g_rdpState.stats.textureVertexBuilds, hits=g_rdpState.stats.textureVertexHits;
+        for (unsigned i=0;i<21;i++) f3dex2_tri2(0x06000204,0x00000204,&g_rspState,&g_rdpState);
+        unsigned referenceCount;
+        const GSPRIMSTQPOINT* captured=f3dex2_test_points(&referenceCount);
+        if (referenceCount>600) failures++;
+        else memcpy(referencePoints,captured,referenceCount*sizeof(*captured));
+        f3dex2_test_capture(true);
+        if (!f3dex2_batch_begin(&g_rspState,&g_rdpState)) failures++;
+        for (unsigned i=0;i<21;i++) f3dex2_tri2(0x06000204,0x00000204,&g_rspState,&g_rdpState);
+        f3dex2_batch_end(&g_rdpState);
+        unsigned cachedCount;
+        captured=f3dex2_test_points(&cachedCount);
+        if (cachedCount != referenceCount || memcmp(referencePoints,captured,cachedCount*sizeof(*captured))) failures++;
+        if (fixture != 3 && fixture != 4 &&
+            (g_rdpState.stats.textureVertexBuilds-builds != 129 ||
+             g_rdpState.stats.textureVertexHits-hits != 123)) failures++;
+        if ((fixture == 3 || fixture == 4) && g_rdpState.stats.textureVertexHits != hits) failures++;
+        f3dex2_test_capture(false);
+        /* A following run must see new vertex/texture/alpha state. */
+        g_rspState.vtx[0].tc_s+=16; g_rspState.vtx[0].sx+=3;
+        rdp_setprimcolor(0,0xffffff28,&g_rdpState);
+        f3dex2_test_capture(true);
+        f3dex2_tri2(0x06000204,0x00000204,&g_rspState,&g_rdpState);
+        captured=f3dex2_test_points(&referenceCount);
+        memcpy(referencePoints,captured,referenceCount*sizeof(*captured));
+        f3dex2_test_capture(true);
+        if (!f3dex2_batch_begin(&g_rspState,&g_rdpState)) failures++;
+        f3dex2_tri2(0x06000204,0x00000204,&g_rspState,&g_rdpState);
+        f3dex2_batch_end(&g_rdpState);
+        captured=f3dex2_test_points(&cachedCount);
+        if (cachedCount != referenceCount || memcmp(referencePoints,captured,cachedCount*sizeof(*captured))) failures++;
+        f3dex2_test_capture(false);
+    }
+    g_rspState=pointState;
+    rdp_setothermode(1u<<20,0xc8112078u,&g_rdpState);
+    rdp_setcombine(0xfcffffff,0xfffdf6fb,&g_rdpState);
+    rdp_setprimcolor(0,0xffffffff,&g_rdpState);
+    printf("[PS2 POINT REUSE TEST] GS points, fog, perspective, fade, decals, clipping and invalidation failures=%d\n",failures);
+#endif
     /* Compare identical EE work with the old per-TRI2 path and native runs. */
     beforePackets = g_rdpState.stats.texturePackets;
     u32 benchStart = ps2_gfx_cycles();

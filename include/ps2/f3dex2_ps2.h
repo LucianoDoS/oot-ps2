@@ -16,6 +16,10 @@ void f3dex2_tri2(u32 w0, u32 w1, RSPState* rsp, RDPState* rdp);
  * state change, vertex load, display-list branch or end command. */
 bool f3dex2_batch_begin(RSPState* rsp, RDPState* rdp);
 void f3dex2_batch_end(RDPState* rdp);
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+void f3dex2_test_capture(bool enabled);
+const GSPRIMSTQPOINT* f3dex2_test_points(unsigned* count);
+#endif
 void f3dex2_mtx(u32 w0, u32 w1, RSPState* rsp);
 void f3dex2_popmtx(u32 w0, u32 w1, RSPState* rsp);
 void f3dex2_geometrymode(u32 w0, u32 w1, RSPState* rsp);
