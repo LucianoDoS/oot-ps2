@@ -59,19 +59,24 @@ typedef struct TextureCacheEntry {
 } TextureCacheEntry;
 /* Share the available VRAM budget between actual texture sizes. Fixed size
  * classes stranded most of VRAM while menu strips evicted one another. */
-#define TEXTURE_CACHE_SLOTS 256
+#define TEXTURE_CACHE_SLOTS 512
 #define TEXTURE_CACHE_CHUNK 1024u
 #define TEXTURE_CACHE_BYTES (1792u * 1024)
 static u32 s_textureCacheBytes;
 static TextureCacheEntry s_cache[TEXTURE_CACHE_SLOTS];
 /* Bindings usually revisit a handful of entries with the same RAM address.
- * Index those candidates instead of comparing all 256 materials each time.
+ * Index those candidates instead of comparing every material each time.
  * Evictions unlink descriptors before reusing their slot or VRAM. */
-#define TEXTURE_CACHE_BUCKETS 64
+#define TEXTURE_CACHE_BUCKETS 128
 #define TEXTURE_CACHE_END 0xffffu
 static u16 s_cacheHeads[TEXTURE_CACHE_BUCKETS];
 static u16 s_cacheNext[TEXTURE_CACHE_SLOTS];
 static bool s_cacheIndexReady;
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+unsigned ps2_texture_test_cache_capacity(void) {
+    return TEXTURE_CACHE_SLOTS;
+}
+#endif
 void ps2_texture_profile_cache(void) {
     unsigned count=0, bytes=0;
     for (unsigned i=0;i<TEXTURE_CACHE_SLOTS;i++) if (s_cache[i].valid) {
@@ -736,13 +741,15 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         vram = s_cache[slot].vram;
         bestCost = s_cache[slot].used;
     } else vram = cache_region(size, &bestCost);
-    /* Only overlapping VRAM requires a fence; retiring a descriptor alone
-     * cannot change pending GIF packets. One fence retires every older read. */
+    /* Losing a descriptor also loses our record of its queued GS reads.
+     * Retire those reads even if this upload uses another free region:
+     * otherwise a later allocation could overwrite the orphaned region
+     * without a fence. One FINISH retires every older read. */
     bool pending = false;
     for (int i = 0; i < TEXTURE_CACHE_SLOTS; i++) {
         const TextureCacheEntry* entry = &s_cache[i];
         if (entry->valid && entry->used > s_retiredClock &&
-            entry->vram < vram + size && vram < entry->vram + entry->size) {
+            (i == slot || (entry->vram < vram + size && vram < entry->vram + entry->size))) {
             pending = true; break;
         }
     }

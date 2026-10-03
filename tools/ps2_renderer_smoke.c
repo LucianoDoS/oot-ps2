@@ -48,6 +48,76 @@ static __attribute__((noinline)) u32 asset_read_reference(const volatile u8* p) 
     return value;
 }
 
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+/* Start with an empty texture cache. The wall/glyph corruption requires
+ * descriptor pressure while VRAM still has a free, non-overlapping region. */
+static int texture_descriptor_lifetimes(void) {
+    static u8 glyphs[1025][128] __attribute__((aligned(128)));
+    unsigned capacity=ps2_texture_test_cache_capacity();
+    if (capacity>1024 || capacity<300) {
+        printf("[PS2 DESCRIPTOR TEST] FAIL: unsupported capacity=%u\n",capacity);
+        return 1;
+    }
+    RDPState* rdp=&g_rdpState;
+    u32 oldHi=rdp->otherMode.hi,oldLo=rdp->otherMode.lo;
+    u32 oldCombine0=rdp->combiner.w0,oldCombine1=rdp->combiner.w1;
+    const u8* oldSource=rdp->textureLoads[511].source;
+    u32 oldStride=rdp->textureLoads[511].stride;
+    rdp_setothermode(2u<<20,0,rdp);
+    rdp_setcombine(0,0,rdp);
+    for (unsigned i=0;i<=capacity;i++) for (unsigned j=0;j<128;j++)
+        glyphs[i][j]=(i*37+j*13+5)&255;
+    TileDescriptor tile={.width=16,.height=16,.fmt=G_IM_FMT_I,
+        .siz=G_IM_SIZ_4b,.tmem=511,.cms=2,.cmt=2};
+    u32 firstVram=0;
+    unsigned firstSlot=0;
+    int failures=0;
+    for (unsigned i=0;i<capacity;i++) {
+        rdp->textureLoads[511].source=glyphs[i]; rdp->textureLoads[511].stride=0;
+        tile.gsTextureLoaded=false;
+        ps2_texture_upload(&tile,rdp);
+        if (!tile.gsTextureLoaded) { failures++; break; }
+        if (!i) { firstVram=tile.gsTexture.Vram; firstSlot=tile.cacheSlot; }
+        ps2_texture_apply_tile(&tile,rdp);
+        gsKit_prim_sprite_texture(rdp->gs,&tile.gsTexture,
+            8,8,0,0,24,24,16,16,1,GS_SETREG_RGBA(128,128,128,128));
+    }
+    u32 waits=rdp->stats.textureWaits;
+    rdp->textureLoads[511].source=glyphs[capacity];
+    tile.gsTextureLoaded=false;
+    ps2_texture_upload(&tile,rdp);
+    /* This upload uses spare VRAM. Only discarding the old descriptor
+     * requires the fence: checking overlap alone misses these queued draws. */
+    u32 fenceWaits=rdp->stats.textureWaits-waits;
+    if (!tile.gsTextureLoaded || tile.cacheSlot!=firstSlot ||
+        tile.gsTexture.Vram==firstVram || fenceWaits!=1) failures++;
+    printf("[PS2 DESCRIPTOR FENCE TEST] capacity=%u oldVram=%08x newVram=%08x waits=%u failures=%d\n",
+        capacity,firstVram,tile.gsTexture.Vram,fenceWaits,failures);
+    u32 passUploads[2];
+    for (unsigned pass=0;pass<2;pass++) {
+        ps2_texture_end_frame(rdp);
+        u32 uploads=rdp->stats.textureUploads;
+        for (unsigned i=0;i<300;i++) {
+            rdp->textureLoads[511].source=glyphs[i];
+            tile.gsTextureLoaded=false;
+            ps2_texture_upload(&tile,rdp);
+            if (!tile.gsTextureLoaded) failures++;
+            ps2_texture_apply_tile(&tile,rdp);
+            gsKit_prim_sprite_texture(rdp->gs,&tile.gsTexture,
+                8,8,0,0,24,24,16,16,1,GS_SETREG_RGBA(128,128,128,128));
+        }
+        passUploads[pass]=rdp->stats.textureUploads-uploads;
+    }
+    if (passUploads[1]) failures++;
+    printf("[PS2 DIALOGUE CACHE TEST] 300 glyphs uploads=%u,%u failures=%d\n",
+        passUploads[0],passUploads[1],failures);
+    rdp->textureLoads[511].source=oldSource; rdp->textureLoads[511].stride=oldStride;
+    rdp_setcombine(oldCombine0,oldCombine1,rdp);
+    rdp_setothermode(oldHi,oldLo,rdp);
+    return failures;
+}
+#endif
+
 int ps2_renderer_smoke(void) {
     int failures = ps2_lighting_smoke();
     static u8 readInputs[4112] __attribute__((aligned(128)));
@@ -374,6 +444,9 @@ int ps2_renderer_smoke(void) {
     rdp_setblendcolor(0, 0, &g_rdpState);
     if (g_rdpState.gs->Test->AREF != 1) failures++;
     rdp_setothermode(0, 0, &g_rdpState);
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+    failures+=texture_descriptor_lifetimes();
+#endif
     static const u8 mirroredTexels[] = {
         10,0,0,0, 20,0,0,255, 30,0,0,255, 40,0,0,255,
         50,0,0,255, 60,0,0,255, 70,0,0,255, 80,0,0,255};

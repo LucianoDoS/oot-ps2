@@ -4,6 +4,39 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Letras sobre la pared y caída al seleccionar semillas — 2026-10-03
+
+- El usuario percibe mejora general con la reutilización de geometría,
+  pero detecta letras enormes en la pared al seleccionar semillas Deku en
+  la tienda, con caída a 8 FPS. El diálogo inferior mantiene su tamaño.
+  La sesión registra 271 cargas y sólo 28 hits por fotograma, cero retiros
+  por textura y unos 94 ms de traducción. Registro anterior conservado en
+  `build/PS2/pcsx2-lighting-queues-runtime.log`.
+- La expulsión LRU podía perder un descriptor usado por dibujos GIF aún
+  pendientes aunque la nueva carga ocupara otra región libre de VRAM.
+  La región anterior quedaba sin historial y una fuente posterior podía
+  sobrescribirla sin FINISH. Ahora se retiran los dibujos antes de perder
+  ese descriptor, además de comprobar el solapamiento de VRAM.
+- La capacidad sube de 256 a 512 descriptores, con 128 buckets y el mismo
+  presupuesto de VRAM. La sombra y el color del texto generan variantes
+  para cada fuente; el conjunto del diálogo superaba las 256 entradas y
+  obligaba a recargarlas continuamente. Se sigue verificando todo el
+  contenido RAM y las entradas de mezclas, sin congelar texturas animadas.
+- Regresión en GS real con 513 glifos encolados: al descartar el primer
+  descriptor, su región `0x230000` no solapa la nueva `0x2b0000`, pero se
+  produce el FINISH necesario. Un conjunto de 300 glifos genera 300 cargas
+  en el primer recorrido y cero en el segundo. El resto de renderizado,
+  audio, iluminación, colas y 120 fotogramas pasa sin fallos en
+  `build/PS2/pcsx2-dialogue-cache-pass.log`. Juego reconstruido con 718
+  objetos. El mismo diagnóstico con la condición anterior, conservando
+  las 512 entradas, falla exactamente en el retiro: cero FINISH en lugar
+  de uno (`build/PS2/pcsx2-descriptor-old.log`). Eso verifica que ampliar
+  capacidad por sí solo no corrige el fallo de vida de VRAM.
+- Versión instalada y abierta sin perfil. Respaldo
+  `build/PS2-ntsc12/oot_ps2-before-dialogue-cache.elf`. Pendiente comparación
+  del mismo producto en la tienda y de FPS en otras vistas; no se afirma
+  fidelidad completa al original a partir del smoke.
+
 ## Reutilización temprana de puntos e iluminación — 2026-10-03
 
 - Resultado de la versión anterior confirmado por el usuario: tienda a
