@@ -4,6 +4,31 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Conversión de intensidad y paletas — 2026-10-02
+
+- Diagnóstico optativo de ocupación y motivos de recarga de texturas, limitado
+  a 24 registros por fotograma muestreado. Se imprime después de medir el
+  renderizado y permanece desactivado en arranques normales. Con Link quieto
+  en el exterior, predominan cambios de color/alfa en I4/I8 (hadas y efectos),
+  no cambios de los bytes fuente. La caché usa casi sus 1792 KiB; aumentar
+  solamente el número de entradas no elimina ese trabajo. Algunas muestras
+  gastan 20–24 ms en conversión, incluyendo interrupciones de otros hilos.
+  Registro: `build/PS2/pcsx2-texture-cache-profile-runtime.log`.
+- I4, I8, IA4, IA8, CI4 y CI8 preparan una tabla de 16 o 256 colores finales
+  por carga. Cada texel se expande con una lectura de tabla y una escritura
+  de 32 bits. IA16 prepara tablas separadas para intensidad y alfa. Se conserva
+  exactamente la cuantización del alfa GS anterior, las paletas CI4, los
+  espejos y los materiales de dos texturas; siguen comprobándose todos los
+  bytes fuente para detectar animaciones y cambios del fondo del inventario.
+- Prueba diferencial en EE: todos los códigos de entrada de los siete
+  formatos, las 65536 parejas de intensidad/alfa IA16, cinco materiales y
+  paletas CI4 0/3/15 coinciden con la conversión anterior. El diagnóstico
+  completo pasa 120 fotogramas, incluido audio, guardado y renderer:
+  `build/PS2/pcsx2-compact-textures-pass.log`.
+- Esta optimización no da por alcanzados los 20 FPS del juego. El último
+  rendimiento confirmado por el usuario sigue siendo 10–12 FPS; el ahorro
+  de esta nueva versión se debe medir en la misma vista del exterior.
+
 ## Franjas del inventario y agrupación de geometría — 2026-10-02
 
 - El usuario confirma que el audio está corregido y que, con la nueva

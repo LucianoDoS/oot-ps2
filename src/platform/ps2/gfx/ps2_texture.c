@@ -72,6 +72,14 @@ static TextureCacheEntry s_cache[TEXTURE_CACHE_SLOTS];
 static u16 s_cacheHeads[TEXTURE_CACHE_BUCKETS];
 static u16 s_cacheNext[TEXTURE_CACHE_SLOTS];
 static bool s_cacheIndexReady;
+void ps2_texture_profile_cache(void) {
+    unsigned count=0, bytes=0;
+    for (unsigned i=0;i<TEXTURE_CACHE_SLOTS;i++) if (s_cache[i].valid) {
+        count++; bytes += s_cache[i].size;
+    }
+    printf("[PS2 TEXTURE CACHE] entries=%u/%u bytes=%u/%u\n",
+        count,TEXTURE_CACHE_SLOTS,bytes,(unsigned)s_textureCacheBytes);
+}
 static unsigned cache_bucket(uintptr_t source) {
     u32 bits = (u32)(source >> 4);
     return (bits ^ (bits >> 8) ^ (bits >> 16)) & (TEXTURE_CACHE_BUCKETS - 1);
@@ -265,6 +273,64 @@ static void convert_rgba16_mapped(const u8* source, u8* destination, int pixels,
         output[i] = lookup->rgba16[0][raw >> 11] | lookup->rgba16[1][(raw >> 6) & 31] |
                     lookup->rgba16[2][(raw >> 1) & 31] | lookup->rgba16[3][raw & 1];
     }
+}
+
+/* Intensity and palette formats have only 16 or 256 distinct inputs. Bake
+ * the material once per input, then expand with one packed store per texel.
+ * Keep the old GS-alpha quantization before the material lookup exactly. */
+static bool convert_compact_mapped(const u8* source, u8* destination, int pixels,
+                                   const TileDescriptor* tile, const CombinerLookup* mapping) {
+    bool nibble = tile->siz == G_IM_SIZ_4b;
+    if (tile->fmt != G_IM_FMT_I && tile->fmt != G_IM_FMT_IA && tile->fmt != G_IM_FMT_CI) return false;
+    if (!nibble && tile->siz != G_IM_SIZ_8b &&
+        !(tile->fmt == G_IM_FMT_IA && tile->siz == G_IM_SIZ_16b)) return false;
+    const u8 (*lookup)[256] = mapping->values;
+    u32 colors[256];
+    u32* output = (u32*)destination;
+    if (tile->fmt == G_IM_FMT_IA && tile->siz == G_IM_SIZ_16b) {
+        u32 alphas[256];
+        for (unsigned value = 0; value < 256; value++) {
+            colors[value] = lookup[0][value] | ((u32)lookup[1][value] << 8) |
+                            ((u32)lookup[2][value] << 16);
+            unsigned alpha = value * 128 / 255;
+            alphas[value] = (u32)lookup[3][alpha == 128 ? 255 : alpha * 2] << 24;
+        }
+        for (int i = 0; i < pixels; i++) output[i] = colors[source[i*2]] | alphas[source[i*2+1]];
+        return true;
+    }
+    unsigned count = nibble ? 16 : 256;
+    for (unsigned value = 0; value < count; value++) {
+        unsigned r, g, b, alpha;
+        if (tile->fmt == G_IM_FMT_CI) {
+            u32 color = s_clut[nibble ? (tile->palette << 4) | value : value];
+            r = color & 255; g = (color >> 8) & 255; b = (color >> 16) & 255; alpha = color >> 24;
+        } else {
+            unsigned intensity;
+            if (tile->fmt == G_IM_FMT_I) {
+                intensity = nibble ? value * 17 : value;
+                alpha = intensity >> 1;
+            } else if (nibble) {
+                intensity = value >> 1;
+                intensity = (intensity << 5) | (intensity << 2) | (intensity >> 1);
+                alpha = (value & 1) ? 128 : 0;
+            } else {
+                intensity = (value >> 4) * 17;
+                alpha = (value & 15) * 17 * 128 / 255;
+            }
+            r = g = b = intensity;
+        }
+        colors[value] = lookup[0][r] | ((u32)lookup[1][g] << 8) | ((u32)lookup[2][b] << 16) |
+                        ((u32)lookup[3][alpha == 128 ? 255 : alpha * 2] << 24);
+    }
+    if (nibble) {
+        int i = 0;
+        for (; i + 1 < pixels; i += 2) {
+            unsigned value = source[i / 2];
+            output[i] = colors[value >> 4]; output[i+1] = colors[value & 15];
+        }
+        if (i < pixels) output[i] = colors[source[i / 2] >> 4];
+    } else for (int i = 0; i < pixels; i++) output[i] = colors[source[i]];
+    return true;
 }
 
 /* ─────────────────────────────────────────────────────────── *
@@ -482,6 +548,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         s_cacheIndexReady = true;
     }
     int reusable = -1;
+    int profileCandidate = -1;
     for (unsigned i = s_cacheHeads[cache_bucket(key.source)]; i != TEXTURE_CACHE_END; i = s_cacheNext[i]) {
         TextureCacheEntry* cached = &s_cache[i];
         /* Retain variants used together in this frame, but replace an older
@@ -494,6 +561,8 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
             cached->combine0 == key.combine0 && cached->combine1 == key.combine1 && cached->cycle == key.cycle;
         if (sameMaterial && cached->frame != s_textureFrame &&
             (reusable < 0 || cached->used < s_cache[reusable].used)) reusable = i;
+        if (gPS2GfxProfileActive && sameMaterial &&
+            (profileCandidate < 0 || cached->used > s_cache[profileCandidate].used)) profileCandidate = i;
         if (cached->valid && cached->source == key.source &&
             cached->source2 == key.source2 && cached->stride2 == key.stride2 && cached->lodFrac == key.lodFrac &&
             cached->stride == key.stride && cached->width == w && cached->height == h &&
@@ -512,6 +581,13 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         }
     }
     ps2_gfx_profile_leave(GFX_PROFILE_LOOKUP, lookupStart);
+    if (gPS2GfxProfileActive) {
+        unsigned reason = profileCandidate < 0 ? 0 :
+            s_cache[profileCandidate].contentHash != key.contentHash ||
+            s_cache[profileCandidate].paletteHash != key.paletteHash ||
+            s_cache[profileCandidate].lodFrac != key.lodFrac ? 1 : 2;
+        ps2_gfx_profile_texture_miss((u32)key.source,key.prim,key.env,w,h,key.fmt,key.siz,reason,pathPair);
+    }
     u32 convertStart = ps2_gfx_profile_enter();
     if (sourceStride && sourceStride != rowBytes) {
         for (int y = 0; y < h; y++)
@@ -523,8 +599,9 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
      * write/read pass. The two-source path retains its combined-alpha math. */
     const CombinerLookup* mapping = pathPair ? NULL : combiner_lookup(rdp);
     bool mappedRGBA16 = !pathPair && tile->fmt == G_IM_FMT_RGBA && tile->siz == G_IM_SIZ_16b;
+    bool mappedCompact = !pathPair && convert_compact_mapped(src, s_convBuf, w*h, tile, mapping);
     /* ── Format conversion ──────────────────────────────── */
-    switch (tile->fmt) {
+    if (!mappedCompact) switch (tile->fmt) {
         case G_IM_FMT_RGBA:
             if (mappedRGBA16)
                 convert_rgba16_mapped(src, s_convBuf, w*h, mapping);
@@ -594,7 +671,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
             alpha += texel[3] * key.lodFrac / 255;
             pixel[3] = alpha > 128 ? 128 : alpha;
         }
-    } else if (!mappedRGBA16) {
+    } else if (!mappedRGBA16 && !mappedCompact) {
       const u8 (*lookup)[256] = mapping->values;
       for (int i = 0; i < w * h; i++) {
         u8* pixel = s_convBuf + i * 4;

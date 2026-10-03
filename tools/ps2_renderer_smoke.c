@@ -833,6 +833,73 @@ int ps2_renderer_smoke(void) {
         }
     }
     printf("[PS2 RGBA16 FUSED TEST] 65536 inputs, copy, tint, two-cycle and alpha failures=%d\n",failures);
+    /* Compare every compact input with the previous expand-then-map path.
+     * IA16 covers all 65536 intensity/alpha pairs; CI4 exercises separate
+     * palette banks. Both transparent and opaque entries are intentional. */
+    static u8 compactBytes[512] __attribute__((aligned(128)));
+    static u8 compactPalette[512] __attribute__((aligned(128)));
+    for (unsigned i=0;i<256;i++) {
+        compactBytes[i] = i;
+        unsigned raw = (i*293u + 0x1020u) & 65535;
+        compactPalette[i*2] = raw >> 8; compactPalette[i*2+1] = raw;
+    }
+    ps2_texture_load_tlut(compactPalette,256);
+    const u8 compactFormats[][3] = {
+        {G_IM_FMT_I,G_IM_SIZ_4b,0},{G_IM_FMT_I,G_IM_SIZ_8b,0},
+        {G_IM_FMT_IA,G_IM_SIZ_4b,0},{G_IM_FMT_IA,G_IM_SIZ_8b,0},
+        {G_IM_FMT_IA,G_IM_SIZ_16b,0},{G_IM_FMT_CI,G_IM_SIZ_8b,0},
+        {G_IM_FMT_CI,G_IM_SIZ_4b,0},{G_IM_FMT_CI,G_IM_SIZ_4b,3},
+        {G_IM_FMT_CI,G_IM_SIZ_4b,15}
+    };
+    for (unsigned material=0;material<5;material++) {
+        rdp_setothermode(material == 0 ? 2u<<20 : material == 4 ? 1u<<20 : 0,0,&g_rdpState);
+        rdp_setcombine(materials[material+2][0],materials[material+2][1],&g_rdpState);
+        rdp_setprimcolor(0,0x8f734f81u + material*0x13250719u,&g_rdpState);
+        rdp_setenvcolor(0,0x2468bcd1u + material*0x19230b17u,&g_rdpState);
+        u8 reference[4][256];
+        ps2_combiner_build_lookup(&g_rdpState,reference);
+        for (unsigned format=0;format<9;format++) {
+            unsigned fmt=compactFormats[format][0], siz=compactFormats[format][1];
+            unsigned count=siz == G_IM_SIZ_16b ? 65536 : siz == G_IM_SIZ_4b ? 512 : 256;
+            const u8* input=siz == G_IM_SIZ_16b ? rgba16All : compactBytes;
+            TileDescriptor compact = {.width=siz == G_IM_SIZ_16b ? 256 : 16,
+                .height=count/(siz == G_IM_SIZ_16b ? 256 : 16),.fmt=fmt,.siz=siz,
+                .palette=compactFormats[format][2]};
+            g_rdpState.textureLoads[0].source=input;
+            ps2_texture_upload(&compact,&g_rdpState);
+            if (!compact.gsTextureLoaded) failures++;
+            const u8* output=(const u8*)compact.gsTexture.Mem;
+            for (unsigned i=0;i<count;i++) {
+                unsigned value=siz == G_IM_SIZ_4b ? ((i&1)?input[i/2]&15:input[i/2]>>4) : input[i];
+                unsigned channels[4];
+                if (fmt == G_IM_FMT_CI) {
+                    unsigned index=siz == G_IM_SIZ_4b ? compact.palette*16+value : value;
+                    unsigned raw=(compactPalette[index*2]<<8)|compactPalette[index*2+1];
+                    for (unsigned c=0;c<3;c++) {
+                        unsigned v=(raw>>(11-c*5))&31;
+                        channels[c]=(v<<3)|(v>>2);
+                    }
+                    channels[3]=(raw&1)?128:0;
+                } else {
+                    unsigned intensity, alpha;
+                    if (fmt == G_IM_FMT_I) {
+                        intensity=siz == G_IM_SIZ_4b ? value*17 : value; alpha=intensity>>1;
+                    } else if (siz == G_IM_SIZ_16b) {
+                        intensity=input[i*2]; alpha=input[i*2+1]*128u/255;
+                    } else if (siz == G_IM_SIZ_8b) {
+                        intensity=(value>>4)*17; alpha=(value&15)*17*128u/255;
+                    } else {
+                        intensity=value>>1; intensity=(intensity<<5)|(intensity<<2)|(intensity>>1);
+                        alpha=(value&1)?128:0;
+                    }
+                    channels[0]=channels[1]=channels[2]=intensity; channels[3]=alpha;
+                }
+                channels[3]=channels[3] == 128 ? 255 : channels[3]*2;
+                for (unsigned c=0;c<4;c++) if (output[i*4+c] != reference[c][channels[c]]) failures++;
+            }
+        }
+    }
+    printf("[PS2 COMPACT FUSED TEST] I4/I8/IA4/IA8/IA16/CI4/CI8 exhaustive inputs, five materials and palette banks failures=%d\n",failures);
     printf("[PS2 RENDER TEST] %s: matrices, viewport, othermode, textures and palettes (%d)\n",
            failures ? "FAIL" : "PASS", failures);
     return failures;

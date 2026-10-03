@@ -24,4 +24,7 @@ static inline void ps2_gfx_profile_leave(unsigned category, u32 start) {
 }
 void ps2_gfx_profile_begin(void);
 void ps2_gfx_profile_end(void);
+void ps2_gfx_profile_texture_miss(u32 source, u32 prim, u32 env,
+    unsigned width, unsigned height, unsigned fmt, unsigned siz,
+    unsigned reason, bool paired);
 #endif
