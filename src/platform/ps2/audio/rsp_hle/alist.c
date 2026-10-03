@@ -543,6 +543,43 @@ void alist_envmix_lin(
     memcpy(dram_u8(hle, address), (uint8_t *)save_buffer, 80);
 }
 
+#ifdef _EE
+/* Envelope gains and XOR masks stay constant within each group of eight.
+ * Explicit locals avoid reloading seven control words after every output
+ * write under -fno-strict-aliasing. Keep sample/output aliasing ordered. */
+static void envmix_nead_cached(int16_t *in, int16_t *dl, int16_t *dr,
+        int16_t *wl, int16_t *wr, unsigned count, uint16_t *env_values,
+        uint16_t *env_steps, const int16_t *xors)
+{
+    while (count != 0) {
+        const uint32_t left = env_values[0], right = env_values[1], wet = env_values[2];
+        const int16_t xl = xors[0], xr = xors[1], xwl = xors[2], xwr = xors[3];
+        for (size_t i = 0; i < 8; ++i) {
+            int16_t l = (((int32_t)in[i^S] * left) >> 16) ^ xl;
+            int16_t r = (((int32_t)in[i^S] * right) >> 16) ^ xr;
+            int16_t l2 = (((int32_t)l * wet) >> 16) ^ xwl;
+            int16_t r2 = (((int32_t)r * wet) >> 16) ^ xwr;
+            dl[i^S] = clamp_s16(dl[i^S] + l);
+            dr[i^S] = clamp_s16(dr[i^S] + r);
+            wl[i^S] = clamp_s16(wl[i^S] + l2);
+            wr[i^S] = clamp_s16(wr[i^S] + r2);
+        }
+        env_values[0] += env_steps[0];
+        env_values[1] += env_steps[1];
+        env_values[2] += env_steps[2];
+        dl += 8; dr += 8; wl += 8; wr += 8; in += 8;
+        count -= 8;
+    }
+}
+
+static bool envmix_controls_disjoint(const int16_t *dst, unsigned bytes,
+        const uint16_t *env_values, const int16_t *xors)
+{
+    uintptr_t d = (uintptr_t)dst, e = (uintptr_t)env_values, x = (uintptr_t)xors;
+    return !(d < e + 6 && e < d + bytes) && !(d < x + 8 && x < d + bytes);
+}
+#endif
+
 void alist_envmix_nead(
         struct hle_t* hle,
         bool swap_wet_LR,
@@ -567,6 +604,18 @@ void alist_envmix_nead(
 
     if (swap_wet_LR)
         swap(&wl, &wr);
+
+#ifdef _EE
+    /* Unusual callers may place controls inside an output buffer. Preserve
+     * their per-sample mutations with the original loop in that case. */
+    if (envmix_controls_disjoint(dl, count * 2, env_values, xors) &&
+        envmix_controls_disjoint(dr, count * 2, env_values, xors) &&
+        envmix_controls_disjoint(wl, count * 2, env_values, xors) &&
+        envmix_controls_disjoint(wr, count * 2, env_values, xors)) {
+        envmix_nead_cached(in, dl, dr, wl, wr, count, env_values, env_steps, xors);
+        return;
+    }
+#endif
 
     while (count != 0) {
         size_t i;

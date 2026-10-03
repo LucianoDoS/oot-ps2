@@ -4,6 +4,26 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Reutilización de controles del mezclador NEAD — 2026-10-02
+
+- La mezcla conserva ganancias y máscaras XOR en variables locales durante
+  cada grupo de ocho muestras. Sigue actualizando la envolvente entre grupos
+  y conserva el orden de lectura/escritura cuando los buffers se solapan.
+  Si los controles están dentro de un destino, se usa el bucle anterior.
+  No se reduce la frecuencia, precisión, reverberación ni número de notas.
+- Referencia independiente: 40960 casos con longitudes redondeadas, rampas
+  de volumen, saturación, inversión XOR, intercambio de canales húmedos y
+  solapamientos de muestras/controles/steps. Cero diferencias de memoria y
+  estado final. 1000 bloques de 256 muestras: 22480504 ciclos anteriores
+  frente a 20190423 del nuevo camino, aproximadamente 10 % menos en la
+  mezcla aislada. No representa un porcentaje de mejora de FPS.
+- Diagnóstico completo pasa audio y 120 fotogramas:
+  `build/PS2/pcsx2-envmix-pass.log`. Juego reconstruido con 718 objetos y
+  abierto; respaldo `build/PS2-ntsc12/oot_ps2-before-envmix-cached.elf`.
+  Registro de la versión ADPCM anterior preservado en
+  `build/PS2/pcsx2-adpcm-unrolled-runtime.log`. Pendiente comparación de FPS
+  en el exterior y confirmación del sonido por el usuario.
+
 ## Coste de síntesis y predictor ADPCM — 2026-10-02
 
 - El contador anterior de audio medía la preparación de notas, pero dejaba

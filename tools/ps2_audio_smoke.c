@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <string.h>
 #include "../src/platform/ps2/audio/rsp_hle/audio.h"
+#include "../src/platform/ps2/audio/rsp_hle/alist.h"
+#include "../src/platform/ps2/audio/rsp_hle/memory.h"
 extern int PS2RspAudio_Process(void*, unsigned);
 static int16_t input[64] __attribute__((aligned(16)));
 static int16_t resampledFull[32] __attribute__((aligned(16)));
@@ -40,8 +42,97 @@ static uint32_t audio_cycles(void) {
     return value;
 }
 
+static int16_t envmix_clamp(int value) {
+    return value > 32767 ? 32767 : value < -32768 ? -32768 : value;
+}
+
+/* Independent copy of the original per-sample control reads and write order. */
+static __attribute__((noinline)) void envmix_reference(struct hle_t* hle, bool swapWet,
+    const uint16_t offsets[5], unsigned count, uint16_t* values,
+    uint16_t* steps, const int16_t* masks) {
+    int16_t* src=(int16_t*)(hle->alist_buffer+offsets[0]);
+    int16_t* dl=(int16_t*)(hle->alist_buffer+offsets[1]);
+    int16_t* dr=(int16_t*)(hle->alist_buffer+offsets[2]);
+    int16_t* wl=(int16_t*)(hle->alist_buffer+offsets[swapWet ? 4 : 3]);
+    int16_t* wr=(int16_t*)(hle->alist_buffer+offsets[swapWet ? 3 : 4]);
+    count=(count+7)&~7u;
+    while (count) {
+        for (unsigned i=0;i<8;i++) {
+            int16_t l=(((int32_t)src[i^S]*(uint32_t)values[0])>>16)^masks[0];
+            int16_t r=(((int32_t)src[i^S]*(uint32_t)values[1])>>16)^masks[1];
+            int16_t lw=(((int32_t)l*(uint32_t)values[2])>>16)^masks[2];
+            int16_t rw=(((int32_t)r*(uint32_t)values[2])>>16)^masks[3];
+            dl[i^S]=envmix_clamp(dl[i^S]+l);
+            dr[i^S]=envmix_clamp(dr[i^S]+r);
+            wl[i^S]=envmix_clamp(wl[i^S]+lw);
+            wr[i^S]=envmix_clamp(wr[i^S]+rw);
+        }
+        values[0]+=steps[0]; values[1]+=steps[1]; values[2]+=steps[2];
+        src+=8; dl+=8; dr+=8; wl+=8; wr+=8; count-=8;
+    }
+}
+
+static int envmix_smoke(void) {
+    static struct hle_t actualHle,referenceHle;
+    uint32_t random=0x47cb9081;
+    const unsigned counts[]={0,1,7,8,9,16,31,32,63,64};
+    unsigned failures=0;
+    for (unsigned fixture=0;fixture<512;fixture++) {
+        for (unsigned c=0;c<10;c++) for (unsigned alias=0;alias<8;alias++) {
+            uint16_t offsets[5]={0x100,0x400,0x600,0x800,0xa00};
+            uint16_t av[3],rv[3],as[3],rs[3]; int16_t ax[4],rx[4];
+            for (unsigned i=0;i<sizeof(actualHle.alist_buffer)/2;i++) {
+                random=random*1664525u+1013904223u;
+                ((int16_t*)actualHle.alist_buffer)[i]=(int16_t)(random>>16);
+            }
+            for (unsigned i=0;i<3;i++) {
+                random=random*1664525u+1013904223u; av[i]=random>>16;
+                random=random*1664525u+1013904223u; as[i]=random>>16;
+            }
+            for (unsigned i=0;i<4;i++) ax[i]=(fixture&1) ? -(int16_t)((fixture>>i)&1) : (int16_t)(random>>(i*4));
+            if (fixture<4) for (unsigned i=0;i<3;i++) av[i]=(uint16_t[]){0,0xffff,0x8000,1}[fixture];
+            if (alias==1) offsets[1]=offsets[0];
+            if (alias==2) offsets[2]=offsets[1];
+            if (alias==3) offsets[1]=offsets[0]+2;
+            if (alias==4) offsets[3]=offsets[0];
+            memcpy(referenceHle.alist_buffer,actualHle.alist_buffer,sizeof(actualHle.alist_buffer));
+            memcpy(rv,av,sizeof(av)); memcpy(rs,as,sizeof(as)); memcpy(rx,ax,sizeof(ax));
+            uint16_t* avp=alias==5 ? (uint16_t*)(actualHle.alist_buffer+offsets[1]+2) : av;
+            uint16_t* rvp=alias==5 ? (uint16_t*)(referenceHle.alist_buffer+offsets[1]+2) : rv;
+            uint16_t* asp=alias==7 ? (uint16_t*)(actualHle.alist_buffer+offsets[3]+4) : as;
+            uint16_t* rsp=alias==7 ? (uint16_t*)(referenceHle.alist_buffer+offsets[3]+4) : rs;
+            int16_t* axp=alias==6 ? (int16_t*)(actualHle.alist_buffer+offsets[2]+6) : ax;
+            int16_t* rxp=alias==6 ? (int16_t*)(referenceHle.alist_buffer+offsets[2]+6) : rx;
+            bool swapWet=fixture&1;
+            alist_envmix_nead(&actualHle,swapWet,offsets[1],offsets[2],offsets[3],offsets[4],offsets[0],counts[c],avp,asp,axp);
+            envmix_reference(&referenceHle,swapWet,offsets,counts[c],rvp,rsp,rxp);
+            if (memcmp(actualHle.alist_buffer,referenceHle.alist_buffer,sizeof(actualHle.alist_buffer)) ||
+                memcmp(av,rv,sizeof(av)) || memcmp(as,rs,sizeof(as)) || memcmp(ax,rx,sizeof(ax))) {
+                if (!failures) printf("[PS2 ENVMIX TEST] first mismatch fixture=%u count=%u alias=%u\n",fixture,counts[c],alias);
+                failures++;
+            }
+        }
+    }
+    printf("[PS2 ENVMIX TEST] 40960 cases: gain ramps, saturation, XOR, swap and aliases failures=%u\n",failures);
+    memset(actualHle.alist_buffer,0,sizeof(actualHle.alist_buffer));
+    for (unsigned i=0;i<256;i++) ((int16_t*)(actualHle.alist_buffer+0x100))[i]=(i%13-6)*4096;
+    memcpy(referenceHle.alist_buffer,actualHle.alist_buffer,sizeof(actualHle.alist_buffer));
+    const uint16_t offsets[5]={0x100,0x400,0x600,0x800,0xa00};
+    uint16_t av[3]={0x1234,0x4567,0xabcd},rv[3]; memcpy(rv,av,sizeof(av));
+    uint16_t steps[3]={0x132,0xf123,0x11}; int16_t masks[4]={0,-1,0,-1};
+    uint32_t start=audio_cycles();
+    for (unsigned i=0;i<1000;i++) envmix_reference(&referenceHle,i&1,offsets,256,rv,steps,masks);
+    uint32_t oldCycles=audio_cycles()-start;
+    start=audio_cycles();
+    for (unsigned i=0;i<1000;i++) alist_envmix_nead(&actualHle,i&1,offsets[1],offsets[2],offsets[3],offsets[4],offsets[0],256,av,steps,masks);
+    uint32_t newCycles=audio_cycles()-start;
+    if (memcmp(actualHle.alist_buffer,referenceHle.alist_buffer,sizeof(actualHle.alist_buffer)) || memcmp(av,rv,sizeof(av))) failures++;
+    printf("[PS2 ENVMIX BENCH] oldCycles=%u newCycles=%u failures=%u\n",oldCycles,newCycles,failures);
+    return failures;
+}
+
 int ps2_audio_smoke(void) {
-    int failures = 0;
+    int failures = envmix_smoke();
     uint32_t random=0xa317ca09;
     int16_t actual[64],expected[64];
     const unsigned aliases[][3]={{8,24,40},{8,8,40},{9,8,40},{7,8,40},{40,8,40}};
