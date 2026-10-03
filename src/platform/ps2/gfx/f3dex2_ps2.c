@@ -475,12 +475,12 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
 #ifdef PS2_RENDERER_SMOKE_CAPTURE
                 capture_points(points);
 #endif
-                gsKit_set_primalpha(gs, GS_SETREG_ALPHA(0,1,0,1,0x80), 0);
+                ps2_gs_set_alpha(rdp, GS_SETREG_ALPHA(0,1,0,1,0x80));
                 gs->PrimFogEnable = fog;
                 gsKit_prim_list_triangle_goraud_texture_stq_3d(gs, &second->gsTexture, 3, points);
                 rdp->stats.texturePackets++;
                 gs->PrimFogEnable = previousFog;
-                gsKit_set_primalpha(gs, rdp->gs_alpha, 0);
+                ps2_gs_set_alpha(rdp, rdp->gs_alpha);
                 rdp->stats.submitted++;
             } else rdp->stats.textureFailed++;
         }

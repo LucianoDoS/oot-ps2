@@ -4,6 +4,35 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Reutilización del estado enviado al GS — 2026-10-02
+
+- El usuario confirma que las lecturas nativas tampoco cambian los FPS.
+  Nueva captura del exterior: el envío de triángulos ocupa aproximadamente
+  13–38 ms por muestra; actualización del juego, unos 5 ms. Las muestras
+  incluyen interrupciones y varían con la cámara. Registro:
+  `build/PS2/pcsx2-native-read-profile-runtime.log`.
+- ALPHA, TEST y ZBUF conservan el último valor realmente enviado por cada
+  contexto GS. Se omiten paquetes repetidos; las copias de materiales RDP
+  comparten esa referencia al hardware. Los pases de mezcla del suelo y
+  el borrado temporal de profundidad actualizan la misma caché al cambiar
+  y restaurar estado. ZBUF incluye dirección y formato de profundidad.
+  La caché se invalida al iniciar cada tarea y al inicializar el renderer,
+  para respetar los ajustes de buffers y contexto de gsKit.
+- Prueba sobre la cola GS: 300 actualizaciones repetidas del mismo modo
+  (incluidos comandos parciales y filtro) no añaden paquetes tras las tres
+  primeros envíos. Se verifican cambio y retorno de contexto, cambio
+  de dirección/formato ZBUF, restauración desde otra copia de RDPState y
+  borrado de profundidad. Diagnóstico completo pasa 120 fotogramas sin
+  fallos, incluidas las pruebas de texturas y audio:
+  `build/PS2/pcsx2-gs-state-pass.log`.
+- Contadores de escrituras y reutilizaciones por fotograma, más tiempo de
+  othermode en el perfil optativo. Juego reconstruido con 718 objetos y
+  abierto sin el perfil activado; respaldo
+  `build/PS2-ntsc12/oot_ps2-before-gs-state.elf`. En una muestra del exterior
+  se emiten 323 estados y se reutilizan 735. El usuario confirma FPS iguales;
+  no se da por resuelto el objetivo de 20 FPS estables. Registro:
+  `build/PS2/pcsx2-gs-state-runtime.log`.
+
 ## Lecturas nativas de comandos y geometría — 2026-10-02
 
 - Los campos de vértices, matrices y viewport comunican al compilador su
@@ -26,7 +55,7 @@ trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
   `build/PS2/pcsx2-native-read-pass.log`, incluidas texturas, audio y guardado.
 - Juego reconstruido con 718 objetos; respaldo de la versión anterior:
   `build/PS2-ntsc12/oot_ps2-before-native-read.elf`. El efecto sobre los FPS
-  del juego está pendiente de comprobar; no se extrapola la microprueba
+  del juego no mejoró según el usuario; no se extrapola la microprueba
   al rendimiento del exterior.
 
 ## Lecturas alineadas en comprobación de texturas — 2026-10-02

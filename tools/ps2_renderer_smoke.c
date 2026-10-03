@@ -284,6 +284,61 @@ int ps2_renderer_smoke(void) {
             clipped[i].ca != 255) failures++;
     c.cz = -3; a.cz = b.cz = -2;
     if (ps2_clip_triangle(&a, &b, &c, clipped) != 0) failures++;
+    /* Check the emitted queue, not just software TEST/ALPHA fields. Copies
+     * of RDPState must share the actual GS shadow; contexts and frame reset
+     * must still issue state. ZBUF keys include VRAM base and depth format. */
+    GSGLOBAL* stateGs = g_rdpState.gs;
+    int stateContext = stateGs->PrimContext;
+    unsigned stateZBuffer = stateGs->ZBuffer, stateZFormat = stateGs->PSMZ;
+    ps2_gs_state_reset();
+    u32 writesStart = g_rdpState.stats.stateWrites;
+    rdp_setothermode(1u<<20,0xc8113078u,&g_rdpState);
+    if (g_rdpState.stats.stateWrites != writesStart+3) failures++;
+    void* stateQueue = stateGs->CurQueue->pool_cur;
+    for (unsigned i=0;i<100;i++) {
+        rdp_setothermode(1u<<20,0xc8113078u,&g_rdpState);
+        rdp_setothermode_h(0xE3001201,2u<<12,&g_rdpState); /* filter only */
+        rdp_setothermode_l(0xE200001C,0xc8113078u,&g_rdpState);
+    }
+    if (stateGs->CurQueue->pool_cur != stateQueue ||
+        g_rdpState.stats.stateWrites != writesStart+3) failures++;
+    stateGs->PrimContext ^= 1;
+    rdp_apply_othermode(&g_rdpState);
+    if (g_rdpState.stats.stateWrites != writesStart+6) failures++;
+    stateGs->PrimContext = stateContext;
+    stateQueue = stateGs->CurQueue->pool_cur;
+    rdp_apply_othermode(&g_rdpState);
+    if (stateGs->CurQueue->pool_cur != stateQueue) failures++;
+    stateGs->ZBuffer += 8192;
+    ps2_zbuffer_set_writes(&g_rdpState,true);
+    if (g_rdpState.stats.stateWrites != writesStart+7) failures++;
+    stateGs->PSMZ = GS_PSMZ_16;
+    ps2_zbuffer_set_writes(&g_rdpState,true);
+    if (g_rdpState.stats.stateWrites != writesStart+8) failures++;
+    stateGs->ZBuffer = stateZBuffer; stateGs->PSMZ = stateZFormat;
+    ps2_zbuffer_set_writes(&g_rdpState,true);
+    u64 stateAlpha = g_rdpState.gs_alpha;
+    ps2_gs_set_alpha(&g_rdpState,GS_SETREG_ALPHA(0,1,0,1,0x80));
+    RDPState stateCopy = g_rdpState;
+    ps2_gs_set_alpha(&stateCopy,stateAlpha);
+    stateQueue = stateGs->CurQueue->pool_cur;
+    ps2_gs_set_alpha(&g_rdpState,stateAlpha);
+    if (stateGs->CurQueue->pool_cur != stateQueue || stateGs->PrimAlpha != stateAlpha) failures++;
+    /* A depth clear changes all three registers and restores their shadow. */
+    void* stateColorImage = g_rdpState.colorImage;
+    void* stateZImage = g_rdpState.zImage;
+    g_rdpState.colorImage = g_rdpState.zImage = (void*)0x200000;
+    rdp_fillrect((16u<<12)|16u,0,&g_rdpState);
+    g_rdpState.colorImage = stateColorImage; g_rdpState.zImage = stateZImage;
+    stateQueue = stateGs->CurQueue->pool_cur;
+    rdp_apply_othermode(&g_rdpState);
+    if (stateGs->CurQueue->pool_cur != stateQueue || stateGs->Test->AREF != 64 ||
+        stateGs->Test->ZTST != 2 || !g_rdpState.zWriteEnabled) failures++;
+    writesStart = g_rdpState.stats.stateWrites;
+    ps2_gs_state_reset();
+    rdp_apply_othermode(&g_rdpState);
+    if (g_rdpState.stats.stateWrites != writesStart+3) failures++;
+    printf("[PS2 GS STATE TEST] queue reuse, contexts, ZBUF relocation/format, copied state and depth clear failures=%d\n",failures);
     rdp_setothermode_h(0xE3000A01, 3u << 20, &g_rdpState);
     if ((g_rdpState.otherMode.hi & (3u << 20)) != (3u << 20)) failures++;
     rdp_setothermode_l(0xE200001C, 0x10, &g_rdpState);

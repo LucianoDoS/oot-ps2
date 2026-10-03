@@ -139,6 +139,7 @@ RSPState g_rspState;
  *  rdp_to_gs_init
  * ═══════════════════════════════════════════════════════════════════ */
 void rdp_to_gs_init(GSGLOBAL* gs) {
+    ps2_gs_state_reset();
     s_s2dex = false;
     memset(gRspSegments, 0, sizeof(gRspSegments));
     memset(&g_rdpState, 0, sizeof(g_rdpState));
@@ -189,6 +190,7 @@ void rdp_to_gs_init(GSGLOBAL* gs) {
  * ═══════════════════════════════════════════════════════════════════ */
 void rdp_to_gs_exec(const Gfx* dl) {
     if (!dl) return;
+    ps2_gs_state_reset();
     ps2_gfx_profile_begin();
     s_s2dex = false;
 
@@ -464,6 +466,7 @@ void rdp_to_gs_flip(void) {
             g_rdpState.stats.textureHits, g_rdpState.stats.textureUploads,
             g_rdpState.stats.textureWaits, g_rdpState.stats.texturePackets,
             g_rdpState.stats.textureVertexBuilds, g_rdpState.stats.textureVertexHits);
+        printf("[PS2 STATE PERF] writes=%u reused=%u\n", g_rdpState.stats.stateWrites, g_rdpState.stats.stateReuse);
     }
     memset(&g_rdpState.stats, 0, sizeof(g_rdpState.stats));
 

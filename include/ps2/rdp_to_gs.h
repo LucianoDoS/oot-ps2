@@ -129,6 +129,7 @@ typedef struct {
         u32 triangles, clipped, culled, invalid, textureFailed, submitted, backgrounds;
         u32 textureHits, textureUploads, textureWaits, texturePackets;
         u32 textureVertexBuilds, textureVertexHits;
+        u32 stateWrites, stateReuse;
     } stats;
 } RDPState;
 
@@ -238,6 +239,11 @@ void rdp_setzimg(u32 w0, u32 w1, RDPState* rdp);
  * constantemente (gDPSetRenderMode, gDPSetCycleType, gDPSetTextureFilter
  * y compañía se codifican así, no con el comando completo). */
 void rdp_apply_othermode(RDPState* rdp);
+/* Track emitted GS state independently of copied RDP material snapshots. */
+void ps2_gs_state_reset(void);
+void ps2_gs_set_alpha(RDPState* rdp, u64 alpha);
+void ps2_gs_set_test(RDPState* rdp);
+void ps2_gs_set_zbuf(RDPState* rdp, u64 zbuf);
 void rdp_setothermode_h(u32 w0, u32 w1, RDPState* rdp);
 void rdp_setothermode_l(u32 w0, u32 w1, RDPState* rdp);
 

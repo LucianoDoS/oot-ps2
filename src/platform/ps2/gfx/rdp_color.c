@@ -31,6 +31,53 @@
 #include "ps2_segment.h"
 #include "rdp_to_gs.h"
 #include "ps2_texture.h"
+#include "ps2_gfx_profile.h"
+
+/* These are the last values emitted, rather than the desired RDP values.
+ * Temporary depth clears and ground blend passes must use the same helpers.
+ * Invalidate at each task because gsKit manages frame/context setup itself. */
+static struct {
+    GSGLOBAL* gs;
+    u64 value[2][3];
+    u8 valid[2];
+} s_gsState;
+
+void ps2_gs_state_reset(void) { memset(&s_gsState, 0, sizeof(s_gsState)); }
+
+static bool gs_state_changed(RDPState* rdp, unsigned slot, u64 value) {
+    GSGLOBAL* gs = rdp->gs;
+    if (s_gsState.gs != gs) { ps2_gs_state_reset(); s_gsState.gs = gs; }
+    unsigned context = gs->PrimContext & 1;
+    if ((s_gsState.valid[context] & (1u << slot)) && s_gsState.value[context][slot] == value) {
+        rdp->stats.stateReuse++; return false;
+    }
+    s_gsState.value[context][slot] = value;
+    s_gsState.valid[context] |= 1u << slot;
+    rdp->stats.stateWrites++;
+    return true;
+}
+
+void ps2_gs_set_alpha(RDPState* rdp, u64 alpha) {
+    if (!rdp->gs) return;
+    rdp->gs->PrimAlpha = alpha;
+    rdp->gs->PABE = 0;
+    if (gs_state_changed(rdp, 0, alpha)) gsKit_set_primalpha(rdp->gs, alpha, 0);
+}
+
+void ps2_gs_set_test(RDPState* rdp) {
+    if (!rdp->gs) return;
+    GSTEST* test = rdp->gs->Test;
+    u64 value = GS_SETREG_TEST(test->ATE,test->ATST,test->AREF,test->AFAIL,
+                              test->DATE,test->DATM,test->ZTE,test->ZTST);
+    if (gs_state_changed(rdp, 1, value)) gsKit_set_test(rdp->gs, 0);
+}
+
+void ps2_gs_set_zbuf(RDPState* rdp, u64 zbuf) {
+    if (!rdp->gs || !gs_state_changed(rdp, 2, zbuf)) return;
+    u64* packet = gsKit_heap_alloc(rdp->gs, 1, 16, GIF_AD);
+    packet[0] = GIF_TAG_AD(1); packet[1] = GIF_AD;
+    packet[2] = zbuf; packet[3] = GS_ZBUF_1 + rdp->gs->PrimContext;
+}
 
 /* ─────────────────────────────────────────────────────────── *
  *  Utility: pack RGBA u8s into a u32 (R in MSB)
@@ -459,6 +506,7 @@ void ps2_combiner_build_lookup(const RDPState* rdp, u8 values[4][256]) {
 void rdp_apply_othermode(RDPState* rdp) {
     GSGLOBAL* gs = rdp->gs;
     if (!gs) return;
+    u32 profileStart = ps2_gfx_profile_enter();
 
     u32 lo = rdp->otherMode.lo;
     u32 hi = rdp->otherMode.hi;
@@ -495,7 +543,7 @@ void rdp_apply_othermode(RDPState* rdp) {
     }
 
     rdp->gs_alpha = gsAlpha;
-    gsKit_set_primalpha(gs, gsAlpha, 0);
+    ps2_gs_set_alpha(rdp, gsAlpha);
 
     /* Test de alfa + test de profundidad, en UN solo registro TEST.
      * Antes se escribían por separado desde dos archivos distintos y el
@@ -523,8 +571,9 @@ void rdp_apply_othermode(RDPState* rdp) {
     gs->Test->DATM = 0;
     gs->Test->ZTE = zte;
     gs->Test->ZTST = ztst;
-    gsKit_set_test(gs, 0); /* Emit the populated GSTEST, not a preset. */
+    ps2_gs_set_test(rdp);
     ps2_zbuffer_set_writes(rdp, (lo & 0x20) != 0);
+    ps2_gfx_profile_leave(GFX_PROFILE_STATE, profileStart);
 }
 
 void rdp_setothermode(u32 w0, u32 w1, RDPState* rdp) {
@@ -624,16 +673,16 @@ void rdp_fillrect(u32 w0, u32 w1, RDPState* rdp) {
         ps2_zbuffer_set_writes(rdp, true);
         gs->Test->ZTST = 1;
         gs->Test->ATE = 0;
-        gsKit_set_test(gs, 0);
+        ps2_gs_set_test(rdp);
         gs->PrimAlphaEnable = GS_SETTING_ON;
-        gsKit_set_primalpha(gs, GS_SETREG_ALPHA(0, 0, 2, 1, 0), 0);
+        ps2_gs_set_alpha(rdp, GS_SETREG_ALPHA(0, 0, 2, 1, 0));
         gsKit_prim_sprite(gs, x0, y0, x1, y1, 0, GS_SETREG_RGBA(0, 0, 0, 0));
         ps2_zbuffer_set_writes(rdp, oldWrite);
         gs->PrimAlphaEnable = oldBlend;
-        gsKit_set_primalpha(gs, rdp->gs_alpha, 0);
+        ps2_gs_set_alpha(rdp, rdp->gs_alpha);
         gs->Test->ZTST = oldZ;
         gs->Test->ATE = oldAlpha;
-        gsKit_set_test(gs, 0);
+        ps2_gs_set_test(rdp);
         return;
     }
 

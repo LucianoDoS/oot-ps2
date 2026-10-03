@@ -80,9 +80,5 @@ void ps2_zbuffer_set_writes(RDPState* rdp, bool enable) {
     if (!rdp || !rdp->gs) return;
     rdp->zWriteEnabled = enable;
     GSGLOBAL* gs = rdp->gs;
-    u64* packet = gsKit_heap_alloc(gs, 1, 16, GIF_AD);
-    packet[0] = GIF_TAG_AD(1);
-    packet[1] = GIF_AD;
-    packet[2] = GS_SETREG_ZBUF(gs->ZBuffer / 8192, gs->PSMZ & 0xF, !enable);
-    packet[3] = GS_ZBUF_1 + gs->PrimContext;
+    ps2_gs_set_zbuf(rdp, GS_SETREG_ZBUF(gs->ZBuffer / 8192, gs->PSMZ & 0xF, !enable));
 }
