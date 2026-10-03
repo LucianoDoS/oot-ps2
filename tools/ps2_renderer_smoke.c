@@ -9,6 +9,7 @@
 #include "ps2_texture.h"
 #include "ps2_background.h"
 #include "ps2_gfx_profile.h"
+#include "ps2_segment.h"
 const u64 gspS2DEX2d_fifoTextStart[1] = {0};
 #include "f3dex2_ps2.h"
 extern const void* ps2_prerender_fixture(int);
@@ -26,8 +27,57 @@ static void matrix(short* out, float scale, float translate) {
     }
 }
 
+static __attribute__((noinline)) u32 command_read_bench(const u8* source, bool native) {
+    u32 checksum=0;
+    if (native) for (unsigned i=0;i<50000;i++) {
+        const u8* command=source+(i&511)*8;
+        u32 w0,w1; gfx_read_words(command,&w0,&w1); checksum+=w0^(w1+i);
+    } else for (unsigned i=0;i<50000;i++) {
+        const u8* command=source+(i&511)*8;
+        u32 w0,w1; memcpy(&w0,command,4); memcpy(&w1,command+4,4); checksum+=w0^(w1+i);
+    }
+    return checksum;
+}
+
+/* Volatile byte loads keep the oracle independent of GCC's unaligned
+ * word-load folding. The EE's 64-bit GPRs also require a canonical word
+ * representation when comparing values with BEQ/BNE. */
+static __attribute__((noinline)) u32 asset_read_reference(const volatile u8* p) {
+    volatile u32 value=p[0]|((u32)p[1]<<8)|((u32)p[2]<<16)|((u32)p[3]<<24);
+    return value;
+}
+
 int ps2_renderer_smoke(void) {
     int failures = 0;
+    static u8 readInputs[4112] __attribute__((aligned(128)));
+    for (unsigned i=0;i<sizeof(readInputs);i++) readInputs[i]=(i*73+159)&255;
+    for (unsigned offset=0;offset<16;offset++) for (unsigned i=0;i<256;i++) {
+        const u8* input=readInputs+offset+i;
+        u16 expected16=input[0]|((u16)input[1]<<8);
+        u32 expected0=asset_read_reference(input);
+        u32 expected1=asset_read_reference(input+4);
+        u32 w0,w1; gfx_read_words(input,&w0,&w1);
+        if (ASSET_U16(input)!=expected16 || ASSET_S16(input)!=(s16)expected16 ||
+            ASSET_U32(input)!=expected0 || GFX_READ_W0(input)!=expected0 || GFX_READ_W1(input)!=expected1 ||
+            w0!=expected0 || w1!=expected1) {
+            if (failures<4) printf("[PS2 ASSET READ DIFFERENCE] offset=%u i=%u half=%04x/%04x signed=%d/%d word=%08x/%08x pair=%08x,%08x/%08x,%08x single=%08x,%08x\n",
+                offset,i,(unsigned)ASSET_U16(input),(unsigned)expected16,(int)ASSET_S16(input),(int)(s16)expected16,
+                ASSET_U32(input),expected0,w0,w1,expected0,expected1,GFX_READ_W0(input),GFX_READ_W1(input));
+            failures++;
+        }
+    }
+    printf("[PS2 ASSET READ TEST] native signed/unsigned fields, command pairs and 16 alignments failures=%d\n",failures);
+    for (unsigned offset=0;offset<2;offset++) {
+        u32 start=ps2_gfx_cycles();
+        u32 oldChecksum=command_read_bench(readInputs+offset,false);
+        u32 oldCycles=ps2_gfx_cycles()-start;
+        start=ps2_gfx_cycles();
+        u32 nativeChecksum=command_read_bench(readInputs+offset,true);
+        u32 nativeCycles=ps2_gfx_cycles()-start;
+        if (oldChecksum != nativeChecksum) failures++;
+        printf("[PS2 COMMAND READ BENCH] offset=%u oldCycles=%u nativeCycles=%u checksum=%08x failures=%d\n",
+            offset,oldCycles,nativeCycles,nativeChecksum,failures);
+    }
     /* XXH32 vectors from the independent system libxxhash reference. Verify
      * short tails, stripes, seeds and every possible word alignment on EE. */
     const unsigned lengths[] = {0,1,3,4,7,15,16,17,31,32,33,65,257};

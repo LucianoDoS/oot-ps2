@@ -212,8 +212,8 @@ void rdp_to_gs_exec(const Gfx* dl) {
         /* The graphics worker is below audio, scheduler and controller.
          * Retrace wakes those threads directly; no per-command alarm needed. */
 
-        u32 w0 = GFX_READ_W0(pc);
-        u32 w1 = GFX_READ_W1(pc);
+        u32 w0, w1;
+        gfx_read_words(pc, &w0, &w1);
         u8  op = (u8)(w0 >> 24);
         bool triangle = op == G_TRI1 || op == G_TRI2 || op == G_QUAD;
         if (triangleRun && !triangle) {

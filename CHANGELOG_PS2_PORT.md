@@ -4,6 +4,31 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Lecturas nativas de comandos y geometría — 2026-10-02
+
+- Los campos de vértices, matrices y viewport comunican al compilador su
+  alineación real de dos bytes; las palabras usan cuatro. El intérprete lee
+  ambos comandos con una sola decisión de alineación. El objeto EE utiliza
+  LH/LHU y LW en los caminos alineados, evitando las lecturas byte a byte y
+  copias a la pila anteriores. Se mantienen las fuentes sin alinear y el
+  modo opcional de assets big-endian.
+- Prueba de 4096 casos: 16 desplazamientos, valores con y sin signo,
+  palabras individuales y parejas de comandos. GCC transformaba el primer
+  oráculo en cargas LWL/LWR; las comparaciones fallaban pese a coincidir
+  los valores impresos. La referencia independiente lee bytes volátiles y
+  devuelve una palabra desde memoria (LW). Las comparaciones pasan sin diferencias;
+  también pasan las referencias de PC en ambos modos de endianness.
+- Para 50000 comandos alineados, 2037223 ciclos del lector anterior frente
+  a 709046 del nuevo (aproximadamente 65 % menos en esta lectura aislada).
+  Sin alinear: 2034519 frente a 2122237; ambos checksums coinciden. Ese
+  pequeño coste adicional corresponde a comprobar alineación. Diagnóstico
+  completo: 120 fotogramas y cero fallos en
+  `build/PS2/pcsx2-native-read-pass.log`, incluidas texturas, audio y guardado.
+- Juego reconstruido con 718 objetos; respaldo de la versión anterior:
+  `build/PS2-ntsc12/oot_ps2-before-native-read.elf`. El efecto sobre los FPS
+  del juego está pendiente de comprobar; no se extrapola la microprueba
+  al rendimiento del exterior.
+
 ## Lecturas alineadas en comprobación de texturas — 2026-10-02
 
 - Inspección del objeto EE: el memcpy de cuatro bytes del hash generaba
@@ -21,8 +46,9 @@ trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 - Diagnóstico completo pasa 120 fotogramas y cero fallos:
   `build/PS2/pcsx2-aligned-hash-pass.log`. Juego reconstruido con 718 objetos
   y abierto para medir el efecto real; respaldo
-  `build/PS2-ntsc12/oot_ps2-before-aligned-hash.elf`. FPS nuevos pendientes
-  de confirmación; no se extrapola el porcentaje del hash al juego completo.
+  `build/PS2-ntsc12/oot_ps2-before-aligned-hash.elf`. El usuario confirma
+  FPS similares y una ligera mejora percibida al caminar. No se extrapola
+  el porcentaje del hash al juego completo; siguen pendientes 20 FPS estables.
 
 ## Reutilización de vértices GS — 2026-10-02
 

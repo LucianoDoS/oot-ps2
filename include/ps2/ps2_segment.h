@@ -58,6 +58,7 @@
 #define PS2_SEGMENT_H
 
 #include "ps2_types.h"
+#include <string.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -123,27 +124,48 @@ static inline void* ps2_segmented_to_virtual(u32 addr) {
 #else
    /* Nativo (little-endian en PS2): los assets se convierten al
     * extraerlos, así que todo se lee directamente. */
-   static inline u32 gfx_read_w0(const void* p) {
-       u32 v; memcpy(&v, (const u8*)p, 4); return v;
-   }
-   static inline u32 gfx_read_w1(const void* p) {
-       u32 v; memcpy(&v, (const u8*)p + 4, 4); return v;
-   }
    static inline s16 asset_s16(const void* p) {
-       s16 v; memcpy(&v, p, 2); return v;
+       s16 v;
+       if (((uintptr_t)p & 1) == 0) memcpy(&v, __builtin_assume_aligned(p, 2), 2);
+       else memcpy(&v, p, 2);
+       return v;
    }
    static inline u16 asset_u16(const void* p) {
-       u16 v; memcpy(&v, p, 2); return v;
+       u16 v;
+       if (((uintptr_t)p & 1) == 0) memcpy(&v, __builtin_assume_aligned(p, 2), 2);
+       else memcpy(&v, p, 2);
+       return v;
    }
    static inline u32 asset_u32(const void* p) {
-       u32 v; memcpy(&v, p, 4); return v;
+       u32 v;
+       if (((uintptr_t)p & 3) == 0) memcpy(&v, __builtin_assume_aligned(p, 4), 4);
+       else memcpy(&v, p, 4);
+       return v;
    }
+   static inline u32 gfx_read_w0(const void* p) { return asset_u32(p); }
+   static inline u32 gfx_read_w1(const void* p) { return asset_u32((const u8*)p + 4); }
 #  define GFX_READ_W0(p)  gfx_read_w0(p)
 #  define GFX_READ_W1(p)  gfx_read_w1(p)
 #  define ASSET_S16(p)    asset_s16(p)
 #  define ASSET_U16(p)    asset_u16(p)
 #  define ASSET_U32(p)    asset_u32(p)
 #endif
+
+/* Read both command words with a single alignment decision. EE GCC does
+ * not infer alignment from the old void-pointer memcpy alone. Keep the
+ * fallback for unaligned display lists and the optional BE asset mode. */
+static inline void gfx_read_words(const void* p, u32* w0, u32* w1) {
+#if OOT_ASSETS_BIG_ENDIAN
+    *w0 = GFX_READ_W0(p); *w1 = GFX_READ_W1(p);
+#else
+    if (((uintptr_t)p & 3) == 0) {
+        const u8* source = __builtin_assume_aligned(p, 4);
+        memcpy(w0, source, 4); memcpy(w1, source + 4, 4);
+    } else {
+        memcpy(w0, p, 4); memcpy(w1, (const u8*)p + 4, 4);
+    }
+#endif
+}
 
 #ifdef __cplusplus
 }
