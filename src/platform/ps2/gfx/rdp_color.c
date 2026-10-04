@@ -325,6 +325,13 @@ bool ps2_combiner_flame(const RDPState* rdp) {
     };
     return analysis->type == 1 && !memcmp(analysis->sources,sources,sizeof(sources));
 }
+bool ps2_combiner_token_flame(const RDPState* rdp) {
+    const CombinerAnalysis* analysis = combiner_analysis(rdp);
+    static const u8 sources[2][2][4] = {
+        {{1,3,14,2},{1,6,6,2}}, {{3,5,0,5},{7,7,7,0}}
+    };
+    return analysis->type == 1 && !memcmp(analysis->sources,sources,sizeof(sources));
+}
 void ps2_combiner_constants(const RDPState* rdp, u32* prim, u32* env) {
     const CombinerAnalysis* analysis = combiner_analysis(rdp);
     *prim = rdp->primColor & analysis->primMask;

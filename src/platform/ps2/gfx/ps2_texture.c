@@ -37,7 +37,6 @@
 #include "rdp_to_gs.h"
 #include "ps2_texture.h"
 #include "ps2_gfx_profile.h"
-#include "ps2_texture.h"
 
 /* ─────────────────────────────────────────────────────────── *
  *  Scratch conversion buffer (static to avoid heap alloc per frame)
@@ -51,7 +50,7 @@ typedef struct TextureCacheEntry {
     uintptr_t source;
     uintptr_t source2;
     u32 stride2;
-    u16 uls2, ult2;
+    u16 uls2, ult2, uls0, ult0;
     u8 lodFrac;
     u32 stride, combine0, combine1, prim, env, cycle, paletteHash, contentHash;
     u32 vram, size, used, frame;
@@ -193,6 +192,51 @@ static void convert_flame(const u8* mask, const u8* noise, unsigned stride,
         output[y*64+x]=colors[m*256+value];
     }
 }
+
+/* The token uses scrolling 32x32 noise as TEXEL0 and a fixed 32x64 I8
+ * silhouette as TEXEL1. Keep the silhouette's coordinates and clamp window
+ * for the combined GS image; wrapping the result every 32 rows loses it. */
+static bool token_flame_tiles(const TileDescriptor* tile, const RDPState* rdp) {
+    const TileDescriptor* second = &rdp->tile[(rdp->textureTile+1)&7];
+    return tile == &rdp->tile[rdp->textureTile] && ps2_combiner_token_flame(rdp) &&
+        tile->fmt == G_IM_FMT_I && tile->siz == G_IM_SIZ_8b &&
+        tile->width == 32 && tile->height == 32 && tile->masks == 5 && tile->maskt == 5 &&
+        !tile->cms && !tile->cmt && !tile->shifts && !tile->shiftt &&
+        second->fmt == G_IM_FMT_I && second->siz == G_IM_SIZ_8b &&
+        second->width == 32 && second->height == 64 && second->masks == 5 && second->maskt == 6 &&
+        second->cms == 2 && second->cmt == 2 && !second->shifts && !second->shiftt &&
+        !second->uls && !second->ult;
+}
+
+static const TileDescriptor* coordinate_tile(const TileDescriptor* tile, const RDPState* rdp) {
+    return token_flame_tiles(tile,rdp) && tile->gsTexture.Width == 32 && tile->gsTexture.Height == 64 ?
+        &rdp->tile[(rdp->textureTile+1)&7] : tile;
+}
+
+static void convert_token_flame(const u8* noise, const u8* mask, unsigned noiseStride,
+                                unsigned maskStride, const TileDescriptor* effect, const RDPState* rdp) {
+    u32* output=(u32*)s_convBuf;
+    for (int y=0;y<64;y++) for (int x=0;x<32;x++) {
+        int s=x*4-effect->uls, t=y*4-effect->ult;
+        int sx=s>>2, sy=t>>2, fs=s&3, ft=t&3;
+        int a=noise[(sy&31)*noiseStride+(sx&31)], n;
+        int b=noise[(sy&31)*noiseStride+((sx+1)&31)];
+        int c=noise[((sy+1)&31)*noiseStride+(sx&31)];
+        if (fs+ft<=4) n=(a*(4-fs-ft)+b*fs+c*ft)/4;
+        else n=(b*(4-ft)+c*(4-fs)+noise[((sy+1)&31)*noiseStride+((sx+1)&31)]*(fs+ft-4))/4;
+        int m=mask[y*maskStride+x];
+        u32 color=0;
+        for (int channel=0;channel<4;channel++) {
+            int prim=(rdp->primColor>>((3-channel)*8))&255;
+            int env=(rdp->envColor>>((3-channel)*8))&255;
+            int first=m+(n-(channel==3?255:prim))*rdp->primLodFrac/255;
+            if (first<0) first=0; else if (first>255) first=255;
+            int value=channel==3 ? first*128/255 : env+(prim-env)*first/255;
+            color|=(u32)value<<(channel*8);
+        }
+        output[y*32+x]=color;
+    }
+}
 #ifdef PS2_RENDERER_SMOKE_CAPTURE
 static unsigned s_testGeneratedChannels;
 #endif
@@ -310,6 +354,8 @@ void ps2_texture_apply_tile(TileDescriptor* tile, RDPState* rdp) {
     }
     /* Region clamp also excludes uninitialized padding in non-power-of-two
      * strips. Region repeat uses the N64 mask without clamping CPU vertices. */
+    TileDescriptor* boundTile=tile;
+    tile=(TileDescriptor*)coordinate_tile(tile,rdp);
     unsigned modeS = (tile->cms & 2) || !tile->masks ? 2 : 3;
     unsigned modeT = (tile->cmt & 2) || !tile->maskt ? 2 : 3;
     unsigned minS = modeS == 3 ? (1u << (tile->masks > 10 ? 10 : tile->masks)) - 1 : 0;
@@ -335,7 +381,7 @@ void ps2_texture_apply_tile(TileDescriptor* tile, RDPState* rdp) {
         rdp->gs_clamp_context = gs->PrimContext;
         rdp->gs_clamp_valid = true;
     }
-    tile->gsTexture.Filter = ((rdp->otherMode.hi >> 12) & 3) ? GS_FILTER_LINEAR : GS_FILTER_NEAREST;
+    boundTile->gsTexture.Filter = ((rdp->otherMode.hi >> 12) & 3) ? GS_FILTER_LINEAR : GS_FILTER_NEAREST;
 }
 
 static float texture_shift_scale(u8 shift) {
@@ -362,6 +408,7 @@ void ps2_texture_build_vertex(const TileDescriptor* tile, const RSPState* rsp,
         texture_extent_reciprocal(tile->gsTexture.Width ? tile->gsTexture.Width : tile->width);
     float invHeight = tile->gsInvHeight ? tile->gsInvHeight :
         texture_extent_reciprocal(tile->gsTexture.Height ? tile->gsTexture.Height : tile->height);
+    tile=coordinate_tile(tile,rdp);
     float u = texture_shift(vertex->tc_s * rsp->texScaleS / 32.0f, tile->shifts) - tile->uls / 4.0f;
     float v = texture_shift(vertex->tc_t * rsp->texScaleT / 32.0f, tile->shiftt) - tile->ult / 4.0f;
     float q = (rdp->otherMode.hi & (1u << 19)) && vertex->cw > 0.0001f ? 1.0f / vertex->cw : 1.0f;
@@ -378,10 +425,11 @@ void ps2_texture_prepare_vertices(PS2TextureVertexSetup* setup,
     const TileDescriptor* tile, const RSPState* rsp, const RDPState* rdp) {
     setup->texScaleS = rsp->texScaleS;
     setup->texScaleT = rsp->texScaleT;
-    setup->shiftS = texture_shift_scale(tile->shifts);
-    setup->shiftT = texture_shift_scale(tile->shiftt);
-    setup->offsetS = tile->uls / 4.0f;
-    setup->offsetT = tile->ult / 4.0f;
+    const TileDescriptor* coordinates=coordinate_tile(tile,rdp);
+    setup->shiftS = texture_shift_scale(coordinates->shifts);
+    setup->shiftT = texture_shift_scale(coordinates->shiftt);
+    setup->offsetS = coordinates->uls / 4.0f;
+    setup->offsetT = coordinates->ult / 4.0f;
     setup->invWidth = tile->gsInvWidth ? tile->gsInvWidth :
         texture_extent_reciprocal(tile->gsTexture.Width ? tile->gsTexture.Width : tile->width);
     setup->invHeight = tile->gsInvHeight ? tile->gsInvHeight :
@@ -647,6 +695,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
     const u8* src = (const u8*)tile->addr;
     int w = texture_source_extent(tile->width, tile->masks);
     int h = texture_source_extent(tile->height, tile->maskt);
+    int sourceHeight=h;
 
     if (w == 0 || h == 0) return;
     if (w * h * 4 > (int)sizeof(s_convBuf)) {
@@ -657,6 +706,12 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
     u32 rowBytes = (w * (4u << tile->siz) + 7) / 8;
     int uploadW, uploadH;
     unsigned mirror = mirrored_dimensions(tile, w, h, &uploadW, &uploadH);
+    bool tokenPair=token_flame_tiles(tile,rdp);
+    const TileDescriptor* tokenMask=&rdp->tile[(rdp->textureTile+1)&7];
+    const u8* tokenSource=rdp->textureLoads[tokenMask->tmem].source;
+    if (!tokenSource) tokenSource=tokenMask->addr;
+    tokenPair = tokenPair && tokenSource;
+    if (tokenPair) h=uploadH=64;
     bool mirrorS = mirror & 1, mirrorT = mirror & 2;
     static unsigned sceneUploads;
     int trace = rdp->stats.triangles > 96 && sceneUploads++ < 12;
@@ -694,14 +749,16 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         second->fmt == G_IM_FMT_I && second->siz == G_IM_SIZ_8b &&
         second->width==32 && second->height==32 && second->shifts==1 && second->shiftt==1 &&
         !second->cms && !second->cmt && !second->masks && second->maskt==5;
-    if (pathPair || flamePair) {
+    if (pathPair || flamePair || tokenPair) {
         key.source2 = (uintptr_t)secondSrc;
         key.stride2 = rdp->textureLoads[second->tmem].stride;
         if (flamePair && !key.stride2) key.stride2=second->line?second->line*8:32;
+        if (tokenPair && !key.stride2) key.stride2=second->line?second->line*8:32;
         key.lodFrac = rdp->primLodFrac;
-        if (flamePair) {
+        if (flamePair || tokenPair) {
             key.uls2=second->uls; key.ult2=second->ult;
             key.prim=rdp->primColor; key.env=rdp->envColor;
+            if (tokenPair) { key.uls0=tile->uls; key.ult0=tile->ult; }
         }
     }
     if (tile->fmt == G_IM_FMT_CI) {
@@ -713,13 +770,14 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
     /* Still inspect all texel bytes on every binding: pause backgrounds,
      * animated textures and either input of a ground blend may change in RAM. */
     u32 hash = 0;
-    if (!sourceStride || sourceStride == rowBytes) hash = ps2_texture_hash(src, rowBytes*h, hash);
-    else for (int y = 0; y < h; y++) hash = ps2_texture_hash(src+y*sourceStride, rowBytes, hash);
+    if (!sourceStride || sourceStride == rowBytes) hash = ps2_texture_hash(src, rowBytes*sourceHeight, hash);
+    else for (int y = 0; y < sourceHeight; y++) hash = ps2_texture_hash(src+y*sourceStride, rowBytes, hash);
     if (pathPair) {
         if (!key.stride2 || key.stride2 == rowBytes) hash = ps2_texture_hash(secondSrc, rowBytes*h, hash);
         else for (int y = 0; y < h; y++) hash = ps2_texture_hash(secondSrc+y*key.stride2, rowBytes, hash);
     }
     if (flamePair) for (int y=0;y<32;y++) hash=ps2_texture_hash(secondSrc+y*key.stride2,32,hash);
+    if (tokenPair) for (int y=0;y<64;y++) hash=ps2_texture_hash(secondSrc+y*key.stride2,32,hash);
     key.contentHash = hash;
     if (!s_cacheIndexReady) {
         memset(s_cacheHeads, 0xff, sizeof(s_cacheHeads));
@@ -745,6 +803,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         if (cached->valid && cached->source == key.source &&
             cached->source2 == key.source2 && cached->stride2 == key.stride2 && cached->lodFrac == key.lodFrac &&
             cached->uls2 == key.uls2 && cached->ult2 == key.ult2 &&
+            cached->uls0 == key.uls0 && cached->ult0 == key.ult0 &&
             cached->stride == key.stride && cached->width == w && cached->height == h &&
             cached->uploadWidth == uploadW && cached->uploadHeight == uploadH &&
             cached->fmt == key.fmt && cached->siz == key.siz && cached->palette == key.palette && cached->mirror == key.mirror &&
@@ -771,17 +830,18 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
     }
     u32 convertStart = ps2_gfx_profile_enter();
     if (sourceStride && sourceStride != rowBytes) {
-        for (int y = 0; y < h; y++)
+        for (int y = 0; y < sourceHeight; y++)
             memcpy(s_sourceRows + y * rowBytes, src + y * sourceStride, rowBytes);
         src = s_sourceRows;
     }
 
     /* Map RGBA16 channels while decoding them, avoiding a full RGBA scratch
      * write/read pass. The two-source path retains its combined-alpha math. */
-    const CombinerLookup* mapping = pathPair || flamePair ? NULL : combiner_lookup(rdp);
-    bool mappedRGBA16 = !pathPair && !flamePair && tile->fmt == G_IM_FMT_RGBA && tile->siz == G_IM_SIZ_16b;
-    bool mappedCompact = flamePair || (!pathPair && convert_compact_mapped(src, s_convBuf, w*h, tile, mapping));
+    const CombinerLookup* mapping = pathPair || flamePair || tokenPair ? NULL : combiner_lookup(rdp);
+    bool mappedRGBA16 = !pathPair && !flamePair && !tokenPair && tile->fmt == G_IM_FMT_RGBA && tile->siz == G_IM_SIZ_16b;
+    bool mappedCompact = flamePair || tokenPair || (!pathPair && convert_compact_mapped(src, s_convBuf, w*h, tile, mapping));
     if (flamePair) convert_flame(src,secondSrc,key.stride2,second,rdp);
+    if (tokenPair) convert_token_flame(src,secondSrc,rowBytes,key.stride2,tile,rdp);
     /* ── Format conversion ──────────────────────────────── */
     if (!mappedCompact) switch (tile->fmt) {
         case G_IM_FMT_RGBA:
@@ -1022,7 +1082,7 @@ void rdp_settilesize(u32 w0, u32 w1, RDPState* rdp) {
     t->width  = ((t->lrs >> 2) - (t->uls >> 2)) + 1;
     t->height = ((t->lrt >> 2) - (t->ult >> 2)) + 1;
     t->gsTextureLoaded = false;
-    if (ps2_combiner_flame(rdp) && tile_idx == ((rdp->textureTile+1)&7))
+    if ((ps2_combiner_flame(rdp) || ps2_combiner_token_flame(rdp)) && tile_idx == ((rdp->textureTile+1)&7))
         rdp->tile[rdp->textureTile].gsTextureLoaded = false;
 }
 
@@ -1046,7 +1106,7 @@ void rdp_loadtexture(u8 op, u32 w0, u32 w1, RDPState* rdp) {
             rdp->tile[i].gsTextureLoaded = false;
         }
     }
-    if ((ps2_combiner_path_lerp(rdp) || ps2_combiner_flame(rdp)) &&
+    if ((ps2_combiner_path_lerp(rdp) || ps2_combiner_flame(rdp) || ps2_combiner_token_flame(rdp)) &&
         rdp->tile[(rdp->textureTile + 1) & 7].tmem == tmem)
         rdp->tile[rdp->textureTile].gsTextureLoaded = false;
 }
