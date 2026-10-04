@@ -250,6 +250,7 @@ endif
 PS2_PLATFORM_SRCS := \
   src/platform/ps2/ps2_main.c \
   src/platform/ps2/ps2_boot.c \
+  src/platform/ps2/ps2_actor_overlays.c \
   $(call find_c, src/platform/ps2/libultra_stub) \
   $(call find_c, src/platform/ps2/gfx) \
   $(call find_c, src/platform/ps2/io) \
@@ -284,9 +285,22 @@ DEPS := $(OBJS:.o=.d)
 ifeq ($(PLATFORM),PS2)
 OBJS += $(BUILD_DIR)/generated/audsrv_irx.o
 OBJS += $(BUILD_DIR)/generated/freesd_irx.o
+ROM_LDFLAGS := -Wl,-T,$(BUILD_DIR)/generated/actor_overlays.ld
 ifneq ($(OOT_UPSTREAM),)
 OBJS += $(BUILD_DIR)/generated/rom_metadata.o
-ROM_LDFLAGS := -Wl,-T,$(BUILD_DIR)/generated/rom_segments.ld
+ROM_LDFLAGS += -Wl,-T,$(BUILD_DIR)/generated/rom_segments.ld
+endif
+endif
+
+# A separate test ELF exercises real Play_Init/Update/Destroy without changing
+# the game objects or using a saved player's progression.
+ifeq ($(PLATFORM),PS2)
+ifeq ($(PS2_SCENE_SMOKE),1)
+OBJS += $(BUILD_DIR)/tools/ps2_scene_smoke.o
+OBJS += $(BUILD_DIR)/tools/ps2_actor_overlay_smoke.o
+DEPS += $(BUILD_DIR)/tools/ps2_scene_smoke.d
+DEPS += $(BUILD_DIR)/tools/ps2_actor_overlay_smoke.d
+ROM_LDFLAGS += -Wl,--wrap=ConsoleLogo_Init,--wrap=GameState_Update,--wrap=GameState_Destroy,--wrap=GameState_ReqPadData
 endif
 endif
 
@@ -310,12 +324,21 @@ endif
 
 all: $(BUILD_DIR)/$(TARGET)
 
-$(BUILD_DIR)/$(TARGET): $(OBJS) Makefile
+$(BUILD_DIR)/$(TARGET): $(OBJS) Makefile $(if $(filter PS2,$(PLATFORM)),$(BUILD_DIR)/generated/actor_overlays.ld)
 	@echo "[LD] $@  ($(words $(OBJS)) objetos)"
 	@mkdir -p $(dir $@)
 	$(Q)$(LD) $(CFLAGS) $(LDSCRIPT_FLAG) $(ROM_LDFLAGS) -o $@ $(OBJS) \
 	    $(PLATFORM_LIBS) -Wl,-Map=$(BUILD_DIR)/oot.map
 	@echo "[OK] $@"
+
+$(BUILD_DIR)/generated/actor_overlays.ld $(BUILD_DIR)/generated/actor_overlays.inc &: tools/generate_ps2_actor_overlays.py include/tables/actor_table.h $(wildcard src/overlays/actors/*/*.c)
+	@python3 tools/generate_ps2_actor_overlays.py --build-dir $(BUILD_DIR)
+
+$(BUILD_DIR)/src/platform/ps2/ps2_actor_overlays.o: $(BUILD_DIR)/generated/actor_overlays.inc
+$(BUILD_DIR)/src/platform/ps2/ps2_actor_overlays.o: PLATFORM_INCLUDES += -I$(BUILD_DIR)/generated
+$(BUILD_DIR)/tools/ps2_actor_overlay_smoke.o: tools/ps2_actor_overlay_smoke.c $(BUILD_DIR)/generated/actor_overlays.inc
+	@echo "[CC PS2 TEST] $<"
+	$(Q)$(CC) $(CFLAGS) -Iinclude -Isrc -I$(BUILD_DIR)/generated $(PLATFORM_INCLUDES) $(DEPFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/%.o: %.c
 	@echo "[CC] $<"

@@ -1,5 +1,8 @@
 #include "libc64/math64.h"
 #include "libu64/overlay.h"
+#if PLATFORM_PS2
+#include "ps2/ps2_actor_overlays.h"
+#endif
 #include "array_count.h"
 #include "fault.h"
 #include "gfx.h"
@@ -2341,6 +2344,9 @@ void Actor_InitContext(PlayState* play, ActorContext* actorCtx, ActorEntry* play
     bzero(actorCtx, sizeof(ActorContext));
 
     ActorOverlayTable_Init();
+#if PLATFORM_PS2
+    ps2_actor_overlays_new_scene();
+#endif
     Matrix_MtxFCopy(&play->billboardMtxF, &gIdentityMtxF);
     Matrix_MtxFCopy(&play->viewProjectionMtxF, &gIdentityMtxF);
 
@@ -3196,6 +3202,10 @@ Actor* Actor_Spawn(ActorContext* actorCtx, PlayState* play, s16 actorId, f32 pos
     }
 
     if (overlayEntry->vramStart == NULL) {
+#if PLATFORM_PS2
+        ps2_actor_overlay_load(actorId, overlayEntry->numLoaded,
+                               overlayEntry->allocType & ACTOROVL_ALLOC_PERSISTENT);
+#endif
         ACTOR_DEBUG_PRINTF(T("オーバーレイではありません\n", "Not an overlay\n"));
 
         profile = overlayEntry->profile;
@@ -3412,6 +3422,10 @@ Actor* Actor_Delete(ActorContext* actorCtx, Actor* actor, PlayState* play) {
     ZELDA_ARENA_FREE(actor, "../z_actor.c", 7242);
 
     if (overlayEntry->vramStart == NULL) {
+#if PLATFORM_PS2
+        ASSERT(overlayEntry->numLoaded > 0, "resident actor clients > 0", "../z_actor.c", 7252);
+        overlayEntry->numLoaded--;
+#endif
         ACTOR_DEBUG_PRINTF(T("オーバーレイではありません\n", "Not an overlay\n"));
     } else {
         ASSERT(overlayEntry->loadedRamAddr != NULL, "actor_dlftbl->allocp != NULL", "../z_actor.c", 7251);

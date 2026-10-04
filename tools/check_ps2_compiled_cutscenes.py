@@ -135,20 +135,28 @@ for name, payload in control.items():
     assert expected[cursor:] == struct.pack('<iI', -1, 0), f'Bad script terminator: {name}'
 if args.elf:
     elf = args.elf.resolve()
-    binary = testdir / 'game-data.bin'
-    subprocess.run([prefix + 'objcopy', '--dump-section', f'.data={binary}', str(elf)], check=True)
     sections = subprocess.check_output([prefix + 'objdump', '-h', str(elf)], text=True)
-    data_base = int(re.search(r'^\s*\d+\s+\.data\s+[0-9a-fA-F]+\s+([0-9a-fA-F]+)',
-                             sections, re.MULTILINE)[1], 16)
+    data_sections = []
+    for section, size, address in re.findall(
+            r'^\s*\d+\s+(\.data|\.ps2_actor_data)\s+([0-9a-fA-F]+)\s+([0-9a-fA-F]+)',
+            sections, re.MULTILINE):
+        binary = testdir / ('game' + section + '.bin')
+        subprocess.run([prefix + 'objcopy', '--dump-section', f'{section}={binary}', str(elf)], check=True)
+        payload = binary.read_bytes()
+        assert len(payload) == int(size, 16)
+        data_sections.append((int(address, 16), payload))
     symbols = subprocess.check_output([prefix + 'nm', '-S', str(elf)], text=True)
-    linked = binary.read_bytes()
     checked = 0
     for address, size, name in re.findall(r'^([0-9a-fA-F]+) ([0-9a-fA-F]+) [Dd] (gDekuTree\w+Cs)$',
                                          symbols, re.MULTILINE):
         if name not in native:
             continue
-        start, length = int(address, 16) - data_base, int(size, 16)
-        assert 0 <= start <= start + length <= len(linked)
+        absolute, length = int(address, 16), int(size, 16)
+        matches = [(base, payload) for base, payload in data_sections
+                   if base <= absolute <= absolute + length <= base + len(payload)]
+        assert len(matches) == 1, f'Cutscene outside initialized data: {name}'
+        data_base, linked = matches[0]
+        start = absolute - data_base
         assert linked[start:start + length] == native[name], f'Stale linked cutscene: {name}'
         checked += 1
     assert checked == 4, f'Missing Deku scripts in game ELF: {checked}'

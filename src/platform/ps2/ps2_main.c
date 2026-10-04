@@ -48,6 +48,7 @@
 #include <stdio.h>
 
 #include "ps2_init.h"
+#include "ps2/ps2_actor_overlays.h"
 #include "ps2_types.h"
 #include "rdp_to_gs.h"
 
@@ -246,6 +247,10 @@ int main(int argc, char* argv[]) {
     printf("  OoT PS2 Port - Build " __DATE__ "\n");
     printf("=================================\n\n");
 
+    if (!ps2_actor_overlays_init()) {
+        printf("[OoT-PS2] Cannot preserve initial actor overlay data\n");
+        return 1;
+    }
     ps2_init_all();
 
     /* Cede el control a la cadena de arranque real del juego

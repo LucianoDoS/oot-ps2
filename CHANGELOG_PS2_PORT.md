@@ -4,6 +4,76 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Recursos del mapa completo y reinicio de actores — 2026-10-04
+
+- El perfil `full` del conversor incluye todos los segmentos de datos
+  descritos por la extracción local: 101 escenas, 388 salas y 378 bancos
+  de objetos, en 1013 segmentos. Añade 780 al perfil anterior, conservando
+  sus direcciones VROM. Excluye el código N64 y sus overlays: el juego
+  utiliza sus funciones compiladas para el EE.
+- `check_ps2_full_assets.py` contrasta 49560 recursos de 67 tipos con las
+  estructuras nativas y los bytes originales. Comprueba dependencias de
+  objetos, salas, colisiones, rutas, headers alternos, esqueletos, animaciones,
+  fondos JPEG y punteros. Los 233 segmentos anteriores y toda la imagen
+  fuera de los nuevos rangos permanecen idénticos, incluido el audio.
+  El control con la imagen previa, un manifiesto completo y checksum válido
+  falla por un comando de escena sin convertir. Registros:
+  `build/PS2/check-full-assets.log` y `build/PS2/check-full-before-control.log`.
+- El diagnóstico enlaza un ELF independiente que llama a `Play_Init`,
+  `GameState_Update` y `Play_Destroy`. Usa guardados de prueba y entradas
+  reales; desactiva el mando y ambas memory cards. Selecciona la entrada
+  base y la hora que corresponden a cada variante de escena y edad; no
+  trata las entradas de noche o ruinas del mercado como entradas base.
+- La primera pasada descubre errores TLB de cámara en la segunda carga
+  de Barinade. Su variable estática de cámara seguía apuntando a una cámara
+  del estado anterior. Los overlays compilados del EE permanecían residentes
+  y no restablecían sus datos, a diferencia de una carga de overlay N64.
+- El linker agrupa `.data` y `.bss` de los 426 overlays de actores residentes.
+  Antes del arranque se conservan 391600 bytes de datos inicializados; la
+  carga de un overlay sin clientes los restaura y borra su BSS. Mantiene el
+  estado compartido mientras quedan actores vivos y respeta los overlays
+  persistentes hasta cambiar de escena. Los actores internos no se reinician.
+  Se corrige también el decremento de clientes al destruir actores residentes.
+- La prueba EE modifica los datos y BSS reales de los 426 bancos antes de
+  crear actores. Verifica la restauración de 390115 bytes de datos y 141375
+  bytes de BSS, la conservación mientras hay clientes y la conservación de
+  overlays persistentes hasta cambiar de escena. Pasa sin diferencias.
+- La repetición de la sala de Barinade, con niño y adulto, pasa 60 fotogramas
+  por entrada sin las excepciones de cámara. Registros:
+  `build/PS2/pcsx2-scenes-before-actor-reset.log` y
+  `build/PS2/pcsx2-barinade-reset-pass.log`.
+- La pasada completa posterior supera 191 casos que cubren las 101 escenas,
+  usando niño/adulto y día/noche según las variantes de las entradas. Cada
+  caso completa 60 actualizaciones del estado real, sin excepciones del EE;
+  se comprueban la escena esperada y la sala cargada. No aparecen fallos de
+  textura ni vértices inválidos en las muestras gráficas del registro.
+  Registros: `build/PS2/pcsx2-all-scenes-native-pass.log`,
+  `build/PS2/check-scene-sweep-results.log` y `build/PS2/scene-sweep-results.json`.
+  El juego normal enlaza 722 objetos; el diagnóstico añade sus wrappers
+  sólo a su propio ELF. Las cuatro cinemáticas del árbol siguen coincidiendo
+  con sus campos nativos en el ELF final:
+  `build/PS2/check-full-game-actor-cutscenes.log`.
+  Sigue pendiente la progresión completa y la comprobación en una PS2 real.
+
+## Máscara del brillo de la ficha de Skulltula — 2026-10-04
+
+- La ficha emplea ruido I8 de 32×32 con desplazamiento como TEXEL0 y una
+  silueta I8 de 32×64 como TEXEL1. La ruta genérica usaba la primera fuente
+  para ambas, convirtiendo el ruido en un rectángulo visible. La nueva ruta
+  reconoce ese combinador y sus tiles, combina ambas fuentes y conserva las
+  coordenadas y el clamp de la silueta. La caché incluye los desplazamientos,
+  tintes, factor LOD y bytes de ambas texturas.
+- La prueba EE compara 40960 canales con un evaluador independiente,
+  cinco desplazamientos y constantes, 3785 texels transparentes, límites,
+  fuentes con padding, coordenadas inmediatas/preparadas e invalidación al
+  cambiar la máscara. Pasan también el suelo, inventario, aura del título,
+  audio y los 120 fotogramas del diagnóstico completo. Registro:
+  `build/PS2/pcsx2-token-flame-pass.log`.
+- El usuario confirma que la ficha ya se ve recortada. La versión visible
+  incorpora los datos completos; se conservan la imagen de 233 segmentos,
+  el ELF confirmado del interior del árbol y una copia de la memory card
+  tomada después del guardado, antes de este reinicio.
+
 ## Interior del Árbol Deku y preparación de vértices — 2026-10-04
 
 - Tras confirmar el diálogo exterior, el registro muestra la entrada

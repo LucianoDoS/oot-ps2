@@ -4,57 +4,46 @@ Port de **The Legend of Zelda: Ocarina of Time** a PlayStation 2, basado en la d
 
 ## Estado comprobado — 4 de octubre de 2026
 
-**Port parcial, todavía con fallos visuales y de rendimiento.**
-Se puede iniciar una partida y salir al bosque; falta validar el juego completo.
-El usuario confirma audio correcto y mejora de rendimiento, pero todavía hay
-caídas según la cámara. El objetivo de 20 FPS estables sigue pendiente. Las
-tres salas de Kokiri tienen sus recursos convertidos; el usuario confirma
-que ya puede acceder a la zona que antes se bloqueaba. También confirma el
-retrato del equipamiento y los objetos sobre las manos al recibirlos; se
-corrige el evento del último fotograma que los omitía en PS2. La captura del
-framebuffer real mejora la apertura y transparencia del inventario, y el aura
-del título ya se mueve al combinar sus dos texturas; el usuario confirma ambas
-correcciones. La última optimización reduce el coste de generar las tablas
-de materiales y comprobar texturas en RAM. En una vista exterior de 12–14 FPS,
-el usuario confirma 14–16 tras la primera mejora; la versión que también
-optimiza los materiales de dos ciclos conserva ese rendimiento y la imagen
-y el audio correctos. La siguiente versión elimina subidas repetidas de
-las texturas del brillo de las hadas por un factor que no altera los píxeles
-del evaluador actual; pasa las pruebas EE y el usuario confirma 16–18 FPS
-en el mismo punto, con Navi, suelo, sombras y audio correctos.
-La siguiente mejora acelera las copias de paquetes del EE; pasa el
-diagnóstico completo. El usuario confirma 18–20 FPS quieto y unos 16–18
-caminando, con algunas caídas según la vista; imagen y audio correctos.
-Ahora el usuario confirma 20 FPS quieto en casi todas las vistas, con caídas
-al caminar. Se corrige el orden de bytes y medios words de las cinemáticas
-compiladas, que ocultaba el final de las cámaras del Árbol Deku al parser
-del EE. Pasan la comparación de las cuatro secuencias reales, una muestra
-de comandos y el diagnóstico completo. El usuario confirma que ya puede entrar
-a la zona exterior del Árbol Deku y que los diálogos continúan. Tras detectar
-el siguiente bloqueo en la entrada a la mazmorra, se convierten también sus
-doce salas, las dos de Gohma y seis dependencias de objetos. Pasan las
-comprobaciones de 852 recursos nuevos y de conservación de la imagen previa.
-El usuario confirma que carga la sala principal y puede moverse; el registro
-muestra también la carga de la sala 1. La preparación de datos por material
-genera los mismos puntos gráficos con menor coste en el EE; el usuario confirma
-FPS más estables. A su petición, se aplaza la optimización adicional y se
-prioriza ampliar la conversión al resto del juego.
-Sigue pendiente
-completar la validación del resto del juego y estabilizar los 20 FPS.
-El registro detallado
-de las correcciones y pruebas está en [CHANGELOG_PS2_PORT.md](CHANGELOG_PS2_PORT.md).
-Ya se compila la capa PS2 con ps2dev real
-(GCC 15.2.0), y el ejecutable de diagnóstico arranca en PCSX2 2.8.0.
-Las pruebas en el EE verifican matrices, trigonometría, formato de texto,
-secciones críticas, colas de mensajes y temporizadores. El renderer envía
-120 fotogramas; esto aún no constituye una validación visual del juego.
+**Port en desarrollo, con todos los recursos descritos del juego convertidos.**
+La versión actual de PCSX2 usa el perfil `full`: 101 escenas, 388 salas y
+378 bancos de objetos, dentro de 1013 segmentos de datos. El código del
+juego ya se compila para el EE; no ejecuta las instrucciones de los overlays N64.
+Esto amplía la carga al resto del mapa, pero todavía falta validar la
+progresión completa, los combates, las cinemáticas y la fidelidad visual.
 
-El juego completo ya enlaza: 721 objetos generan `build/PS2-ntsc12/oot_ps2.elf`.
-En PCSX2 completa `Play_Init` y la ejecución de diagnóstico alcanzó 900
-fotogramas del estado `Play` en la secuencia del título sin excepciones registradas.
-Esto no confirma una imagen correcta ni jugabilidad. El conversor local adapta estructuras, vértices, matrices, listas
+El usuario confirma la partida inicial, el bosque Kokiri, casas y tienda,
+la entrada exterior al Árbol Deku y el movimiento en su sala principal.
+También confirma el audio, los objetos recibidos sobre las manos, el retrato
+de equipamiento, la apertura y transparencia del inventario, el aura animada
+del título y el brillo recortado de la ficha de Skulltula dorada.
+El rendimiento llega a 20 FPS en muchas vistas; quedan caídas al caminar
+según la cámara. A petición del usuario, la optimización adicional se aplaza
+para priorizar el port del resto del juego. El logo inicial de Nintendo 64
+conserva 60 FPS, el selector 30 y el juego 20 como frecuencias objetivo.
+
+El perfil completo pasa una comparación independiente de 49560 recursos y
+67 tipos de estructuras o secuencias de bytes. Verifica dependencias, límites,
+colisiones, rutas y listas de salas. Los 233 segmentos del perfil previo y
+los bancos de audio conservan sus datos. Las texturas y JPEG conservan sus
+bytes originales. La prueba con los datos previos sin convertir falla.
+La ficha de Skulltula combina ahora sus dos texturas con su máscara de alfa;
+el diagnóstico EE pasa 40960 canales y 3785 píxeles transparentes.
+
+El diagnóstico de carga usa un ejecutable independiente, guardados de prueba,
+entradas originales, mando desactivado y una configuración sin memory cards.
+Ejercita `Play_Init`, 60 actualizaciones y `Play_Destroy` por caso. Su alcance
+es comprobar cargas y reinicios. Pasan 191 casos que cubren las 101 escenas,
+con las variantes de edad/hora de sus entradas, sin excepciones del EE.
+También pasan las pruebas de restauración de los 426 overlays de actores:
+el port conserva su código nativo y restablece los datos de una carga nueva,
+evitando que sobrevivan cámaras y otros estados de una escena anterior.
+Estas pruebas no sustituyen una partida completa.
+El registro detallado está en [CHANGELOG_PS2_PORT.md](CHANGELOG_PS2_PORT.md).
+
+El juego completo ya enlaza: 722 objetos generan `build/PS2-ntsc12/oot_ps2.elf`.
+El conversor local adapta estructuras, vértices, matrices, listas
 gráficas y cinemáticas; las texturas conservan su secuencia de bytes original.
-La conversión cubre el título, escenas de demostración, dependencias de objetos,
+La conversión completa cubre escenas, salas, dependencias de objetos,
 recursos del selector de partida y los 38 bancos de instrumentos. El perfil
 `play` incluye 233 segmentos y las 573 tablas de animación del jugador,
 además de recursos iniciales de Kokiri y la casa de Link. Los JPEG conservan
@@ -141,12 +130,12 @@ El build del juego usa la extracción local US NTSC 1.2. La procedencia de las
 fuentes, versión del SDK y hash de ROM están en [UPSTREAM.md](UPSTREAM.md).
 ROMs, recursos extraídos y salidas de compilación quedan fuera de Git.
 
-Para la prueba actual de título y recursos iniciales, después de extraerlos:
+Para generar los datos actuales del juego, después de extraerlos:
 
 ```sh
 /home/lucia/oot-ps2-tools/oot-upstream/.venv/bin/python tools/prepare_ps2_rom.py \
   --upstream /home/lucia/oot-ps2-tools/oot-upstream \
-  --profile play --output build/PS2-ntsc12/oot.z64
+  --profile full --output build/PS2-ntsc12/oot.z64
 /home/lucia/oot-ps2-tools/oot-upstream/.venv/bin/python tools/check_ps2_cutscenes.py \
   --upstream /home/lucia/oot-ps2-tools/oot-upstream
 ```
@@ -157,6 +146,27 @@ para diagnóstico; `play` aún no contiene todos los recursos de una partida com
 Incluye el bosque inicial, Bosques Perdidos, casas de los Kokiri y su tienda.
 También incluye el interior del Árbol Deku y las salas de Gohma; su progresión
 completa aún está en comprobación.
+El perfil `full` convierte todos los bancos de datos descritos por la extracción
+local, incluidos los recursos de las demás mazmorras y jefes. Los segmentos
+de código N64 quedan sin convertir porque sus funciones ya están enlazadas
+como código nativo del EE.
+
+Para repetir la prueba automática de carga de escenas:
+
+```sh
+bash tools/build_ps2_scene_smoke.sh
+```
+
+Desde PowerShell, `tools/run_ps2_scene_smoke.ps1` abre el diagnóstico oculto
+y silenciado. Usa `build/PS2-full-test` y `build/PCSX2-scene-sweep`, con ambas
+ranuras de memory card desactivadas. Comprueba su registro con:
+
+```sh
+/home/lucia/oot-ps2-tools/oot-upstream/.venv/bin/python tools/check_ps2_scene_sweep.py \
+  --log build/PS2-full-test/pcsx2-scene-sweep.log \
+  --output build/PS2/scene-sweep-results.json
+```
+
 La síntesis de audio conserva 32 kHz y el port convierte su PCM de forma continua
 a 48 kHz para audsrv; la calidad audible sigue en comprobación.
 

@@ -17,7 +17,7 @@ parser.add_argument('--upstream', type=Path, required=True)
 parser.add_argument('--output', type=Path, required=True)
 parser.add_argument('--version', default='ntsc-1.2')
 parser.add_argument('--segment', action='append', default=[])
-parser.add_argument('--profile', choices=('logo', 'title', 'play'), default='logo')
+parser.add_argument('--profile', choices=('logo', 'title', 'play', 'full'), default='logo')
 args = parser.parse_args()
 upstream = args.upstream.resolve()
 output = args.output.resolve()
@@ -78,6 +78,14 @@ profiles['play'] = profiles['title'] + [
 # Received-item models are loaded by the player at runtime, not by room
 # object lists. Convert their explicit extractor resources as well.
 profiles['play'] += [name for name in entries_by_name if name.startswith('object_gi_')]
+pools = list(base.get_resources_desc(config))
+# Native C code and overlays already come from the EE build. All remaining
+# described ROM files are data, including unused rooms and object variants.
+profiles['full'] = sorted({coll.backing_memory.name
+    for pool in pools for coll in pool.collections
+    if isinstance(coll.backing_memory, base.BaseromFileBackingMemory)
+    and coll.backing_memory.name not in ('code', 'n64dd')
+    and not coll.backing_memory.name.startswith('ovl_')})
 selected = set(args.segment or profiles[args.profile])
 if not args.segment and args.profile in ('title', 'play'):
     scene_prefixes = ['jyasinboss', 'spot17', 'hiral_demo']
@@ -110,7 +118,6 @@ extraction = extract.ExtractionContext(args.version, context,
     upstream / 'extracted' / args.version / 'baserom',
     upstream / 'build' / args.version, upstream / 'extracted' / args.version, set())
 try:
-    pools = list(base.get_resources_desc(config))
     while True:
         for index, pool in enumerate(pools):
             if any(isinstance(coll.backing_memory, base.BaseromFileBackingMemory)
@@ -144,6 +151,7 @@ if selected != captured.keys():
     raise ValueError(f'Segments not extracted: {selected - captured.keys()}')
 
 manifest = {'version': args.version, 'source_sha256': hashlib.sha256(data).hexdigest(),
+            'profile': args.profile, 'described_data_complete': selected == set(profiles['full']),
             'segments': {}, 'unconverted_segments_remain': True}
 for name, resources in captured.items():
     entry = entries_by_name[name]
@@ -204,4 +212,6 @@ output.parent.mkdir(parents=True, exist_ok=True)
 manifest['output_sha256'] = hashlib.sha256(data).hexdigest()
 output.write_bytes(data)
 output.with_suffix('.json').write_text(json.dumps(manifest, indent=2) + '\n')
-print(f'Wrote {output}: {len(data)} bytes, native segments: {", ".join(sorted(captured))}')
+print(f'Wrote {output}: {len(data)} bytes, {len(captured)} native data segments '
+      f'({sum(n.endswith("_scene") for n in captured)} scenes, '
+      f'{sum("_room_" in n for n in captured)} rooms).')
