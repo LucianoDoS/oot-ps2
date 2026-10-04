@@ -25,6 +25,12 @@ en el mismo punto, con Navi, suelo, sombras y audio correctos.
 La siguiente mejora acelera las copias de paquetes del EE; pasa el
 diagnóstico completo. El usuario confirma 18–20 FPS quieto y unos 16–18
 caminando, con algunas caídas según la vista; imagen y audio correctos.
+Ahora el usuario confirma 20 FPS quieto en casi todas las vistas, con caídas
+al caminar. Se corrige el orden de bytes y medios words de las cinemáticas
+compiladas, que ocultaba el final de las cámaras del Árbol Deku al parser
+del EE. Pasan la comparación de las cuatro secuencias reales, una muestra
+de comandos y el diagnóstico completo; queda la comprobación en la partida
+de la entrada a su zona exterior. Su interior aún no está incluido.
 Sigue pendiente
 completar la validación del resto del juego y estabilizar los 20 FPS.
 El registro detallado
@@ -95,6 +101,8 @@ bash tools/check_ps2_platform.sh
 bash tools/check_ps2_game.sh
 python3 tools/check_ps2_texture_words.py
 python3 tools/test_ps2_soundfont_layout.py
+/home/lucia/oot-ps2-tools/oot-upstream/.venv/bin/python tools/check_ps2_compiled_cutscenes.py \
+  --elf build/PS2-ntsc12/oot_ps2.elf
 ```
 
 El diagnóstico sin ROM se genera en `build/PS2/oot_ps2_smoke.elf`.

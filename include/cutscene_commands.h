@@ -207,7 +207,7 @@
  * @note `endFrame` is not used in the implementation of the command, so its value does not matter
  */
 #define CS_START_SEQ(seqId, startFrame, endFrame, unused0, unused1, unused2, unused3, unused4, unused5, unused6, unused7) \
-    CMD_HH((seqId + 1), startFrame), CMD_HH(endFrame, unused0), \
+    CMD_BBH(0, (seqId + 1), startFrame), CMD_HH(endFrame, unused0), \
     CMD_W(unused1), CMD_W(unused2), CMD_W(unused3), CMD_W(unused4), CMD_W(unused5), \
     CMD_W(unused6), CMD_W(unused7), 0x00000000, 0x00000000, 0x00000000
 
@@ -222,7 +222,7 @@
  * @note `endFrame` is not used in the implementation of the command, so its value does not matter
  */
 #define CS_STOP_SEQ(seqId, startFrame, endFrame, unused0, unused1, unused2, unused3, unused4, unused5, unused6, unused7) \
-    CMD_HH((seqId + 1), startFrame), CMD_HH(endFrame, unused0), \
+    CMD_BBH(0, (seqId + 1), startFrame), CMD_HH(endFrame, unused0), \
     CMD_W(unused1), CMD_W(unused2), CMD_W(unused3), CMD_W(unused4), CMD_W(unused5), \
     CMD_W(unused6), CMD_W(unused7), 0x00000000, 0x00000000, 0x00000000
 

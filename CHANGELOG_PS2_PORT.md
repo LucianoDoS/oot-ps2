@@ -4,6 +4,38 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Cinemáticas compiladas del Árbol Deku — 2026-10-04
+
+- El usuario informa de un bloqueo al entrar a la zona exterior del árbol.
+  El registro deja de producir fotogramas, pero el audio sigue funcionando.
+  Esa sala de Kokiri ya está convertida; el interior de la mazmorra todavía
+  no forma parte del perfil `play`.
+- Las cinemáticas del actor del árbol se compilan desde C. Los macros de
+  comandos empaquetaban bytes y medios words como en N64; en el EE el
+  parser leía tiempos, posiciones y marcas de fin en otros campos. En
+  particular, el byte `CS_CAM_STOP` quedaba al final del word y la búsqueda
+  de cámaras podía salir de la lista.
+- Los macros PS2 colocan esos miembros en sus offsets nativos. Los words
+  completos, flotantes y punteros conservan su valor; la ruta N64 conserva
+  su orden. Inicio y parada de música usan los dos bytes reales de su
+  cabecera, en vez de un medio word que invierte el ID en el EE.
+- `check_ps2_compiled_cutscenes.py` compila las cuatro secuencias reales y
+  una muestra con cámara, actor, luz, vibración, texto, hora, transición,
+  destino y música. Sus 3448 bytes coinciden con el esquema independiente
+  del conversor de ROM; trece listas de cámara terminan dentro de sus
+  límites. También verifica los cuatro arrays del ELF final. El control
+  con los headers anteriores falla por el orden de los campos.
+- Pasa el diagnóstico EE completo de gráficos y audio y enlazan 721
+  objetos. Registros: `build/PS2/check-compiled-deku-linked.log` y
+  `build/PS2/pcsx2-deku-native-commands-pass.log`. La versión está abierta
+  para comprobar la conversación y la entrada a la zona en la partida.
+  Se conserva el ELF anterior como `oot_ps2-ee-memcpy-confirmed.elf` y una
+  copia de la memory card previa al reinicio. No se modifica la imagen de
+  recursos ni se da por validado el interior del árbol.
+- El logo de Nintendo 64 mantiene la frecuencia de su código original:
+  60 FPS, frente a 30 del selector y 20 del juego. El usuario confirma
+  ahora 20 FPS quieto en casi todas las vistas; quedan caídas al caminar.
+
 ## Copias de paquetes en el EE — 2026-10-04
 
 - El ejecutable enlazaba la copia del SDK que recorre palabras de 32 bits.
