@@ -35,6 +35,7 @@
 #include "ps2_types.h"
 #include "ps2_segment.h"
 #include "rdp_to_gs.h"
+#include "ps2_texture.h"
 #include "ps2_gfx_profile.h"
 #include "ps2_texture.h"
 
@@ -337,11 +338,15 @@ void ps2_texture_apply_tile(TileDescriptor* tile, RDPState* rdp) {
     tile->gsTexture.Filter = ((rdp->otherMode.hi >> 12) & 3) ? GS_FILTER_LINEAR : GS_FILTER_NEAREST;
 }
 
-static float texture_shift(float coordinate, u8 shift) {
+static float texture_shift_scale(u8 shift) {
     /* Four-bit RDP shift: exact powers of two, with no per-corner division. */
     static const float scale[16] = {1,0.5f,0.25f,0.125f,0.0625f,0.03125f,
         0.015625f,0.0078125f,0.00390625f,0.001953125f,0.0009765625f,32,16,8,4,2};
-    return coordinate * scale[shift & 15];
+    return scale[shift & 15];
+}
+
+static float texture_shift(float coordinate, u8 shift) {
+    return coordinate * texture_shift_scale(shift);
 }
 
 static float texture_extent_reciprocal(unsigned extent) {
@@ -367,6 +372,40 @@ void ps2_texture_build_vertex(const TileDescriptor* tile, const RSPState* rsp,
     output->rgbaq = rgba_to_RGBAQ(color, q);
     output->stq = vertex_to_STQ(u * q * invWidth, v * q * invHeight);
     output->xyz2 = vertex_to_XYZ2(rdp->gs, vertex->sx, vertex->sy, depth);
+}
+
+void ps2_texture_prepare_vertices(PS2TextureVertexSetup* setup,
+    const TileDescriptor* tile, const RSPState* rsp, const RDPState* rdp) {
+    setup->texScaleS = rsp->texScaleS;
+    setup->texScaleT = rsp->texScaleT;
+    setup->shiftS = texture_shift_scale(tile->shifts);
+    setup->shiftT = texture_shift_scale(tile->shiftt);
+    setup->offsetS = tile->uls / 4.0f;
+    setup->offsetT = tile->ult / 4.0f;
+    setup->invWidth = tile->gsInvWidth ? tile->gsInvWidth :
+        texture_extent_reciprocal(tile->gsTexture.Width ? tile->gsTexture.Width : tile->width);
+    setup->invHeight = tile->gsInvHeight ? tile->gsInvHeight :
+        texture_extent_reciprocal(tile->gsTexture.Height ? tile->gsTexture.Height : tile->height);
+    setup->gs = rdp->gs;
+    setup->perspective = !!(rdp->otherMode.hi & (1u << 19));
+    setup->dynamicAlpha = ps2_combiner_dynamic_alpha(rdp);
+    setup->primAlpha = rdp->primColor & 255;
+}
+
+void ps2_texture_build_vertex_prepared(const PS2TextureVertexSetup* setup,
+    const RSPVertex* vertex, u32 color, u32 depth, GSPRIMSTQPOINT* output) {
+    /* Preserve the reference path's floating-point operation order. Folding
+     * texScale, tile shift and inverse extent together changes EE rounding. */
+    float u = (vertex->tc_s * setup->texScaleS / 32.0f) * setup->shiftS - setup->offsetS;
+    float v = (vertex->tc_t * setup->texScaleT / 32.0f) * setup->shiftT - setup->offsetT;
+    float q = setup->perspective && vertex->cw > 0.0001f ? 1.0f / vertex->cw : 1.0f;
+    if (setup->dynamicAlpha) {
+        u32 alpha = (color >> 24) * setup->primAlpha / 255;
+        color = (color & 0xffffffu) | (alpha << 24);
+    }
+    output->rgbaq = rgba_to_RGBAQ(color, q);
+    output->stq = vertex_to_STQ(u * q * setup->invWidth, v * q * setup->invHeight);
+    output->xyz2 = vertex_to_XYZ2(setup->gs, vertex->sx, vertex->sy, depth);
 }
 
 void ps2_texture_end_frame(RDPState* rdp) {

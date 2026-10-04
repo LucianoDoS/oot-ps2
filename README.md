@@ -29,8 +29,16 @@ Ahora el usuario confirma 20 FPS quieto en casi todas las vistas, con caídas
 al caminar. Se corrige el orden de bytes y medios words de las cinemáticas
 compiladas, que ocultaba el final de las cámaras del Árbol Deku al parser
 del EE. Pasan la comparación de las cuatro secuencias reales, una muestra
-de comandos y el diagnóstico completo; queda la comprobación en la partida
-de la entrada a su zona exterior. Su interior aún no está incluido.
+de comandos y el diagnóstico completo. El usuario confirma que ya puede entrar
+a la zona exterior del Árbol Deku y que los diálogos continúan. Tras detectar
+el siguiente bloqueo en la entrada a la mazmorra, se convierten también sus
+doce salas, las dos de Gohma y seis dependencias de objetos. Pasan las
+comprobaciones de 852 recursos nuevos y de conservación de la imagen previa.
+El usuario confirma que carga la sala principal y puede moverse; el registro
+muestra también la carga de la sala 1. La preparación de datos por material
+genera los mismos puntos gráficos con menor coste en el EE; el usuario confirma
+FPS más estables. A su petición, se aplaza la optimización adicional y se
+prioriza ampliar la conversión al resto del juego.
 Sigue pendiente
 completar la validación del resto del juego y estabilizar los 20 FPS.
 El registro detallado
@@ -48,7 +56,7 @@ Esto no confirma una imagen correcta ni jugabilidad. El conversor local adapta e
 gráficas y cinemáticas; las texturas conservan su secuencia de bytes original.
 La conversión cubre el título, escenas de demostración, dependencias de objetos,
 recursos del selector de partida y los 38 bancos de instrumentos. El perfil
-`play` incluye 211 segmentos y las 573 tablas de animación del jugador,
+`play` incluye 233 segmentos y las 573 tablas de animación del jugador,
 además de recursos iniciales de Kokiri y la casa de Link. Los JPEG conservan
 sus bytes comprimidos; PS2 ahora decodifica los fondos de 320×240 a RGBA16 con
 libjpeg y reconoce los rectángulos S2DEX, dibujados en tiras mediante la caché.
@@ -147,6 +155,8 @@ Desde PowerShell, `tools/run_ps2_game.ps1` inicia el ELF. El log queda en
 `build/PS2-ntsc12/pcsx2-game.log`. Los perfiles `title` y `play` son selecciones
 para diagnóstico; `play` aún no contiene todos los recursos de una partida completa.
 Incluye el bosque inicial, Bosques Perdidos, casas de los Kokiri y su tienda.
+También incluye el interior del Árbol Deku y las salas de Gohma; su progresión
+completa aún está en comprobación.
 La síntesis de audio conserva 32 kHz y el port convierte su PCM de forma continua
 a 48 kHz para audsrv; la calidad audible sigue en comprobación.
 

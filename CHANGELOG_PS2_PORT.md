@@ -4,12 +4,52 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Interior del Árbol Deku y preparación de vértices — 2026-10-04
+
+- Tras confirmar el diálogo exterior, el registro muestra la entrada
+  `0000`, escena 0. Su lista de salas se leía en el orden N64 y producía
+  una carga desde VROM cero y fallos TLB. El perfil `play` ahora convierte
+  `ydan`, sus doce salas, `ydan_boss` y sus dos salas. También añade seis
+  dependencias de objetos descubiertas por las listas originales. La
+  imagen pasa de 211 a 233 segmentos; conserva todos sus rangos VROM.
+- `check_ps2_deku_rooms.py` contrasta 852 recursos nuevos con los campos
+  de las estructuras C: comandos, listas de salas y actores, colisiones,
+  geometría, esqueletos y animaciones. Comprueba límites y dependencias;
+  las texturas conservan sus bytes. Toda la imagen fuera de los 22 nuevos
+  segmentos permanece idéntica, incluidos los 211 anteriores y los bancos
+  de audio. El control con los datos previos falla por vértices en orden
+  incorrecto. También pasa de nuevo la comprobación de las salas de Kokiri.
+- La preparación de puntos gráficos calculaba por vértice las dimensiones
+  GS, shifts y offsets del tile, y consultaba otra vez el alfa del material.
+  Ahora prepara esos valores una vez después de subir la textura, con un
+  contexto independiente para cada capa del suelo. Se invalida ante todo
+  comando de estado. Conserva el orden de las operaciones flotantes,
+  perspectiva, profundidad, niebla y el orden de los pases.
+- En el EE, 27648 puntos coinciden en sus 48 bytes con la ruta inmediata:
+  dieciséis shifts, escalas positivas/negativas/cero, tamaños de respaldo,
+  perspectiva alrededor de su umbral y alfa dinámico. En 32768 puntos,
+  la preparación pasa de 12089934 a 6663507 ciclos. Esto mide esa operación,
+  no el porcentaje de mejora de FPS del juego.
+- Pasa el diagnóstico completo, incluidos los puntos y paquetes del suelo,
+  recortes, decals, fundidos, audio, inventario, aura y 120 fotogramas. El
+  ELF conserva las cuatro cinemáticas corregidas. Registros:
+  `build/PS2/check-deku-rooms.log`, `build/PS2/pcsx2-point-setup-pass.log`
+  y `build/PS2/check-deku-and-point-linked.log`. El usuario confirma que
+  carga la sala principal y puede moverse, y que los FPS son más estables.
+  El registro confirma escena 0, salas 0 y 1, y más de 3300 fotogramas sin
+  las excepciones de la imagen anterior. Se conservan la
+  imagen anterior en `oot-before-deku.z64`/`.json` y el ELF confirmado del
+  diálogo exterior en `oot_ps2-deku-cinematics-confirmed.elf`. La progresión
+  completa de la mazmorra y los 20 FPS estables siguen pendientes. A petición
+  del usuario, la optimización adicional se aplaza para priorizar la
+  conversión del resto del juego.
+
 ## Cinemáticas compiladas del Árbol Deku — 2026-10-04
 
 - El usuario informa de un bloqueo al entrar a la zona exterior del árbol.
   El registro deja de producir fotogramas, pero el audio sigue funcionando.
-  Esa sala de Kokiri ya está convertida; el interior de la mazmorra todavía
-  no forma parte del perfil `play`.
+  Esa sala de Kokiri ya estaba convertida. La conversión del interior se
+  añadió después, como se detalla en el apartado anterior.
 - Las cinemáticas del actor del árbol se compilan desde C. Los macros de
   comandos empaquetaban bytes y medios words como en N64; en el EE el
   parser leía tiempos, posiciones y marcas de fin en otros campos. En
@@ -27,11 +67,13 @@ trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
   con los headers anteriores falla por el orden de los campos.
 - Pasa el diagnóstico EE completo de gráficos y audio y enlazan 721
   objetos. Registros: `build/PS2/check-compiled-deku-linked.log` y
-  `build/PS2/pcsx2-deku-native-commands-pass.log`. La versión está abierta
-  para comprobar la conversación y la entrada a la zona en la partida.
+  `build/PS2/pcsx2-deku-native-commands-pass.log`. El usuario confirma que
+  puede entrar a la zona exterior y que los diálogos continúan. Se conserva
+  esa sesión en `build/PS2/pcsx2-deku-cinematics-game-confirmed.log` y su ELF
+  en `build/PS2-ntsc12/oot_ps2-deku-cinematics-confirmed.elf`.
   Se conserva el ELF anterior como `oot_ps2-ee-memcpy-confirmed.elf` y una
   copia de la memory card previa al reinicio. No se modifica la imagen de
-  recursos ni se da por validado el interior del árbol.
+  recursos en esa primera corrección.
 - El logo de Nintendo 64 mantiene la frecuencia de su código original:
   60 FPS, frente a 30 del selector y 20 del juego. El usuario confirma
   ahora 20 FPS quieto en casi todas las vistas; quedan caídas al caminar.

@@ -329,6 +329,8 @@ static bool s_runGround;
 static u64 s_runGroundVertexValid;
 static GSPRIMSTQPOINT s_runGroundVertices[RSP_VTX_CACHE_SIZE];
 static u32 s_runGroundColors[RSP_VTX_CACHE_SIZE], s_runGroundDepths[RSP_VTX_CACHE_SIZE];
+static PS2TextureVertexSetup s_runPointSetup[2];
+static bool s_runPointSetupValid[2];
 #ifdef PS2_RENDERER_SMOKE_CAPTURE
 static bool s_captureEnabled;
 static unsigned s_captureCount;
@@ -369,7 +371,16 @@ static void prepare_texture_point(const TileDescriptor* tile, const RSPState* rs
         *output=cached[slot]; rdp->stats.textureVertexHits++; return;
     }
     u32 start = ps2_gfx_profile_enter();
-    ps2_texture_build_vertex(tile,rsp,rdp,vertex,color,depth,output);
+    if (s_triangleRun) {
+        unsigned layer = second ? 1 : 0;
+        if (!s_runPointSetupValid[layer]) {
+            ps2_texture_prepare_vertices(&s_runPointSetup[layer], tile, rsp, rdp);
+            s_runPointSetupValid[layer] = true;
+        }
+        ps2_texture_build_vertex_prepared(&s_runPointSetup[layer], vertex, color, depth, output);
+    } else {
+        ps2_texture_build_vertex(tile,rsp,rdp,vertex,color,depth,output);
+    }
     if (fog) ps2_fog_apply_xyz(&output->xyz2,vertex->cz/vertex->cw,rsp);
     ps2_gfx_profile_leave(GFX_PROFILE_POINT,start);
     rdp->stats.textureVertexBuilds++;
@@ -404,6 +415,7 @@ bool f3dex2_batch_begin(RSPState* rsp, RDPState* rdp) {
     s_runVertexValid = 0;
     s_runGroundVertexValid = 0;
     s_runColorValid = 0;
+    s_runPointSetupValid[0] = s_runPointSetupValid[1] = false;
     s_runColored = !rsp->texEnabled;
     s_runRgbShade = rsp->texEnabled && ps2_combiner_uses_shade(rdp,false);
     s_runAlphaShade = rsp->texEnabled && ps2_combiner_uses_shade(rdp,true);

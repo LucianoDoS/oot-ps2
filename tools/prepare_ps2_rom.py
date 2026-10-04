@@ -85,7 +85,8 @@ if not args.segment and args.profile in ('title', 'play'):
         # These are reachable directly from the initial forest. Raw N64
         # room-list pointers cannot be consumed by native EE scene code.
         scene_prefixes += ['spot04', 'spot10', 'kokiri_home', 'kokiri_home3',
-                           'kokiri_home4', 'kokiri_home5', 'kokiri_shop']
+                           'kokiri_home4', 'kokiri_home5', 'kokiri_shop',
+                           'ydan', 'ydan_boss']
     for scene_prefix in scene_prefixes:
         selected.update(name for name in entries_by_name
                         if name == scene_prefix + '_scene' or name.startswith(scene_prefix + '_room_'))
