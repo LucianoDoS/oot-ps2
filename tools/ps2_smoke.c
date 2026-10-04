@@ -16,6 +16,7 @@ uintptr_t gSegments[16];
 extern int ps2_os_smoke(void);
 extern int ps2_queue_heap_smoke(void);
 extern int ps2_math_smoke(void);
+extern int ps2_animation_smoke(void);
 extern int ps2_printf_smoke(void);
 extern int ps2_rom_smoke(void);
 extern int ps2_rom_threads_smoke(void);
@@ -49,6 +50,7 @@ int main(void) {
     printf("[PS2 SMOKE] Entered main\n");
     fflush(stdout);
     SifInitRpc(0);
+    if (ps2_animation_smoke()) { fflush(stdout); SleepThread(); return 1; }
     if (ps2_jpeg_smoke()) {
         fflush(stdout);
         SleepThread();

@@ -1424,6 +1424,25 @@ void LinkAnimation_EndLoop(SkelAnime* skelAnime) {
 s32 Animation_OnFrameImpl(SkelAnime* skelAnime, f32 frame, f32 updateRate) {
     f32 updateSpeed = skelAnime->playSpeed * updateRate;
     f32 prevFrame = skelAnime->curFrame - updateSpeed;
+#if PLATFORM_PS2
+    /* The EE truncates the adjusted 2/3 * 1.5 speed. Reconstructing
+     * current as (current - speed) + speed loses a ULP at frame 21,
+     * so the last-frame get-item event never fires before Once stops.
+     * Compare the actual current frame and previous interval endpoint.
+     * Keep the original wrap and frame-zero conventions. */
+    f32 currentFrame = skelAnime->curFrame;
+    if (prevFrame < 0.0f) {
+        prevFrame += skelAnime->animLength;
+        currentFrame += skelAnime->animLength;
+    } else if (prevFrame >= skelAnime->animLength) {
+        prevFrame -= skelAnime->animLength;
+        currentFrame -= skelAnime->animLength;
+    }
+    if (frame == 0.0f && updateSpeed > 0.0f) frame = skelAnime->animLength;
+    if (updateSpeed > 0.0f) return currentFrame >= frame && prevFrame < frame;
+    if (updateSpeed < 0.0f) return currentFrame <= frame && prevFrame > frame;
+    return false;
+#else
     f32 curFrameDiff;
     f32 prevFrameDiff;
 
@@ -1443,6 +1462,7 @@ s32 Animation_OnFrameImpl(SkelAnime* skelAnime, f32 frame, f32 updateRate) {
         return true;
     }
     return false;
+#endif
 }
 
 /**

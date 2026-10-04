@@ -19,7 +19,7 @@ for src in tools/ps2_pcm_ring_smoke.c tools/ps2_audio_driver_smoke.c src/platfor
     "$cc" "${flags[@]}" -c "$src" -o "$obj"
     objects+=("$obj")
 done
-for src in tools/ps2_prerender_smoke.c src/code/PreRender.c tools/ps2_sched_smoke.c src/code/sched.c tools/ps2_font_smoke.c src/code/z_kanfont.c src/code/kanji_tex.c tools/ps2_queue_heap_smoke.c src/libc64/__osMalloc_gc.c tools/ps2_math_smoke.c tools/ps2_printf_smoke.c tools/ps2_rom_smoke.c tools/ps2_audio_heap_smoke.c tools/ps2_audio_envelope_smoke.c tools/ps2_audio_notes_smoke.c src/audio/internal/playback.c src/audio/internal/seqplayer.c src/audio/internal/data.c src/audio/internal/effects.c src/code/sys_matrix.c src/audio/internal/heap.c src/libultra/gu/mtxutil.c src/libultra/gu/sins.c src/libultra/gu/coss.c; do
+for src in tools/ps2_prerender_smoke.c src/code/PreRender.c tools/ps2_sched_smoke.c src/code/sched.c tools/ps2_font_smoke.c src/code/z_kanfont.c src/code/kanji_tex.c tools/ps2_queue_heap_smoke.c src/libc64/__osMalloc_gc.c tools/ps2_math_smoke.c tools/ps2_animation_smoke.c src/code/z_skelanime.c tools/ps2_printf_smoke.c tools/ps2_rom_smoke.c tools/ps2_audio_heap_smoke.c tools/ps2_audio_envelope_smoke.c tools/ps2_audio_notes_smoke.c src/audio/internal/playback.c src/audio/internal/seqplayer.c src/audio/internal/data.c src/audio/internal/effects.c src/code/sys_matrix.c src/audio/internal/heap.c src/libultra/gu/mtxutil.c src/libultra/gu/sins.c src/libultra/gu/coss.c; do
     obj="build/PS2/smoke/$(basename "${src%.c}").o"
     "$cc" -Iinclude -Iinclude/libc "${flags[@]}" -D_LANGUAGE_C=1 -DF3DEX_GBI_2 -DNON_MATCHING=1 \
         -ffunction-sections -fdata-sections -DPLATFORM_N64=0 -DPLATFORM_GC=0 -DPLATFORM_IQUE=0 \

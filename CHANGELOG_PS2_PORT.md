@@ -6,6 +6,30 @@ trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
 ## Modelos recibidos y retrato de equipamiento — 2026-10-04
 
+- El usuario confirma el retrato de equipamiento, aunque conserva su
+  resolución original de 64×112. Los objetos seguían ausentes: convertir
+  sus recursos era necesario, pero no corregía el evento que los activa.
+- El diagnóstico registra la carga de la rupia terminada (`queue=1`),
+  mientras `draw=0` permanece al acabar la animación de 22 fotogramas.
+  `Animation_OnFrameImpl` reconstruía el fotograma actual mediante
+  `(current - speed) + speed`. Con la velocidad ajustada 2/3 y tasa 1.5,
+  el redondeo EE pierde precisión justo en el último fotograma, 21, y
+  omite el evento. Se comparan los extremos del intervalo con el fotograma
+  actual real, manteniendo la convención original de vuelta y fotograma 0.
+  El código N64 queda intacto. Referencia del redondeo predeterminado:
+  [configuración de PCSX2](https://github.com/PCSX2/pcsx2/blob/master/pcsx2/Pcsx2Config.cpp).
+- La prueba del predicado real en EE falla exactamente en ese caso con
+  el código anterior (`pcsx2-animation-before-item-fix.log`) y pasa los
+  102401 casos tras corregirlo: velocidades positivas/negativas, fracciones,
+  distintas tasas y vueltas. También pasan audio, gráficos, retrato y
+  120 fotogramas en `build/PS2/pcsx2-item-animation-pass.log`.
+- En juego se registra `draw=110`, carga completada y referencia entre
+  las manos al recibir la rupia. El usuario confirma: «Sí, aparece».
+  Se conservan `pcsx2-item-frame-21-not-shown.log` y
+  `pcsx2-item-animation-confirmed.log`; se retiran las trazas repetidas y
+  quedan únicamente dos registros por recepción, carga y aparición.
+  Siguiente revisión solicitada: corrupción al abrir la pausa, transparencia
+  del inventario y aura animada del título.
 - El usuario confirma que las texturas de Link y el acceso a la nueva sala
   funcionan. Señala modelos ausentes al recibir la espada y otros objetos,
   y una imagen corrupta en el lugar del retrato de Link del equipamiento.
@@ -46,8 +70,8 @@ trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
   se bloquea al intentar enviar el segundo dibujo.
 - Juego enlazado con 719 objetos. ELF y datos instalados con SHA256 idéntico
   a los archivos verificados. El usuario guarda la partida antes de reiniciar.
-  Se abre la versión nueva; pendiente confirmación visual del equipamiento
-  y de un objeto recibido. Los respaldos `oot_ps2-before-item-portrait.elf`
+  Se abre la versión nueva; las confirmaciones posteriores del equipamiento
+  y de un objeto recibido están descritas arriba. Los respaldos `oot_ps2-before-item-portrait.elf`
   y `oot-before-item-models.z64/json` quedan en `build/PS2-ntsc12`.
   La sesión real ya completa tres lecturas del retrato, sigue respondiendo
   y mantiene PCM sin retrasos ni descartes. La caché dispone de 1760 KiB

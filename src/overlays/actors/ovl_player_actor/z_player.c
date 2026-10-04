@@ -42,6 +42,9 @@
 #include "z_en_item00.h"
 #include "z_lib.h"
 #include "zelda_arena.h"
+#if PLATFORM_PS2
+extern int printf(const char*, ...);
+#endif
 #include "audio.h"
 #include "debug.h"
 #include "effect.h"
@@ -2239,6 +2242,11 @@ void func_808332F4(Player* this, PlayState* play) {
     GetItemEntry* giEntry = &sGetItemTable[this->getItemId - 1];
 
     this->unk_862 = ABS(giEntry->gi);
+#if PLATFORM_PS2
+    printf("[PS2 GET ITEM SHOW] get=%d tableDraw=%d draw=%d animationFrame=%.3f length=%.1f speed=%.3f\n",
+           this->getItemId, giEntry->gi, this->unk_862, this->skelAnime.curFrame,
+           this->skelAnime.animLength, this->skelAnime.playSpeed);
+#endif
 }
 
 /**
@@ -5948,6 +5956,10 @@ void func_8083AE40(Player* this, s16 objectId) {
         osCreateMesgQueue(&this->giObjectLoadQueue, &this->giObjectLoadMsg, 1);
 
         size = gObjectTable[objectId].vromEnd - gObjectTable[objectId].vromStart;
+#if PLATFORM_PS2
+        printf("[PS2 GET ITEM LOAD] object=%d vrom=%08x size=%u segment=%p queue=%p\n",
+               objectId, gObjectTable[objectId].vromStart, size, this->giObjectSegment, &this->giObjectLoadQueue);
+#endif
 
         LOG_HEX("size", size, "../z_player.c", 9090);
         ASSERT(size <= 1024 * 8, "size <= 1024 * 8", "../z_player.c", 9091);

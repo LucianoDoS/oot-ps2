@@ -9,7 +9,11 @@ Se puede iniciar una partida y salir al bosque; falta validar el juego completo.
 El usuario confirma audio correcto y mejora de rendimiento, pero todavía hay
 caídas según la cámara. El objetivo de 20 FPS estables sigue pendiente. Las
 tres salas de Kokiri tienen sus recursos convertidos; el usuario confirma
-que ya puede acceder a la zona que antes se bloqueaba. El registro detallado
+que ya puede acceder a la zona que antes se bloqueaba. También confirma el
+retrato del equipamiento y los objetos sobre las manos al recibirlos; se
+corrige el evento del último fotograma que los omitía en PS2. Sigue pendiente
+revisar la apertura y transparencia del inventario y el aura del título.
+El registro detallado
 de las correcciones y pruebas está en [CHANGELOG_PS2_PORT.md](CHANGELOG_PS2_PORT.md).
 Ya se compila la capa PS2 con ps2dev real
 (GCC 15.2.0), y el ejecutable de diagnóstico arranca en PCSX2 2.8.0.
@@ -44,7 +48,7 @@ perspectiva de las texturas; las pruebas EE verifican coordenadas, shifts,
 paletas CI4 e IA4. Añadida generación esférica/lineal de coordenadas con LookAt.
 El framebuffer de color usa RGB5551 CT16S, conservando profundidad de 24 bits
 después de inicializar gsKit. CT16 cambiaba automáticamente la profundidad a 16 bits.
-La caché comparte hasta 1792 KiB de VRAM entre 512 entradas según su tamaño y reutiliza
+La caché comparte hasta 1760 KiB de VRAM entre 512 entradas según su tamaño y reutiliza
 tablas del combinador; valida los bytes de fuentes y paletas para detectar
 texturas modificadas en RAM. Reutiliza variantes de fotogramas anteriores,
 conservando las usadas juntas en el fotograma actual. Todavía faltan fidelidad
