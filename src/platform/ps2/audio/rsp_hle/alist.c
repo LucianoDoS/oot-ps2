@@ -552,18 +552,27 @@ static void envmix_nead_cached(int16_t *in, int16_t *dl, int16_t *dr,
         uint16_t *env_steps, const int16_t *xors)
 {
     while (count != 0) {
-        const uint32_t left = env_values[0], right = env_values[1], wet = env_values[2];
+        const int32_t left = env_values[0], right = env_values[1], wet = env_values[2];
         const int16_t xl = xors[0], xr = xors[1], xwl = xors[2], xwr = xors[3];
-        for (size_t i = 0; i < 8; ++i) {
-            int16_t l = (((int32_t)in[i^S] * left) >> 16) ^ xl;
-            int16_t r = (((int32_t)in[i^S] * right) >> 16) ^ xr;
-            int16_t l2 = (((int32_t)l * wet) >> 16) ^ xwl;
-            int16_t r2 = (((int32_t)r * wet) >> 16) ^ xwr;
-            dl[i^S] = clamp_s16(dl[i^S] + l);
-            dr[i^S] = clamp_s16(dr[i^S] + r);
-            wl[i^S] = clamp_s16(wl[i^S] + l2);
-            wr[i^S] = clamp_s16(wr[i^S] + r2);
-        }
+        /* s16 * u16 fits a signed 32-bit product. Arithmetic and logical
+         * shifts have the same low 16 bits, retained by the original s16
+         * cast after XOR. Signed arithmetic avoids redundant unsigned-word
+         * extensions on the EE. Keep all four reads/calculations before
+         * each lane's ordered writes, including aliases between buffers. */
+#define ENVMIX_LANE(i) do { \
+            const int32_t input = in[(i)^S]; \
+            const int16_t l = ((input * left) >> 16) ^ xl; \
+            const int16_t r = ((input * right) >> 16) ^ xr; \
+            const int16_t l2 = (((int32_t)l * wet) >> 16) ^ xwl; \
+            const int16_t r2 = (((int32_t)r * wet) >> 16) ^ xwr; \
+            dl[(i)^S] = clamp_s16(dl[(i)^S] + l); \
+            dr[(i)^S] = clamp_s16(dr[(i)^S] + r); \
+            wl[(i)^S] = clamp_s16(wl[(i)^S] + l2); \
+            wr[(i)^S] = clamp_s16(wr[(i)^S] + r2); \
+        } while (0)
+        ENVMIX_LANE(0); ENVMIX_LANE(1); ENVMIX_LANE(2); ENVMIX_LANE(3);
+        ENVMIX_LANE(4); ENVMIX_LANE(5); ENVMIX_LANE(6); ENVMIX_LANE(7);
+#undef ENVMIX_LANE
         env_values[0] += env_steps[0];
         env_values[1] += env_steps[1];
         env_values[2] += env_steps[2];

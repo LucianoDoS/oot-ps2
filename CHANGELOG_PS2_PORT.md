@@ -4,6 +4,46 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Mezcla NEAD y ciclo final de materiales — 2026-10-03
+
+- El usuario confirma 18 FPS quieto y 16 caminando en la misma vista de
+  vallas y plantas, conservando imagen y audio correctos. El nuevo perfil
+  mide unos 30–31 ms de traducción descontando DSP, con 7–10 ms de DSP
+  intercalados y otras interrupciones todavía incluidas. Las tablas de
+  material cuestan 1,5–2 ms; ENVMIX_NEAD cuesta 1,3 ms por tarea de audio.
+  Captura: `build/PS2/pcsx2-channel-kernels-kokiri-profile.log`.
+- La mezcla NEAD usa productos con signo de 32 bits: s16 × u16 cabe en
+  ese rango y conserva los 16 bits retenidos por la conversión anterior.
+  Se despliegan las ocho muestras de cada grupo, manteniendo el orden de
+  lecturas, escrituras, saturación, XOR y rampas, también con alias entre
+  los búferes. Los controles solapados conservan la ruta anterior.
+- El builder de tablas omite el segundo ciclo cuando todos los canales
+  evaluados sólo copian su valor del primer ciclo, ya limitado a 0–255.
+  RGB sigue incluyendo el alfa intermedio; cualquier otra ecuación
+  conserva ambos ciclos. No se cambian las constantes ni las claves de
+  caché ni se omiten comprobaciones de texturas modificadas en RAM.
+- Pruebas EE/GS completas: 53248 casos de mezcla, incluidos búferes largos
+  y solapados; 20 materiales y 2880 máscaras parciales comparados con la
+  referencia escalar para todos los valores de texel; 1408 pasadas con
+  ciclo final omitido y 1046 conservadas. Pasan RGBA16, LRU, RESAMPLE,
+  FILTER, iluminación, recorte, diálogo y 120 fotogramas sin diferencias.
+  Registro: `build/PS2/pcsx2-envmix-identity-pass.log`.
+- Micropruebas comparables con la versión anterior: mezcla
+  20159461→15479007 ciclos (23 % menos), caché de tablas por canal
+  11978894→9004768 (25 %). Son mejoras de trabajos aislados y no una
+  predicción de FPS. Juego enlazado con 718 objetos, instalado con SHA256
+  idéntico al ELF nuevo y abierto sin los perfiles optativos. Pendiente
+  comparación del rendimiento del juego. La ventana responde y el primer
+  minuto de producción PCM no pierde bloques ni registra retrasos.
+  Respaldo:
+  `build/PS2-ntsc12/oot_ps2-before-signed-envmix.elf`.
+- Al final de la sesión anterior se registran accesos inválidos en la
+  carga de objetos de escena y en Actor_Spawn. El usuario confirma que
+  entró a una zona todavía no preparada y pide dejarla para después de
+  optimizar los FPS. Se conserva el registro completo en
+  `build/PS2/pcsx2-channel-kernels-end-session.log`; ampliar la conversión
+  de recursos de esa zona sigue pendiente.
+
 ## Perfil de la vista lenta de Kokiri — 2026-10-03
 
 - El usuario confirma que desaparecieron las letras sobre la pared de la
@@ -49,7 +89,8 @@ trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 - Juego reconstruido con 718 objetos, instalado y abierto sin los perfiles
   optativos. El ELF instalado coincide por SHA256 con el recién enlazado;
   el arranque produce PCM sin bloques perdidos y la ventana responde.
-  Pendiente comparación de FPS, imagen y audio en la misma vista de Kokiri.
+  Comparación del usuario en la misma vista: 18 FPS quieto y 16 caminando,
+  con imagen y audio correctos. Todavía no son 20 FPS estables.
   Respaldo de la versión anterior:
   `build/PS2-ntsc12/oot_ps2-before-channel-kernels.elf`.
 

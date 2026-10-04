@@ -2,6 +2,8 @@
 #include <string.h>
 #include "ps2_texture.h"
 #include "ps2_gfx_profile.h"
+extern unsigned ps2_combiner_test_folded_passes;
+extern unsigned ps2_combiner_test_retained_passes;
 
 #define CHECK(expr) do { if (!(expr)) { \
     printf("[PS2 COMBINER CHANNEL TEST] FAIL line=%u: %s\n", (unsigned)__LINE__, #expr); return -1; \
@@ -49,6 +51,8 @@ static int packed_matches(const RDPState* material, const u8 values[4][256]) {
 }
 
 int ps2_combiner_channel_smoke(void) {
+    unsigned foldedBefore = ps2_combiner_test_folded_passes;
+    unsigned retainedBefore = ps2_combiner_test_retained_passes;
     const u8 shadeRgb[4] = {1,15,4,7}, shadeAlpha[4] = {1,7,4,7};
     const u8 envAlpha[4] = {1,7,5,7}, dynamicAlpha[4] = {1,7,3,7};
     const u8 passRgb[4] = {0,15,4,7}, passAlpha[4] = {7,7,7,0};
@@ -160,8 +164,12 @@ int ps2_combiner_channel_smoke(void) {
     u32 cachedCycles = ps2_gfx_cycles()-start;
     CHECK(fullChecksum == cachedChecksum);
     CHECK(generatedChannels < 32u*7u*2u);
+    CHECK(ps2_combiner_test_folded_passes > foldedBefore);
+    CHECK(ps2_combiner_test_retained_passes > retainedBefore);
     printf("[PS2 COMBINER CHANNEL TEST] PASS: fixtures=%u partialChecks=%u masks, scalar, packed RGBA16 and LRU self-donor\n",count,checks);
     printf("[PS2 COMBINER CHANNEL BENCH] fullCycles=%u cachedCycles=%u generatedChannels=%u/%u checksum=%u\n",
         (unsigned)fullCycles,(unsigned)cachedCycles,generatedChannels,32u*7u*4u,(unsigned)cachedChecksum);
+    printf("[PS2 COMBINER IDENTITY TEST] foldedPasses=%u retainedPasses=%u failures=0\n",
+        ps2_combiner_test_folded_passes-foldedBefore, ps2_combiner_test_retained_passes-retainedBefore);
     return 0;
 }

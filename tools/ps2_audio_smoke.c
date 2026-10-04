@@ -76,10 +76,10 @@ static __attribute__((noinline)) void envmix_reference(struct hle_t* hle, bool s
 static int envmix_smoke(void) {
     static struct hle_t actualHle,referenceHle;
     uint32_t random=0x47cb9081;
-    const unsigned counts[]={0,1,7,8,9,16,31,32,63,64};
-    unsigned failures=0;
+    const unsigned counts[]={0,1,7,8,9,16,31,32,63,64,128,256,400};
+    unsigned failures=0,cases=0;
     for (unsigned fixture=0;fixture<512;fixture++) {
-        for (unsigned c=0;c<10;c++) for (unsigned alias=0;alias<8;alias++) {
+        for (unsigned c=0;c<sizeof(counts)/sizeof(counts[0]);c++) for (unsigned alias=0;alias<8;alias++) {
             uint16_t offsets[5]={0x100,0x400,0x600,0x800,0xa00};
             uint16_t av[3],rv[3],as[3],rs[3]; int16_t ax[4],rx[4];
             for (unsigned i=0;i<sizeof(actualHle.alist_buffer)/2;i++) {
@@ -112,9 +112,10 @@ static int envmix_smoke(void) {
                 if (!failures) printf("[PS2 ENVMIX TEST] first mismatch fixture=%u count=%u alias=%u\n",fixture,counts[c],alias);
                 failures++;
             }
+            cases++;
         }
     }
-    printf("[PS2 ENVMIX TEST] 40960 cases: gain ramps, saturation, XOR, swap and aliases failures=%u\n",failures);
+    printf("[PS2 ENVMIX TEST] %u cases: gain ramps, saturation, XOR, swap and aliases failures=%u\n",cases,failures);
     memset(actualHle.alist_buffer,0,sizeof(actualHle.alist_buffer));
     for (unsigned i=0;i<256;i++) ((int16_t*)(actualHle.alist_buffer+0x100))[i]=(i%13-6)*4096;
     memcpy(referenceHle.alist_buffer,actualHle.alist_buffer,sizeof(actualHle.alist_buffer));

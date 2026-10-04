@@ -448,6 +448,16 @@ void ps2_combiner_vertex_color(const RDPState* rdp, const u8 shade[4], u8 output
 static int lookup_value(u16 source, int value, const u8 combined[4]) {
     return source < 256 ? source : source == 256 ? value : combined[source - 257];
 }
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+unsigned ps2_combiner_test_folded_passes;
+unsigned ps2_combiner_test_retained_passes;
+#endif
+static bool lookup_copies_combined(const LookupEquation* equation, unsigned component) {
+    unsigned previous = 257u + component;
+    return equation->operation == 1 ? equation->source[3] == previous :
+        equation->operation == 2 && equation->source[0] == previous &&
+        equation->source[1] == 0 && equation->source[3] == 0;
+}
 void ps2_combiner_build_lookup_channels(const RDPState* rdp, u8 values[4][256], unsigned channelMask) {
     channelMask &= 15u;
     if (!channelMask) return;
@@ -494,9 +504,25 @@ void ps2_combiner_build_lookup_channels(const RDPState* rdp, u8 values[4][256], 
             equation->operation = equation->source[0] == equation->source[1] || equation->source[2] == 0 ? 1 :
                                   equation->source[2] == 255 ? 2 : 0;
         }
+        int evaluatedCycles = cycles;
+        if (cycles == 2) {
+            bool copiesCombined = true;
+            for (int component = firstComponent; component < 4; component++)
+                if ((evaluated & (1u << component)) &&
+                    !lookup_copies_combined(&equations[1][component], component)) copiesCombined = false;
+            /* The first cycle has already clamped each channel to 0..255.
+             * A final identity cannot change its value, even when RGB uses
+             * that first cycle's alpha. Only fold when every evaluated
+             * channel is an identity; other equations retain both cycles. */
+            if (copiesCombined) evaluatedCycles = 1;
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+            if (copiesCombined) ps2_combiner_test_folded_passes++;
+            else ps2_combiner_test_retained_passes++;
+#endif
+        }
         for (int value = 0; value < 256; value++) {
             u8 combined[4] = {0};
-            for (int cycle = 0; cycle < cycles; cycle++) {
+            for (int cycle = 0; cycle < evaluatedCycles; cycle++) {
                 u8 next[4] = {0};
                 for (int component = firstComponent; component < 4; component++) {
                     if (!(evaluated & (1u << component))) continue;
