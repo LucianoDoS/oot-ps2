@@ -17,6 +17,7 @@ extern void ps2_prerender_mutate(void);
 extern int ps2_prerender_failures(void);
 extern int ps2_lighting_smoke(void);
 extern int ps2_combiner_channel_smoke(void);
+extern int ps2_glow_dependency_smoke(void);
 extern int ps2_ground_run_smoke(void);
 extern int ps2_clip_projection_smoke(void);
 extern int ps2_texture_window_smoke(void);
@@ -454,6 +455,7 @@ int ps2_renderer_smoke(void) {
     rdp_setothermode(0, 0, &g_rdpState);
 #ifdef PS2_RENDERER_SMOKE_CAPTURE
     failures+=texture_descriptor_lifetimes();
+    failures+=ps2_glow_dependency_smoke();
     failures+=ps2_clip_projection_smoke();
 #endif
     static const u8 mirroredTexels[] = {

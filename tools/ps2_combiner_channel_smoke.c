@@ -86,6 +86,9 @@ int ps2_combiner_channel_smoke(void) {
     const u8 previousAlphaRgb[4]={0,5,7,3}, previousAlphaAlpha[4]={0,5,0,3};
     encode(&materials[count++],1,quadraticRgb,quadraticAlpha,previousAlphaRgb,previousAlphaAlpha);
     encode(&materials[count++],1,negativeRgb,negativeAlpha,previousAlphaRgb,previousAlphaAlpha);
+    const u8 glowRgb0[4]={2,1,12,1}, glowAlpha0[4]={2,1,5,1};
+    const u8 glowRgb1[4]={3,5,0,5}, glowAlpha1[4]={0,7,3,7};
+    encode(&materials[count++],1,glowRgb0,glowAlpha0,glowRgb1,glowAlpha1);
     const u8 alphaToRgb[4] = {1,15,7,7};
     static RDPState propagated;
     encode(&propagated, 1, mixedRgb, mixedAlpha, alphaToRgb, passAlpha);
@@ -195,5 +198,49 @@ int ps2_combiner_channel_smoke(void) {
     }
     printf("[PS2 COMBINER TWO CYCLE BENCH] cycles=%u checksum=%u\n",
         (unsigned)(ps2_gfx_cycles()-start),(unsigned)twoCycleChecksum);
+    return 0;
+}
+
+/* Run after the descriptor-pressure test, which requires an empty texture
+ * cache. LUT-only checks above do not allocate textures or GS VRAM. */
+int ps2_glow_dependency_smoke(void) {
+    /* Actual gGlowCircleSmallDL material: the generic one-input path's
+     * TEXEL1-TEXEL0 is exactly zero. ENV_ALPHA must not invalidate RGB or
+     * alpha, but a tint change or a changed source byte still must upload. */
+    static RDPState glow;
+    static u8 glowSource[2048] __attribute__((aligned(16))), glowPixels[8192];
+    static u8 reference[4][256], cached[4][256];
+    const u8 glowRgb0[4]={2,1,12,1}, glowAlpha0[4]={2,1,5,1};
+    const u8 glowRgb1[4]={3,5,0,5}, glowAlpha1[4]={0,7,3,7};
+    encode(&glow,1,glowRgb0,glowAlpha0,glowRgb1,glowAlpha1);
+    glow.gs=g_rdpState.gs; glow.primColor=0xffffffffu; glow.envColor=0xe5005a00u;
+    u32 usedPrim,usedEnv;
+    ps2_combiner_constants(&glow,&usedPrim,&usedEnv);
+    CHECK((usedEnv&255u)==0 && (usedPrim&255u)==255u);
+    CHECK(!ps2_combiner_texture_lerp(&glow) && !ps2_combiner_path_lerp(&glow));
+    for (unsigned i=0;i<sizeof(glowSource);i++) glowSource[i]=(i*37u+11u)&255u;
+    TileDescriptor* glowTile=&glow.tile[0];
+    *glowTile=(TileDescriptor){.fmt=G_IM_FMT_I,.siz=G_IM_SIZ_8b,.width=32,.height=64,
+        .masks=5,.maskt=6,.addr=glowSource};
+    ps2_texture_upload(glowTile,&glow);
+    CHECK(glowTile->gsTextureLoaded);
+    memcpy(glowPixels,glowTile->gsTexture.Mem,sizeof(glowPixels));
+    u32 glowUploads=glow.stats.textureUploads, glowVram=glowTile->gsTexture.Vram;
+    for (unsigned alpha=1;alpha<256;alpha++) {
+        rdp_setenvcolor(0,0xe5005a00u|alpha,&glow);
+        ps2_texture_upload(glowTile,&glow);
+        CHECK(glow.stats.textureUploads==glowUploads && glowTile->gsTexture.Vram==glowVram);
+        CHECK(!memcmp(glowPixels,glowTile->gsTexture.Mem,sizeof(glowPixels)));
+        scalar_reference(&glow,reference);
+        ps2_texture_test_combiner_lookup(&glow,cached);
+        CHECK(!memcmp(cached,reference,sizeof(cached)));
+    }
+    rdp_setenvcolor(0,0xe6005affu,&glow);
+    ps2_texture_upload(glowTile,&glow);
+    CHECK(glow.stats.textureUploads==glowUploads+1);
+    glowSource[1000]^=1; glowTile->gsTextureLoaded=false;
+    ps2_texture_upload(glowTile,&glow);
+    CHECK(glow.stats.textureUploads==glowUploads+2);
+    printf("[PS2 GLOW DEPENDENCY TEST] PASS: 255 alpha changes reuse pixels/VRAM; tint and RAM mutations upload\n");
     return 0;
 }

@@ -228,6 +228,14 @@ typedef struct {
     u8 sources[2][2][4];
 } CombinerAnalysis;
 
+static bool lookup_difference_cancels(const CombinerAnalysis* analysis, const u8 sources[4]) {
+    if (sources[0]==sources[1]) return true;
+    /* The generic texture evaluator currently aliases TEXEL1 to TEXEL0.
+     * The explicit two-source cutout path must retain their dependencies. */
+    return !analysis->pathLerp && (sources[0]==1 || sources[0]==2) &&
+           (sources[1]==1 || sources[1]==2);
+}
+
 /* Decode once per material, not once per vertex/channel. Key the words
  * directly so callers which restore an RDPState also invalidate the analysis. */
 static const CombinerAnalysis* combiner_analysis(const RDPState* rdp) {
@@ -239,14 +247,17 @@ static const CombinerAnalysis* combiner_analysis(const RDPState* rdp) {
     memset(&cache, 0, sizeof(cache));
     cache.w0 = rdp->combiner.w0; cache.w1 = rdp->combiner.w1;
     cache.type = type; cache.blend = blend; cache.valid = true;
+    cache.pathLerp = type == 1 && cache.w0 == 0xfc262a04u && cache.w1 == 0x1f5893f8u;
     int cycles = type == 1 ? 2 : 1;
     for (int cycle = 0; cycle < cycles; cycle++) for (int alpha = 0; alpha < 2; alpha++) {
         u8* sources = cache.sources[cycle][alpha];
         combiner_sources(rdp, cycle, alpha, sources);
+        bool cancels=lookup_difference_cancels(&cache,sources);
         for (int slot = 0; slot < 4; slot++) {
             u8 source = sources[slot];
             if (source == 4 || (!alpha && slot == 2 && source == 11)) cache.shade[alpha] = true;
             if (type == 2 || (!cache.w0 && !cache.w1)) continue;
+            if (cancels && slot<3) continue;
             u32 mask = alpha ? 255u : 0xffffff00u;
             if (!alpha && slot == 2 && source >= 7 && source <= 12) {
                 if (source == 10) cache.primMask |= 255;
@@ -260,19 +271,19 @@ static const CombinerAnalysis* combiner_analysis(const RDPState* rdp) {
     const u8 expected[2][2][4] = {{{2,1,12,1},{7,7,7,6}},{{0,15,4,7},{7,7,7,0}}};
     cache.textureLerp = type == 1 && !blend && !memcmp(cache.sources, expected, sizeof(expected));
     if (cache.textureLerp) cache.envMask &= ~255u;
-    cache.pathLerp = type == 1 && cache.w0 == 0xfc262a04u && cache.w1 == 0x1f5893f8u;
     const u8* alpha = cache.sources[0][1];
     cache.dynamicAlpha = type == 0 && (alpha[0] == 1 || alpha[0] == 2) &&
         alpha[1] == 7 && alpha[2] == 3 && alpha[3] == 7 && cache.sources[0][0][2] != 10;
     /* Each output channel may depend on an earlier cycle's channel or alpha.
-     * Keep conservative unions of constant inputs, including factors that
-     * might cancel algebraically, so reusing a LUT never drops a dependency. */
+     * Keep conservative unions, except for an exactly zero (A-B). Constants
+     * in its factor cannot affect the current evaluator's texture output. */
     if (type != 2 && (cache.w0 || cache.w1)) {
         for (int cycle = 0; cycle < cycles; cycle++) {
             u32 nextPrim[4] = {0}, nextEnv[4] = {0};
             for (int component = 0; component < 4; component++) {
                 const u8* selectors = cache.sources[cycle][component == 3];
-                for (int slot = 0; slot < 4; slot++) {
+                bool cancels=lookup_difference_cancels(&cache,selectors);
+                for (int slot = cancels?3:0; slot < 4; slot++) {
                     unsigned source = selectors[slot];
                     if (component != 3 && slot == 2 && source >= 7 && source <= 12) {
                         if (source == 7) {

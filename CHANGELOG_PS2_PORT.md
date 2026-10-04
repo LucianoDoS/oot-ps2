@@ -4,6 +4,35 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Dependencias del brillo de las hadas — 2026-10-04
+
+- El perfil del exterior muestra hasta veinte conversiones y subidas de
+  texturas I8 de 32×64 por fotograma, con los mismos colores RGB y distinto
+  ENV_ALPHA. Son las dos mitades del brillo de las hadas. En el evaluador
+  genérico actual, TEXEL1 usa TEXEL0, por lo que su diferencia en ese
+  material es exactamente cero y el factor ENV_ALPHA no cambia sus píxeles.
+- El análisis de dependencias excluye los términos de un producto con
+  diferencia cero, tanto de la clave de textura como de las tablas por
+  canal. La ruta explícita de dos fuentes para caminos conserva sus
+  dependencias; el aura del título conserva su clave completa. Las
+  ecuaciones de color, alfa y el comportamiento de los vértices se mantienen.
+- La prueba EE compara los 256 valores de 26 materiales, nueve cambios
+  de constantes y dieciséis máscaras parciales (3744 combinaciones).
+  Una textura real del material de brillo conserva sus 8192 bytes y su
+  dirección VRAM durante 255 cambios de alfa, sin subirla de nuevo.
+  Cambiar el tinte o un byte de la fuente provoca una nueva subida.
+- Pasa el diagnóstico completo, incluido el fence de descriptores, audio,
+  suelo, transparencias, aura y 120 fotogramas. Registro:
+  `build/PS2/pcsx2-glow-dependency-pass.log`. El control con el combinador
+  anterior falla al comprobar la reutilización en el primer cambio de alfa:
+  `build/PS2/pcsx2-glow-dependency-before-control.log`.
+- El juego enlaza 720 objetos. En el mismo punto exterior de 14–16 FPS,
+  el usuario confirma 16–18 FPS y Navi, suelo, sombras y audio correctos.
+  El registro conserva sólo 3–4 subidas por fotograma en esa vista y
+  desaparecen las veinte subidas del brillo. El objetivo de 20 FPS
+  estables sigue pendiente. Se conserva la versión
+  anterior en `build/PS2-ntsc12/oot_ps2-ground-reuse-confirmed.elf`.
+
 ## Reutilización de las dos capas del suelo — 2026-10-04
 
 - Los materiales del suelo mantienen un pase base y otro de mezcla por

@@ -18,7 +18,11 @@ correcciones. La última optimización reduce el coste de generar las tablas
 de materiales y comprobar texturas en RAM. En una vista exterior de 12–14 FPS,
 el usuario confirma 14–16 tras la primera mejora; la versión que también
 optimiza los materiales de dos ciclos conserva ese rendimiento y la imagen
-y el audio correctos. Sigue pendiente
+y el audio correctos. La siguiente versión elimina subidas repetidas de
+las texturas del brillo de las hadas por un factor que no altera los píxeles
+del evaluador actual; pasa las pruebas EE y el usuario confirma 16–18 FPS
+en el mismo punto, con Navi, suelo, sombras y audio correctos.
+Sigue pendiente
 completar la validación del resto del juego y estabilizar los 20 FPS.
 El registro detallado
 de las correcciones y pruebas está en [CHANGELOG_PS2_PORT.md](CHANGELOG_PS2_PORT.md).
