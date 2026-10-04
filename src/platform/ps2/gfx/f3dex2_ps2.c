@@ -325,6 +325,10 @@ static bool s_runTileBound;
 static bool s_runRgbShade, s_runAlphaShade, s_runFog;
 static u64 s_runVertexValid;
 static GSPRIMSTQPOINT s_runVertices[RSP_VTX_CACHE_SIZE];
+static bool s_runGround;
+static u64 s_runGroundVertexValid;
+static GSPRIMSTQPOINT s_runGroundVertices[RSP_VTX_CACHE_SIZE];
+static u32 s_runGroundColors[RSP_VTX_CACHE_SIZE], s_runGroundDepths[RSP_VTX_CACHE_SIZE];
 #ifdef PS2_RENDERER_SMOKE_CAPTURE
 static bool s_captureEnabled;
 static unsigned s_captureCount;
@@ -356,18 +360,23 @@ static int run_vertex_slot(const RSPState* rsp, const RSPVertex* vertex) {
 
 static void prepare_texture_point(const TileDescriptor* tile, const RSPState* rsp,
     RDPState* rdp, const RSPVertex* vertex, u32 color, u32 depth, bool fog,
-    int slot, GSPRIMSTQPOINT* output) {
+    int slot, bool second, GSPRIMSTQPOINT* output) {
     /* A triangle may itself repeat a vertex index. The earlier lookup ran
      * before any of its points were built, so retain this local check. */
-    if (slot>=0 && (s_runVertexValid & (1ull<<slot))) {
-        *output=s_runVertices[slot]; rdp->stats.textureVertexHits++; return;
+    u64* valid=second?&s_runGroundVertexValid:&s_runVertexValid;
+    GSPRIMSTQPOINT* cached=second?s_runGroundVertices:s_runVertices;
+    if (slot>=0 && (*valid & (1ull<<slot))) {
+        *output=cached[slot]; rdp->stats.textureVertexHits++; return;
     }
     u32 start = ps2_gfx_profile_enter();
     ps2_texture_build_vertex(tile,rsp,rdp,vertex,color,depth,output);
     if (fog) ps2_fog_apply_xyz(&output->xyz2,vertex->cz/vertex->cw,rsp);
     ps2_gfx_profile_leave(GFX_PROFILE_POINT,start);
     rdp->stats.textureVertexBuilds++;
-    if (slot >= 0) { s_runVertices[slot] = *output; s_runVertexValid |= 1ull << slot; }
+    if (slot >= 0) {
+        cached[slot]=*output; *valid|=1ull<<slot;
+        if (s_runGround && !second) { s_runGroundColors[slot]=color; s_runGroundDepths[slot]=depth; }
+    }
 }
 static void flush_tri2(RDPState* rdp) {
     if (!s_tri2Count) return;
@@ -385,14 +394,15 @@ static void flush_tri2(RDPState* rdp) {
 }
 
 bool f3dex2_batch_begin(RSPState* rsp, RDPState* rdp) {
-    /* The ground blend draws two ordered passes with different tiles and
-     * alpha state. Keep that material on the immediate submission path. */
-    if (rsp->texEnabled && ps2_combiner_texture_lerp(rdp)) return false;
+    /* Ground passes retain base/overlay order for EACH triangle. Reuse both
+     * sets of points within the run, but never group their GS draws. */
+    s_runGround=rsp->texEnabled && ps2_combiner_texture_lerp(rdp);
     s_triangleRun = true;
-    s_tri2Batch = true;
+    s_tri2Batch = !s_runGround;
     s_tri2Count = 0;
     s_runTileBound = false;
     s_runVertexValid = 0;
+    s_runGroundVertexValid = 0;
     s_runColorValid = 0;
     s_runColored = !rsp->texEnabled;
     s_runRgbShade = rsp->texEnabled && ps2_combiner_uses_shade(rdp,false);
@@ -405,6 +415,7 @@ void f3dex2_batch_end(RDPState* rdp) {
     flush_tri2(rdp);
     s_triangleRun = false;
     s_tri2Batch = false;
+    s_runGround = false;
 }
 
 static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
@@ -443,6 +454,7 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
             int slot=pointSlots[i]=run_vertex_slot(rsp,vertices[i]);
             if (slot>=0 && (s_runVertexValid & (1ull<<slot))) {
                 texturePoints[i]=s_runVertices[slot]; pointReady[i]=true;
+                if (s_runGround) *colors[i]=s_runGroundColors[slot];
                 rdp->stats.textureVertexHits++;
             }
         }
@@ -483,9 +495,9 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
      * El GS usa 0 = lejos y 0xFFFFFF = cerca (al revés que N64), por
      * eso se invierte. Antes se mandaba sin invertir, con lo que el
      * z-test habría descartado justo lo que tocaba dibujar. */
-    u32 z0 = pointReady[0] ? 0 : ps2_zbuffer_value(rdp, v0->sz);
-    u32 z1 = pointReady[1] ? 0 : ps2_zbuffer_value(rdp, v1->sz);
-    u32 z2 = pointReady[2] ? 0 : ps2_zbuffer_value(rdp, v2->sz);
+    u32 z0 = pointReady[0] ? (s_runGround?s_runGroundDepths[pointSlots[0]]:0) : ps2_zbuffer_value(rdp, v0->sz);
+    u32 z1 = pointReady[1] ? (s_runGround?s_runGroundDepths[pointSlots[1]]:0) : ps2_zbuffer_value(rdp, v1->sz);
+    u32 z2 = pointReady[2] ? (s_runGround?s_runGroundDepths[pointSlots[2]]:0) : ps2_zbuffer_value(rdp, v2->sz);
     if (decal) {
         u32 depthsDecal[3] = {z0, z1, z2};
         ps2_zbuffer_decal_bias(rdp, v0, v1, v2, depthsDecal);
@@ -501,13 +513,13 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
         if (!tile->gsTextureLoaded) { rdp->stats.textureFailed++; return; }
 
         GSPRIMSTQPOINT* points=texturePoints;
-        if (!s_triangleRun || !s_runTileBound) {
+        if (!s_triangleRun || !s_runTileBound || s_runGround) {
             ps2_texture_apply_tile(tile, rdp);
             if (s_triangleRun) s_runTileBound = true;
         }
-        if (!pointReady[0]) prepare_texture_point(tile,rsp,rdp,v0,(u32)c0,z0,fog,pointSlots[0],&points[0]);
-        if (!pointReady[1]) prepare_texture_point(tile,rsp,rdp,v1,(u32)c1,z1,fog,pointSlots[1],&points[1]);
-        if (!pointReady[2]) prepare_texture_point(tile,rsp,rdp,v2,(u32)c2,z2,fog,pointSlots[2],&points[2]);
+        if (!pointReady[0]) prepare_texture_point(tile,rsp,rdp,v0,(u32)c0,z0,fog,pointSlots[0],false,&points[0]);
+        if (!pointReady[1]) prepare_texture_point(tile,rsp,rdp,v1,(u32)c1,z1,fog,pointSlots[1],false,&points[1]);
+        if (!pointReady[2]) prepare_texture_point(tile,rsp,rdp,v2,(u32)c2,z2,fog,pointSlots[2],false,&points[2]);
 #ifdef PS2_RENDERER_SMOKE_CAPTURE
         capture_points(points);
 #endif
@@ -526,7 +538,7 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
         /* Kokiri ground uses (TEXEL1-TEXEL0)*ENV_ALPHA+TEXEL0, then
          * SHADE. Match that opaque material using a second GS pass with
          * its own tile coordinates, and the same depth and fog factors. */
-        if (!s_triangleRun && ps2_combiner_texture_lerp(rdp) && (rdp->envColor & 255)) {
+        if ((s_triangleRun?s_runGround:ps2_combiner_texture_lerp(rdp)) && (rdp->envColor & 255)) {
             TileDescriptor* second = &rdp->tile[(rsp->texTile + 1) & 7];
             if (!second->gsTextureLoaded) ps2_texture_upload(second, rdp);
             if (second->gsTextureLoaded) {
@@ -535,8 +547,8 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
                 ps2_texture_apply_tile(second, rdp);
                 for (int i = 0; i < 3; i++) {
                     u32 color = ((u32)*colors[i] & 0xffffffu) | (alpha << 24);
-                    ps2_texture_build_vertex(second, rsp, rdp, vertices[i], color, depths[i], &points[i]);
-                    if (fog) ps2_fog_apply_xyz(&points[i].xyz2, vertices[i]->cz / vertices[i]->cw, rsp);
+                    prepare_texture_point(second,rsp,rdp,vertices[i],color,depths[i],fog,
+                                          pointSlots[i],true,&points[i]);
                 }
 #ifdef PS2_RENDERER_SMOKE_CAPTURE
                 capture_points(points);

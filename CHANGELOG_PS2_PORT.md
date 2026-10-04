@@ -4,6 +4,29 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Reutilización de las dos capas del suelo — 2026-10-04
+
+- Los materiales del suelo mantienen un pase base y otro de mezcla por
+  cada triángulo, en el mismo orden. Ahora ambas capas reutilizan sus
+  vértices compartidos durante una secuencia sin cambios de estado.
+  Se conservan los colores y la profundidad originales de la primera
+  capa para preparar la segunda. El clamp base se aplica después de cada
+  capa superpuesta; no se agrupan los pases ni se altera su orden.
+- Cada comando de estado invalida ambos conjuntos de puntos. Los
+  vértices temporales de recorte y las profundidades calculadas por
+  triángulo para decals mantienen su preparación independiente.
+- La prueba EE compara todos los puntos y el número de paquetes con
+  la ruta inmediata en ocho casos: alfa cero/parcial/opaco, niebla,
+  perspectiva, dimensiones y shifts distintos, decals, recorte,
+  índices repetidos, culling y límites entre comandos de estado.
+  Pasa sin diferencias, junto con audio, captura, aura y 120 fotogramas.
+  La prueba aislada baja de 1893328 a 1261975 ciclos; registro
+  `build/PS2/pcsx2-ground-reuse-pass.log`.
+- El usuario confirma suelo, sombras y audio correctos, pero la vista
+  pesada sigue en 14–16 FPS. El objetivo de 20 FPS estables continúa
+  pendiente; se conserva el ejecutable anterior como
+  `build/PS2-ntsc12/oot_ps2-material-mmi-confirmed.elf`.
+
 ## Tablas de materiales y comprobación de texturas — 2026-10-04
 
 - Se retoma la optimización del exterior antes de ampliar la zona del

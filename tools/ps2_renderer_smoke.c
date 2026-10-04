@@ -17,6 +17,7 @@ extern void ps2_prerender_mutate(void);
 extern int ps2_prerender_failures(void);
 extern int ps2_lighting_smoke(void);
 extern int ps2_combiner_channel_smoke(void);
+extern int ps2_ground_run_smoke(void);
 extern int ps2_clip_projection_smoke(void);
 extern int ps2_texture_window_smoke(void);
 extern int ps2_offscreen_smoke(void);
@@ -963,11 +964,7 @@ int ps2_renderer_smoke(void) {
         g_rdpState.stats.texturePackets != beforePackets + 4) failures++;
     printf("[PS2 TRI2 TEST] failures=%d\n", failures);
     g_rspState = reflection;
-    /* Two-pass ground materials must never join a run. */
-    if (f3dex2_batch_begin(&g_rspState, &g_rdpState)) {
-        failures++;
-        f3dex2_batch_end(&g_rdpState);
-    }
+    failures+=ps2_ground_run_smoke();
     rdp_setcombine(0xfcffffff, 0xfffdf6fb, &g_rdpState);
     rdp_setprimcolor(0, 0xffffffff, &g_rdpState);
     const u32 runDL[][2] __attribute__((aligned(8))) = {
