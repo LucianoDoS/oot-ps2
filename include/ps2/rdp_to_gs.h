@@ -83,6 +83,7 @@ typedef struct {
     void*         zImage;
     u32           fbWidth;
     u32           fbFmt;
+    bool          renderTargetActive;
 
     /* Tile descriptors */
     TileDescriptor tile[MAX_TILES];
@@ -133,6 +134,13 @@ typedef struct {
         u32 stateWrites, stateReuse;
     } stats;
 } RDPState;
+
+static inline float ps2_render_scale_x(const RDPState* rdp) {
+    return rdp->gs && !rdp->renderTargetActive ? rdp->gs->Width / 320.0f : 1.0f;
+}
+static inline float ps2_render_scale_y(const RDPState* rdp) {
+    return rdp->gs && !rdp->renderTargetActive ? rdp->gs->Height / 240.0f : 1.0f;
+}
 
 /* ─────────────────────────────────────────────────────────── *
  *  RSP Vertex Cache (F3DEX2 supports 64 vertices)

@@ -97,6 +97,7 @@ ifeq ($(PLATFORM), PS2)
     -lgskit_toolkit \
     -lgskit \
     -ldmakit \
+    -ldebug \
     -laudsrv \
     -lpad \
     -lmc \

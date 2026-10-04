@@ -142,6 +142,20 @@ void KaleidoScope_DrawPlayerWork(PlayState* play) {
     Vec3s rot;
     f32 scale;
 
+#if PLATFORM_PS2
+    /* The portrait is a fixed pose. Rebuild on opening or changing equipment,
+     * rather than rendering and reading it back on every paused frame. */
+    static void* previousSegment;
+    static u16 previousEquipment;
+    static s32 previousAge;
+    u16 equipment = gSaveContext.save.info.equips.equipment;
+    if (pauseCtx->state != PAUSE_STATE_INIT && previousSegment == pauseCtx->playerSegment &&
+        previousEquipment == equipment && previousAge == gSaveContext.save.linkAge) return;
+    previousSegment = pauseCtx->playerSegment;
+    previousEquipment = equipment;
+    previousAge = gSaveContext.save.linkAge;
+#endif
+
     if (LINK_AGE_IN_YEARS == YEARS_CHILD) {
         pos.x = 2.0f;
         pos.y = -130.0f;

@@ -2,7 +2,7 @@
 
 Port de **The Legend of Zelda: Ocarina of Time** a PlayStation 2, basado en la descompilación [zeldaret/oot](https://github.com/zeldaret/oot).
 
-## Estado comprobado — 3 de octubre de 2026
+## Estado comprobado — 4 de octubre de 2026
 
 **Port parcial, todavía con fallos visuales y de rendimiento.**
 Se puede iniciar una partida y salir al bosque; falta validar el juego completo.
@@ -17,14 +17,14 @@ Las pruebas en el EE verifican matrices, trigonometría, formato de texto,
 secciones críticas, colas de mensajes y temporizadores. El renderer envía
 120 fotogramas; esto aún no constituye una validación visual del juego.
 
-El juego completo ya enlaza: 718 objetos generan `build/PS2-ntsc12/oot_ps2.elf`.
+El juego completo ya enlaza: 719 objetos generan `build/PS2-ntsc12/oot_ps2.elf`.
 En PCSX2 completa `Play_Init` y la ejecución de diagnóstico alcanzó 900
 fotogramas del estado `Play` en la secuencia del título sin excepciones registradas.
 Esto no confirma una imagen correcta ni jugabilidad. El conversor local adapta estructuras, vértices, matrices, listas
 gráficas y cinemáticas; las texturas conservan su secuencia de bytes original.
 La conversión cubre el título, escenas de demostración, dependencias de objetos,
 recursos del selector de partida y los 38 bancos de instrumentos. El perfil
-`play` incluye 141 segmentos y las 573 tablas de animación del jugador,
+`play` incluye 211 segmentos y las 573 tablas de animación del jugador,
 además de recursos iniciales de Kokiri y la casa de Link. Los JPEG conservan
 sus bytes comprimidos; PS2 ahora decodifica los fondos de 320×240 a RGBA16 con
 libjpeg y reconoce los rectángulos S2DEX, dibujados en tiras mediante la caché.

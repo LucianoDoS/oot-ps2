@@ -869,8 +869,8 @@ void f3dex2_movemem(u32 w0, u32 w1, RSPState* rsp) {
         /* El eje Y del GS crece hacia abajo igual que en N64, y el
          * vscale de N64 ya viene negativo para eso, así que se respeta
          * tal cual. */
-        float outputX = g_rdpState.gs ? g_rdpState.gs->Width / 320.0f : 1.0f;
-        float outputY = g_rdpState.gs ? g_rdpState.gs->Height / 240.0f : 1.0f;
+        float outputX = ps2_render_scale_x(&g_rdpState);
+        float outputY = ps2_render_scale_y(&g_rdpState);
         rsp->vpScaleX = sx * outputX;
         rsp->vpScaleY = -sy * outputY;
         rsp->vpTransX = tx * outputX;

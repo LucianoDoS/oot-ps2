@@ -710,10 +710,12 @@ void rdp_setscissor(u32 w0, u32 w1, RDPState* rdp) {
     u16 y1 = rdp->scissorY1 >> 2;
 
     if (rdp->gs) {
-        x0 = (u16)(x0 * rdp->gs->Width / 320);
-        y0 = (u16)(y0 * rdp->gs->Height / 240);
-        x1 = (u16)(x1 * rdp->gs->Width / 320);
-        y1 = (u16)(y1 * rdp->gs->Height / 240);
+        if (!rdp->renderTargetActive) {
+            x0 = (u16)(x0 * rdp->gs->Width / 320);
+            y0 = (u16)(y0 * rdp->gs->Height / 240);
+            x1 = (u16)(x1 * rdp->gs->Width / 320);
+            y1 = (u16)(y1 * rdp->gs->Height / 240);
+        }
         if (x1 > x0) --x1; /* GS bounds are inclusive. */
         if (y1 > y0) --y1;
         gsKit_set_scissor(rdp->gs, GS_SETREG_SCISSOR(x0, x1, y0, y1));
@@ -736,10 +738,10 @@ void rdp_fillrect(u32 w0, u32 w1, RDPState* rdp) {
     if (((rdp->otherMode.hi >> 20) & 3) == 3) {
         x1 += 1; y1 += 1; /* Fill-cycle lower-right is inclusive. */
     }
-    x0 *= rdp->gs->Width / 320.0f;
-    x1 *= rdp->gs->Width / 320.0f;
-    y0 *= rdp->gs->Height / 240.0f;
-    y1 *= rdp->gs->Height / 240.0f;
+    x0 *= ps2_render_scale_x(rdp);
+    x1 *= ps2_render_scale_x(rdp);
+    y0 *= ps2_render_scale_y(rdp);
+    y1 *= ps2_render_scale_y(rdp);
 
     /* N64 clears depth by temporarily using the depth buffer as color image.
      * Write far depth while preserving the displayed color through Cd blending. */
@@ -839,10 +841,10 @@ void rdp_texrect(u8 op, u32 w0, u32 w1, const Gfx* pc, RDPState* rdp) {
     /* TEXRECTFLIP exchanges screen axes for the texture derivatives. */
     float s1 = s0 + ((op == 0xE5) ? (y1 - y0) : (x1 - x0)) * ds;
     float t1 = t0 + ((op == 0xE5) ? (x1 - x0) : (y1 - y0)) * dt;
-    x0 *= rdp->gs->Width / 320.0f;
-    x1 *= rdp->gs->Width / 320.0f;
-    y0 *= rdp->gs->Height / 240.0f;
-    y1 *= rdp->gs->Height / 240.0f;
+    x0 *= ps2_render_scale_x(rdp);
+    x1 *= ps2_render_scale_x(rdp);
+    y0 *= ps2_render_scale_y(rdp);
+    y1 *= ps2_render_scale_y(rdp);
 
     if (op == 0xE5) {
         u64 color = GS_SETREG_RGBAQ(0x80, 0x80, 0x80, alpha, 1.0f);

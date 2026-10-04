@@ -937,6 +937,12 @@ static PreRender sPlayerPreRender;
 void* sPreRenderCvg;
 
 void KaleidoScope_SetupPlayerPreRender(PlayState* play) {
+#if PLATFORM_PS2
+    /* Player_DrawPause publishes directly to the RGBA16 portrait. GS alpha
+     * replaces N64 coverage; its VI filtering pass cannot read GS memory. */
+    R_GRAPH_TASKSET00_FLAGS |= 1;
+    return;
+#else
     Gfx* gfx;
     Gfx* gfxRef;
     void* fbuf;
@@ -960,11 +966,14 @@ void KaleidoScope_SetupPlayerPreRender(PlayState* play) {
     R_GRAPH_TASKSET00_FLAGS |= 1;
 
     CLOSE_DISPS(play->state.gfxCtx, "../z_kaleido_scope_PAL.c", 509);
+#endif
 }
 
 void KaleidoScope_ProcessPlayerPreRender(void) {
+#if !PLATFORM_PS2
     Sleep_Msec(50);
     PreRender_ApplyFilters(&sPlayerPreRender);
+#endif
     PreRender_Destroy(&sPlayerPreRender);
 }
 

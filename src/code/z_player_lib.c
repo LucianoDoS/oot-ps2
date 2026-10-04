@@ -12,6 +12,9 @@
 #include "player.h"
 #include "save.h"
 #include "skin_matrix.h"
+#if PLATFORM_PS2
+#include "ps2_offscreen.h"
+#endif
 
 #include "assets/objects/gameplay_keep/player_pause_joint_tables.h"
 #include "assets/objects/gameplay_keep/player_anim_headers.h"
@@ -1985,8 +1988,22 @@ void Player_DrawPauseImpl(PlayState* play, void* gameplayKeep, void* linkObject,
     xluRef = POLY_XLU_DISP;
     POLY_XLU_DISP++;
 
+#if PLATFORM_PS2
+    PS2RenderTarget* target = GRAPH_ALLOC(play->state.gfxCtx, sizeof(*target));
+    target->image = colorFrameBuffer;
+    target->width = width;
+    target->height = height;
+    Gfx* targetCommand = WORK_DISP++;
+    targetCommand->words.w0 = PS2_GFX_TARGET_BEGIN;
+    targetCommand->words.w1 = OS_K0_TO_PHYSICAL(target);
+#endif
     gSPDisplayList(WORK_DISP++, POLY_OPA_DISP);
     gSPDisplayList(WORK_DISP++, POLY_XLU_DISP);
+#if PLATFORM_PS2
+    targetCommand = WORK_DISP++;
+    targetCommand->words.w0 = PS2_GFX_TARGET_END;
+    targetCommand->words.w1 = 0;
+#endif
 
     gSPSegment(POLY_OPA_DISP++, 0x00, NULL);
 
@@ -2010,6 +2027,9 @@ void Player_DrawPauseImpl(PlayState* play, void* gameplayKeep, void* linkObject,
     gDPSetScissor(POLY_OPA_DISP++, G_SC_NON_INTERLACE, 0, 0, width, height);
     gSPClipRatio(POLY_OPA_DISP++, FRUSTRATIO_1);
 
+#if PLATFORM_PS2
+    gDPSetDepthImage(POLY_OPA_DISP++, depthFrameBuffer);
+#endif
     gDPSetColorImage(POLY_OPA_DISP++, G_IM_FMT_RGBA, G_IM_SIZ_16b, width, depthFrameBuffer);
     gDPSetCycleType(POLY_OPA_DISP++, G_CYC_FILL);
     gDPSetRenderMode(POLY_OPA_DISP++, G_RM_NOOP, G_RM_NOOP2);
@@ -2021,7 +2041,11 @@ void Player_DrawPauseImpl(PlayState* play, void* gameplayKeep, void* linkObject,
     gDPSetColorImage(POLY_OPA_DISP++, G_IM_FMT_RGBA, G_IM_SIZ_16b, width, colorFrameBuffer);
     gDPSetCycleType(POLY_OPA_DISP++, G_CYC_FILL);
     gDPSetRenderMode(POLY_OPA_DISP++, G_RM_NOOP, G_RM_NOOP2);
+#if PLATFORM_PS2
+    gDPSetFillColor(POLY_OPA_DISP++, 0); /* Transparent portrait background. */
+#else
     gDPSetFillColor(POLY_OPA_DISP++, (GPACK_RGBA5551(0, 0, 0, 1) << 16) | GPACK_RGBA5551(0, 0, 0, 1));
+#endif
     gDPFillRectangle(POLY_OPA_DISP++, 0, 0, width - 1, height - 1);
 
     gDPPipeSync(POLY_OPA_DISP++);
@@ -2108,6 +2132,10 @@ void Player_DrawPause(PlayState* play, u8* segment, SkelAnime* skelAnime, Vec3f*
     Player_DrawPauseImpl(play, PAUSE_PLAYER_SEGMENT_GAMEPLAY_KEEP_START(segment),
                          PAUSE_PLAYER_SEGMENT_LINK_OBJECT(segment), skelAnime, pos, rot, scale, sword, tunic, shield,
                          boots, PAUSE_EQUIP_PLAYER_WIDTH, PAUSE_EQUIP_PLAYER_HEIGHT, &eye, &at, 60.0f,
+#if PLATFORM_PS2
+                         PAUSE_PLAYER_SEGMENT_RENDER_TEXTURE(segment),
+#else
                          play->state.gfxCtx->curFrameBuffer,
+#endif
                          play->state.gfxCtx->curFrameBuffer + (PAUSE_EQUIP_PLAYER_WIDTH * PAUSE_EQUIP_PLAYER_HEIGHT));
 }

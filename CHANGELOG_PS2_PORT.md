@@ -4,6 +4,55 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Modelos recibidos y retrato de equipamiento — 2026-10-04
+
+- El usuario confirma que las texturas de Link y el acceso a la nueva sala
+  funcionan. Señala modelos ausentes al recibir la espada y otros objetos,
+  y una imagen corrupta en el lugar del retrato de Link del equipamiento.
+  Aclara después que el corazón de recuperación funciona correctamente.
+- Los objetos recibidos se cargan desde Player, sin figurar necesariamente
+  en las listas de objetos de las salas. El perfil play ahora convierte los
+  77 segmentos `object_gi_*`, usando sus rangos explícitos de extracción.
+  `check_ps2_received_items.py` verifica 214 listas gráficas, 143 grupos de
+  vértices y 57 texturas; conserva los 145 segmentos previos byte por byte.
+  La prueba con los datos anteriores falla por faltar `object_gi_key`.
+  Registros: `received-items-check.log`, `received-items-before-check.log`
+  y `kokiri-after-items-check.log`, dentro de `build/PS2`.
+- El renderer sólo seguía el puntero de color, dibujando siempre en el
+  framebuffer mostrado. Por eso el prerender de 64×112 nunca llegaba a la
+  textura del equipamiento. Se añade un destino separado CT32 con Z24,
+  reservado antes de la caché, y coordenadas a escala 1 durante ese dibujo.
+  Dos comandos nativos de la lista delimitan el retrato y restauran después
+  el framebuffer y la profundidad principales. No cambian la salida normal
+  de 640×448 ni la interpolación de texturas.
+- La lectura por VIF1 usa `ps2_screenshot` del SDK. Se publica RGBA5551 en
+  el orden de bytes que consume el decodificador, con el fondo transparente.
+  Se sustituye únicamente el proceso N64 de cobertura/VI de este retrato;
+  no se aplica el filtro CPU a un búfer que el GS no había escrito.
+  El retrato se reutiliza mientras no cambien el segmento, edad o equipo.
+- La comprobación inicial detectó que el descriptor nativo en la pila EE
+  se interpretaba como dirección segmentada; ahora usa su dirección física.
+  Otra comprobación detectó la pérdida de FINISH: el SDK reconoce y borra
+  el evento, mientras gsKit lo espera antes de enviar la siguiente cola.
+  Se envía un FINISH independiente después de la lectura para conservar
+  esa secuencia. Referencias: [lectura del SDK](https://github.com/ps2dev/ps2sdk/blob/master/ee/debug/src/screenshot.c)
+  y [envío de colas de gsKit](https://github.com/ps2dev/gsKit/blob/master/ee/gs/src/gsCore.c).
+- La prueba de GS dibuja dos imágenes distintas en el mismo destino y
+  compara sus 14336 píxeles, alfa, límites de RAM, viewport, restauración
+  de profundidad y actualización de la textura. Pasa con cero diferencias,
+  junto al resto de gráficos/audio y 120 fotogramas posteriores; registro
+  `build/PS2/pcsx2-portrait-items-pass.log`. Se conserva el ensayo sin FINISH
+  en `pcsx2-portrait-before-fence-fix.log`: completa la primera lectura y
+  se bloquea al intentar enviar el segundo dibujo.
+- Juego enlazado con 719 objetos. ELF y datos instalados con SHA256 idéntico
+  a los archivos verificados. El usuario guarda la partida antes de reiniciar.
+  Se abre la versión nueva; pendiente confirmación visual del equipamiento
+  y de un objeto recibido. Los respaldos `oot_ps2-before-item-portrait.elf`
+  y `oot-before-item-models.z64/json` quedan en `build/PS2-ntsc12`.
+  La sesión real ya completa tres lecturas del retrato, sigue respondiendo
+  y mantiene PCM sin retrasos ni descartes. La caché dispone de 1760 KiB
+  tras reservar los dos destinos de 32 KiB; conserva las 512 entradas.
+
 ## Ventanas de textura de Link y salas restantes de Kokiri — 2026-10-03
 
 - El usuario percibe otra mejora de rendimiento, con caídas al mirar a

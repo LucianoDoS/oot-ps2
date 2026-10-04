@@ -75,6 +75,9 @@ profiles['play'] = profiles['title'] + [
     'icon_item_field_static', 'do_action_static', 'map_name_static',
     'link_home_scene', 'link_home_room_0', 'spot04_scene', 'spot04_room_0',
 ]
+# Received-item models are loaded by the player at runtime, not by room
+# object lists. Convert their explicit extractor resources as well.
+profiles['play'] += [name for name in entries_by_name if name.startswith('object_gi_')]
 selected = set(args.segment or profiles[args.profile])
 if not args.segment and args.profile in ('title', 'play'):
     scene_prefixes = ['jyasinboss', 'spot17', 'hiral_demo']

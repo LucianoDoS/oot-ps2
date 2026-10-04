@@ -44,6 +44,10 @@
 #include "f3dex2_ps2.h"
 #include "ps2_texture.h"
 #include "ps2_background.h"
+#include "ps2_offscreen.h"
+extern void ps2_offscreen_init(GSGLOBAL*);
+extern void ps2_offscreen_begin(RDPState*, const PS2RenderTarget*);
+extern void ps2_offscreen_end(RDPState*);
 extern const u64 gspS2DEX2d_fifoTextStart[] __attribute__((weak));
 extern void ps2_background_draw(const PS2Background*, int, RDPState*);
 static bool s_s2dex;
@@ -147,6 +151,7 @@ void rdp_to_gs_init(GSGLOBAL* gs) {
     memset(&g_rspState, 0, sizeof(g_rspState));
 
     g_rdpState.gs = gs;
+    ps2_offscreen_init(gs);
 
     /* Pila de matrices a identidad */
     for (int i = 0; i < RSP_MTX_STACK_DEPTH; i++) {
@@ -248,6 +253,10 @@ void rdp_to_gs_exec(const Gfx* dl) {
         if (op <= G_LINE3D || (op >= G_SPECIAL_3 && op <= G_ENDDL)) {
             switch (op) {
                 case G_NOOP:
+                    if (w0 == PS2_GFX_TARGET_BEGIN)
+                        ps2_offscreen_begin(&g_rdpState,(const PS2RenderTarget*)(uintptr_t)w1);
+                    else if (w0 == PS2_GFX_TARGET_END)
+                        ps2_offscreen_end(&g_rdpState);
                     break;
 
                 case G_VTX: {
