@@ -4,6 +4,45 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Tablas de materiales y comprobación de texturas — 2026-10-04
+
+- Se retoma la optimización del exterior antes de ampliar la zona del
+  Árbol Deku. El usuario señala una vista de 12–14 FPS. Tras la primera
+  optimización confirma 14–16 FPS y colores y audio correctos. La siguiente
+  versión conserva sombras, transparencias y audio, pero el usuario
+  confirma que sigue en 14–16 FPS quieto. Todavía no se da por alcanzado
+  el objetivo de 20 FPS estables.
+- Las tablas del combinador expanden el producto del primer ciclo una
+  vez y recorren sus 256 valores mediante diferencias finitas. Conservan
+  la división entera con signo y la saturación original. Los materiales
+  de dos ciclos conservan RGBA8 intermedio, incluido COMBINED_ALPHA; el
+  alfa sólo se convierte a la escala del GS al acabar el último ciclo.
+- XXH32 procesa las cuatro cadenas de las fuentes alineadas mediante
+  instrucciones MMI del EE. PMULTUW calcula dos productos por instrucción
+  y PPACW reúne sus partes de 32 bits; se contrastó su semántica con
+  [PCSX2](https://github.com/PCSX2/pcsx2/blob/master/pcsx2/MMI.cpp).
+  Sólo usa cargas LQ para bloques completos alineados a 16 bytes. Las
+  fuentes sin esa alineación y las colas conservan la lectura escalar.
+  Se siguen comprobando todos los bytes en cada enlace de textura.
+- Las pruebas EE pasan 25 materiales × 9 cambios de constantes × 16
+  máscaras parciales, comparados con el evaluador escalar para todos los
+  texels. Cubren productos negativos y cuadráticos, alfa del ciclo anterior,
+  saturación, RGBA16 empaquetado y sustitución del donante de la caché.
+  También pasan los vectores independientes de XXH32, alineaciones 0–15,
+  mutación de todos los bytes, audio, captura, aura y los 120 fotogramas.
+- Comparación de control con las mismas pruebas y el combinador anterior:
+  las tablas completas pasan de 23961838 a 8668335 ciclos; con reutilización
+  de canales, de 9028600 a 4946683. El material de dos ciclos reales pasa
+  de 39557399 a 28547484 ciclos, con el mismo checksum 193581.
+  La comprobación de fuentes alineadas de 2/4 KiB baja aproximadamente un
+  13–14 %. Son medidas aisladas; no representan ese porcentaje de FPS.
+  Registros: `build/PS2/pcsx2-material-mmi-pass.log` y
+  `build/PS2/pcsx2-material-mmi-before-control.log`. La primera sesión
+  confirmada queda en `build/PS2/pcsx2-material-polynomial-game-measured.log`.
+- El juego enlaza 720 objetos. Se guardan los ejecutables anteriores en
+  `build/PS2-ntsc12/oot_ps2-before-material-polynomial.elf` y
+  `build/PS2-ntsc12/oot_ps2-material-polynomial.elf`.
+
 ## Apertura de pausa, transparencia y aura del título — 2026-10-04
 
 - El usuario señala corrupción y espera al abrir la pausa, falta de

@@ -76,6 +76,16 @@ int ps2_combiner_channel_smoke(void) {
     }
     const u8 combinedRgb[4] = {0,15,3,7}, zeroAlphaFactor[4] = {3,7,0,5};
     encode(&materials[count++], 1, mixedRgb, mixedAlpha, combinedRgb, zeroAlphaFactor);
+    /* First-cycle products can be quadratic, negative, or cross zero.
+     * Compare every texel value and partial mask with the scalar evaluator. */
+    const u8 quadraticRgb[4]={1,5,1,3}, quadraticAlpha[4]={1,5,1,3};
+    const u8 negativeRgb[4]={5,1,1,7}, negativeAlpha[4]={5,1,1,7};
+    encode(&materials[count++],0,quadraticRgb,quadraticAlpha,passRgb,passAlpha);
+    encode(&materials[count++],0,negativeRgb,negativeAlpha,passRgb,passAlpha);
+    encode(&materials[count++],1,quadraticRgb,quadraticAlpha,passRgb,passAlpha);
+    const u8 previousAlphaRgb[4]={0,5,7,3}, previousAlphaAlpha[4]={0,5,0,3};
+    encode(&materials[count++],1,quadraticRgb,quadraticAlpha,previousAlphaRgb,previousAlphaAlpha);
+    encode(&materials[count++],1,negativeRgb,negativeAlpha,previousAlphaRgb,previousAlphaAlpha);
     const u8 alphaToRgb[4] = {1,15,7,7};
     static RDPState propagated;
     encode(&propagated, 1, mixedRgb, mixedAlpha, alphaToRgb, passAlpha);
@@ -171,5 +181,19 @@ int ps2_combiner_channel_smoke(void) {
         (unsigned)fullCycles,(unsigned)cachedCycles,generatedChannels,32u*7u*4u,(unsigned)cachedChecksum);
     printf("[PS2 COMBINER IDENTITY TEST] foldedPasses=%u retainedPasses=%u failures=0\n",
         ps2_combiner_test_folded_passes-foldedBefore, ps2_combiner_test_retained_passes-retainedBefore);
+    /* Genuine two-cycle material with cross-channel COMBINED_ALPHA. */
+    encode(&material,1,mixedRgb,mixedAlpha,previousAlphaRgb,previousAlphaAlpha);
+    volatile u32 twoCycleChecksum=0;
+    start=ps2_gfx_cycles();
+    for (unsigned frame=0;frame<32;frame++) for (unsigned tint=0;tint<7;tint++) {
+        material.primColor=0xf0ffe0ffu;
+        material.envColor=((tint*19u)<<24)|((tint*23u)<<16)|((255u-tint*17u)<<8)|
+            ((frame*7u+tint*29u+3u)&255u);
+        ps2_combiner_build_lookup(&material,full);
+        for (unsigned channel=0;channel<4;channel++)
+            twoCycleChecksum+=full[channel][(frame*11u+tint*31u)&255u];
+    }
+    printf("[PS2 COMBINER TWO CYCLE BENCH] cycles=%u checksum=%u\n",
+        (unsigned)(ps2_gfx_cycles()-start),(unsigned)twoCycleChecksum);
     return 0;
 }

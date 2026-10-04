@@ -14,7 +14,12 @@ retrato del equipamiento y los objetos sobre las manos al recibirlos; se
 corrige el evento del último fotograma que los omitía en PS2. La captura del
 framebuffer real mejora la apertura y transparencia del inventario, y el aura
 del título ya se mueve al combinar sus dos texturas; el usuario confirma ambas
-correcciones. Sigue pendiente completar la validación del resto del juego.
+correcciones. La última optimización reduce el coste de generar las tablas
+de materiales y comprobar texturas en RAM. En una vista exterior de 12–14 FPS,
+el usuario confirma 14–16 tras la primera mejora; la versión que también
+optimiza los materiales de dos ciclos conserva ese rendimiento y la imagen
+y el audio correctos. Sigue pendiente
+completar la validación del resto del juego y estabilizar los 20 FPS.
 El registro detallado
 de las correcciones y pruebas está en [CHANGELOG_PS2_PORT.md](CHANGELOG_PS2_PORT.md).
 Ya se compila la capa PS2 con ps2dev real

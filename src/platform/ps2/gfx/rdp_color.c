@@ -466,6 +466,42 @@ static bool lookup_copies_combined(const LookupEquation* equation, unsigned comp
         equation->operation == 2 && equation->source[0] == previous &&
         equation->source[1] == 0 && equation->source[3] == 0;
 }
+
+/* In the first cycle COMBINED is zero and each remaining variable is the
+ * current texel channel. Expand (A-B)*C into a quadratic once, then advance
+ * its numerator with finite differences. Keep the original signed /255,
+ * clamp and GS-alpha conversion; do not resolve four selectors per value. */
+static void build_first_cycle_row(const LookupEquation* equation, u8 row[256], bool alpha) {
+    int constant[4], variable[4];
+    for (unsigned slot=0;slot<4;slot++) {
+        unsigned source=equation->source[slot];
+        constant[slot]=source<256?source:0;
+        variable[slot]=source==256;
+    }
+    int direct=constant[3], directStep=variable[3];
+    int numerator=0, delta=0, deltaStep=0;
+    if (equation->operation==2) {
+        direct+=constant[0]-constant[1];
+        directStep+=variable[0]-variable[1];
+    } else if (equation->operation==0) {
+        int difference=constant[0]-constant[1];
+        int differenceStep=variable[0]-variable[1];
+        int quadratic=differenceStep*variable[2];
+        int linear=difference*variable[2]+differenceStep*constant[2];
+        numerator=difference*constant[2];
+        delta=linear+quadratic;
+        deltaStep=2*quadratic;
+    }
+    for (unsigned value=0;value<256;value++) {
+        int result=direct;
+        if (equation->operation==0) result+=numerator/255;
+        if (result<0) result=0; else if (result>255) result=255;
+        /* For the clamped 0..255 range, floor(value*128/255) is half
+         * the value, except for the fully opaque endpoint. */
+        row[value]=alpha?(result>>1)+(result==255):result;
+        direct+=directStep; numerator+=delta; delta+=deltaStep;
+    }
+}
 void ps2_combiner_build_lookup_channels(const RDPState* rdp, u8 values[4][256], unsigned channelMask) {
     channelMask &= 15u;
     if (!channelMask) return;
@@ -528,27 +564,36 @@ void ps2_combiner_build_lookup_channels(const RDPState* rdp, u8 values[4][256], 
             else ps2_combiner_test_retained_passes++;
 #endif
         }
-        for (int value = 0; value < 256; value++) {
-            u8 combined[4] = {0};
-            for (int cycle = 0; cycle < evaluatedCycles; cycle++) {
-                u8 next[4] = {0};
-                for (int component = firstComponent; component < 4; component++) {
-                    if (!(evaluated & (1u << component))) continue;
-                    const LookupEquation* equation = &equations[cycle][component];
-                    int result = lookup_value(equation->source[3], value, combined);
-                    if (equation->operation != 1) {
-                        int difference = lookup_value(equation->source[0], value, combined) -
-                                         lookup_value(equation->source[1], value, combined);
-                        result += equation->operation == 2 ? difference :
-                                  difference * lookup_value(equation->source[2], value, combined) / 255;
-                    }
-                    next[component] = result < 0 ? 0 : result > 255 ? 255 : result;
+        if (evaluatedCycles==1) {
+            for (int component=firstComponent;component<4;component++)
+                if (requested&(1u<<component))
+                    build_first_cycle_row(&equations[0][component],values[component],alphaPass);
+            continue;
+        }
+        /* Retain the first cycle's clamped RGBA8, including alpha for RGB
+         * equations that reference it. Only the final alpha is scaled for
+         * GS. This also accelerates genuine, non-identity second cycles. */
+        u8 intermediate[4][256];
+        for (int component=firstComponent;component<4;component++)
+            if (evaluated&(1u<<component))
+                build_first_cycle_row(&equations[0][component],intermediate[component],false);
+        for (int value=0;value<256;value++) {
+            u8 combined[4]={0};
+            for (int component=firstComponent;component<4;component++)
+                if (evaluated&(1u<<component)) combined[component]=intermediate[component][value];
+            for (int component=firstComponent;component<4;component++) {
+                if (!(requested&(1u<<component))) continue;
+                const LookupEquation* equation=&equations[1][component];
+                int result=lookup_value(equation->source[3],value,combined);
+                if (equation->operation!=1) {
+                    int difference=lookup_value(equation->source[0],value,combined)-
+                                   lookup_value(equation->source[1],value,combined);
+                    result+=equation->operation==2?difference:
+                            difference*lookup_value(equation->source[2],value,combined)/255;
                 }
-                memcpy(combined, next, 4);
+                if (result<0) result=0; else if (result>255) result=255;
+                values[component][value]=alphaPass?(result>>1)+(result==255):result;
             }
-            if (alphaPass) values[3][value] = combined[3] * 128u / 255;
-            else for (int component = 0; component < 3; component++)
-                if (requested & (1u << component)) values[component][value] = combined[component];
         }
     }
 }
