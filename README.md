@@ -22,6 +22,9 @@ y el audio correctos. La siguiente versión elimina subidas repetidas de
 las texturas del brillo de las hadas por un factor que no altera los píxeles
 del evaluador actual; pasa las pruebas EE y el usuario confirma 16–18 FPS
 en el mismo punto, con Navi, suelo, sombras y audio correctos.
+La siguiente mejora acelera las copias de paquetes del EE; pasa el
+diagnóstico completo. El usuario confirma 18–20 FPS quieto y unos 16–18
+caminando, con algunas caídas según la vista; imagen y audio correctos.
 Sigue pendiente
 completar la validación del resto del juego y estabilizar los 20 FPS.
 El registro detallado
@@ -32,7 +35,7 @@ Las pruebas en el EE verifican matrices, trigonometría, formato de texto,
 secciones críticas, colas de mensajes y temporizadores. El renderer envía
 120 fotogramas; esto aún no constituye una validación visual del juego.
 
-El juego completo ya enlaza: 720 objetos generan `build/PS2-ntsc12/oot_ps2.elf`.
+El juego completo ya enlaza: 721 objetos generan `build/PS2-ntsc12/oot_ps2.elf`.
 En PCSX2 completa `Play_Init` y la ejecución de diagnóstico alcanzó 900
 fotogramas del estado `Play` en la secuencia del título sin excepciones registradas.
 Esto no confirma una imagen correcta ni jugabilidad. El conversor local adapta estructuras, vértices, matrices, listas

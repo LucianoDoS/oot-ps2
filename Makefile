@@ -91,6 +91,7 @@ ifeq ($(PLATFORM), PS2)
 
   # NOTA: el orden importa. gsKit depende de dmakit; audsrv de libsd.
   PLATFORM_LIBS := \
+    -Wl,--wrap=memcpy \
     -L$(PS2SDK)/ee/lib \
     -L$(PS2SDK)/ports/lib \
     -L$(GSKIT)/lib \

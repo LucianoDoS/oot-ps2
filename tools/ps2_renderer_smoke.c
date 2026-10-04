@@ -18,6 +18,7 @@ extern int ps2_prerender_failures(void);
 extern int ps2_lighting_smoke(void);
 extern int ps2_combiner_channel_smoke(void);
 extern int ps2_glow_dependency_smoke(void);
+extern int ps2_memcpy_smoke(void);
 extern int ps2_ground_run_smoke(void);
 extern int ps2_clip_projection_smoke(void);
 extern int ps2_texture_window_smoke(void);
@@ -128,6 +129,7 @@ static int texture_descriptor_lifetimes(void) {
 
 int ps2_renderer_smoke(void) {
     int failures = ps2_lighting_smoke();
+    failures += ps2_memcpy_smoke();
     failures += ps2_combiner_channel_smoke();
     static u8 readInputs[4112] __attribute__((aligned(128)));
     for (unsigned i=0;i<sizeof(readInputs);i++) readInputs[i]=(i*73+159)&255;

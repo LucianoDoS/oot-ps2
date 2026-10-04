@@ -4,6 +4,32 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Copias de paquetes en el EE — 2026-10-04
+
+- El ejecutable enlazaba la copia del SDK que recorre palabras de 32 bits.
+  gsKit la utiliza para copiar los puntos empaquetados de cada dibujo a
+  la cola GIF. El enlace PS2 ahora redirige esas llamadas mediante
+  `--wrap=memcpy` a una implementación que copia bloques completos con
+  LQ/SQ si ambos extremos están alineados a dieciséis bytes, o LD/SD si
+  están alineados a ocho. Las colas y demás alineaciones usan el SDK.
+- Se mantienen el valor de retorno, el caso de longitud cero y los límites
+  de lectura/escritura. El SDK original sigue enlazado para la ruta de
+  respaldo y la comparación de control. Los puntos, el orden de los
+  dibujos y los estados GS conservan sus datos originales.
+- Pasan 19200 copias con alineaciones independientes 0–15, longitudes
+  0–65 y tamaños de paquetes hasta 2880 bytes, comparadas con una copia
+  por bytes y comprobando las zonas de guarda. También pasan audio,
+  captura, transparencias, suelo, aura y 120 fotogramas.
+- En 8192 repeticiones, 144 bytes alineados pasan de 1678908 a 815892
+  ciclos; con fuente desplazada ocho bytes, de 1682994 a 1055593.
+  El bloque de 2880 bytes pasa de 27395480 a 6707563. Son medidas de
+  copia, no porcentajes de FPS. Registro: `build/PS2/pcsx2-ee-memcpy-pass.log`.
+- El juego enlaza 721 objetos. El usuario confirma 18–20 FPS quieto
+  y aproximadamente 16–18 caminando, con algunas caídas según la vista;
+  imagen y audio correctos. Sigue pendiente estabilizar los 20 FPS.
+  La anterior, confirmada en 16–18 FPS, se conserva en
+  `build/PS2-ntsc12/oot_ps2-glow-dependency-confirmed.elf`.
+
 ## Dependencias del brillo de las hadas — 2026-10-04
 
 - El perfil del exterior muestra hasta veinte conversiones y subidas de

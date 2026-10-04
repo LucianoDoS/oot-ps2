@@ -14,7 +14,7 @@ for src in tools/ps2_pcm_ring_smoke.c tools/ps2_audio_driver_smoke.c src/platfor
     src/platform/ps2/audio/ps2_rsp_audio.c src/platform/ps2/audio/rsp_hle/*.c \
     src/platform/ps2/libultra_stub/osMessage.c src/platform/ps2/libultra_stub/osTimer.c \
     src/platform/ps2/libultra_stub/osInterrupt.c src/platform/ps2/libultra_stub/osPrintf.c \
-    src/platform/ps2/libultra_stub/osRom.c; do
+    src/platform/ps2/libultra_stub/osRom.c src/platform/ps2/libultra_stub/ps2_memcpy.c tools/ps2_memcpy_smoke.c; do
     obj="build/PS2/smoke/$(basename "${src%.c}").o"
     "$cc" "${flags[@]}" -c "$src" -o "$obj"
     objects+=("$obj")
@@ -29,7 +29,7 @@ for src in tools/ps2_prerender_smoke.c src/code/PreRender.c tools/ps2_sched_smok
     objects+=("$obj")
 done
 "$cc" -G0 -T"$PS2SDK/ee/startup/linkfile" -Wl,-zmax-page-size=128 \
-    -Wl,--gc-sections -o build/PS2/oot_ps2_smoke.elf "${objects[@]}" \
+    -Wl,--gc-sections -Wl,--wrap=memcpy -o build/PS2/oot_ps2_smoke.elf "${objects[@]}" \
     -L"$PS2SDK/ee/lib" -L"$PS2SDK/ports/lib" -L"$GSKIT/lib" -lgskit -ldmakit -ldebug -ljpeg -lm \
     -Wl,-Map=build/PS2/oot_ps2_smoke.map
 "$PS2DEV/ee/bin/mips64r5900el-ps2-elf-readelf" -h build/PS2/oot_ps2_smoke.elf
