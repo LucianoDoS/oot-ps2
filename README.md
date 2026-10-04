@@ -21,6 +21,11 @@ según la cámara. A petición del usuario, la optimización adicional se aplaza
 para priorizar el port del resto del juego. El logo inicial de Nintendo 64
 conserva 60 FPS, el selector 30 y el juego 20 como frecuencias objetivo.
 
+La corrección más reciente conserva el blanco de los fundidos, la textura
+animada de los huevos de Gohma, las dos fuentes del brillo de la esmeralda
+Kokiri y la repetición del cuello/cuerpo del búho. Pasan las pruebas EE de
+campos, comandos y texels; queda comprobar estos casos visualmente en la partida.
+
 El perfil completo pasa una comparación independiente de 49560 recursos y
 67 tipos de estructuras o secuencias de bytes. Verifica dependencias, límites,
 colisiones, rutas y listas de salas. Los 233 segmentos del perfil previo y

@@ -40,9 +40,9 @@
 
 /* ─────────────────────────────────────────────────────────── *
  *  Scratch conversion buffer (static to avoid heap alloc per frame)
- *  Max N64 texture size: 256×256 @ 32bpp = 262144 bytes
+ *  Includes the owl's 640x192 clamp window over a masked 16x16 image.
  * ─────────────────────────────────────────────────────────── */
-static u8 s_convBuf[256 * 256 * 4] __attribute__((aligned(128)));
+static u8 s_convBuf[512 * 256 * 4] __attribute__((aligned(128)));
 static u32 s_textureVram = GSKIT_ALLOC_ERROR;
 static u8 s_sourceRows[sizeof(s_convBuf)] __attribute__((aligned(128)));
 static u32 s_clut[256] __attribute__((aligned(128)));
@@ -141,17 +141,19 @@ static u32 s_lookupClock;
 /* The title combines a 64x64 I4 silhouette and scrolling 32x32 I8 noise.
  * Compile the 16 mask intensities against every noise value once per tint,
  * retaining the two separate texels and the primitive LOD fraction. */
-static const u32* flame_lookup(const RDPState* rdp) {
-    static struct { u32 prim, env; u8 lod, valid; u32 colors[16*256]; } cache;
+static const u32* flame_lookup(const RDPState* rdp, bool jewel) {
+    static struct { u32 prim, env; u8 lod, valid; bool jewel; u32 colors[16*256]; } cache;
     if (cache.valid && cache.prim == rdp->primColor && cache.env == rdp->envColor &&
-        cache.lod == rdp->primLodFrac) return cache.colors;
+        cache.lod == rdp->primLodFrac && cache.jewel == jewel) return cache.colors;
     cache.prim=rdp->primColor; cache.env=rdp->envColor; cache.lod=rdp->primLodFrac; cache.valid=1;
+    cache.jewel=jewel;
     for (int mask=0;mask<16;mask++) for (int noise=0;noise<256;noise++) {
         u32 color=0;
         for (int channel=0;channel<4;channel++) {
             int prim=(cache.prim>>((3-channel)*8))&255;
             int env=(cache.env>>((3-channel)*8))&255;
-            int first=mask*17+(noise-(channel==3?255:prim))*cache.lod/255;
+            int alphaBase=jewel?mask*17:255;
+            int first=mask*17+(noise-(channel==3?alphaBase:prim))*cache.lod/255;
             if (first<0) first=0; else if (first>255) first=255;
             int value=channel==3 ? first*prim/255 : env+(prim-env)*first/255;
             if (channel==3) value=value*128/255;
@@ -172,7 +174,7 @@ static unsigned flame_sample(const u8* source, unsigned stride, int x, int y) {
 
 static void convert_flame(const u8* mask, const u8* noise, unsigned stride,
                           const TileDescriptor* effect, const RDPState* rdp) {
-    const u32* colors=flame_lookup(rdp);
+    const u32* colors=flame_lookup(rdp,false);
     u32* output=(u32*)s_convBuf;
     for (int y=0;y<64;y++) for (int x=0;x<64;x++) {
         int s=x*2-effect->uls, t=y*2-effect->ult;
@@ -190,6 +192,36 @@ static void convert_flame(const u8* mask, const u8* noise, unsigned stride,
         unsigned m=mask[(y*64+x)/2];
         m=(x&1)?m&15:m>>4;
         output[y*64+x]=colors[m*256+value];
+    }
+}
+
+/* Kokiri Emerald: two independently scrolling intensities, with an alpha
+ * interpolation between their samples rather than the title's cutout. */
+static bool emerald_tiles(const TileDescriptor* tile, const RDPState* rdp) {
+    const TileDescriptor* second=&rdp->tile[(rdp->textureTile+1)&7];
+    return tile==&rdp->tile[rdp->textureTile] && ps2_combiner_jewel(rdp) &&
+        tile->fmt==G_IM_FMT_I && tile->siz==G_IM_SIZ_4b && tile->width==64 && tile->height==64 &&
+        tile->masks==6 && tile->maskt==6 && !tile->cms && !tile->cmt && !tile->shifts && !tile->shiftt &&
+        second->fmt==G_IM_FMT_I && second->siz==G_IM_SIZ_8b && second->line==4 &&
+        second->masks==5 && second->maskt==5 && !second->cms && !second->cmt &&
+        second->shifts==15 && second->shiftt==15;
+}
+
+static void convert_emerald(const u8* mask, const u8* noise, unsigned stride,
+                            const TileDescriptor* tile, const TileDescriptor* effect, const RDPState* rdp) {
+    const u32* colors=flame_lookup(rdp,true);
+    u32* output=(u32*)s_convBuf;
+    for (int y=0;y<64;y++) for (int x=0;x<64;x++) {
+        int s=(x*4+tile->uls)*2-effect->uls, t=(y*4+tile->ult)*2-effect->ult;
+        int sx=s>>2, sy=t>>2, fs=s&3, ft=t&3;
+        int a=noise[(sy&31)*stride+(sx&31)], n;
+        int b=noise[(sy&31)*stride+((sx+1)&31)];
+        int c=noise[((sy+1)&31)*stride+(sx&31)];
+        if (fs+ft<=4) n=(a*(4-fs-ft)+b*fs+c*ft)/4;
+        else n=(b*(4-ft)+c*(4-fs)+noise[((sy+1)&31)*stride+((sx+1)&31)]*(fs+ft-4))/4;
+        unsigned m=mask[(y*64+x)/2];
+        m=(x&1)?m&15:m>>4;
+        output[y*64+x]=colors[m*256+n];
     }
 }
 
@@ -324,6 +356,9 @@ void ps2_texture_test_combiner_rgba16(const RDPState* rdp, u32 values[4][32]) {
 
 static int texture_source_extent(unsigned extent, unsigned mask) {
     unsigned period = mask && mask <= 10 ? 1u << mask : extent;
+    /* A zero-size SETTILESIZE scroll (Gohma eggs) updates the origin without
+     * removing the loaded texels. The wrap mask still supplies its period. */
+    if (!extent && mask && mask <= 10) return period;
     return extent < period ? extent : period;
 }
 
@@ -707,6 +742,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
     int uploadW, uploadH;
     unsigned mirror = mirrored_dimensions(tile, w, h, &uploadW, &uploadH);
     bool tokenPair=token_flame_tiles(tile,rdp);
+    bool emeraldPair=emerald_tiles(tile,rdp);
     const TileDescriptor* tokenMask=&rdp->tile[(rdp->textureTile+1)&7];
     const u8* tokenSource=rdp->textureLoads[tokenMask->tmem].source;
     if (!tokenSource) tokenSource=tokenMask->addr;
@@ -749,16 +785,18 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         second->fmt == G_IM_FMT_I && second->siz == G_IM_SIZ_8b &&
         second->width==32 && second->height==32 && second->shifts==1 && second->shiftt==1 &&
         !second->cms && !second->cmt && !second->masks && second->maskt==5;
-    if (pathPair || flamePair || tokenPair) {
+    emeraldPair=emeraldPair && secondSrc;
+    if (pathPair || flamePair || tokenPair || emeraldPair) {
         key.source2 = (uintptr_t)secondSrc;
         key.stride2 = rdp->textureLoads[second->tmem].stride;
         if (flamePair && !key.stride2) key.stride2=second->line?second->line*8:32;
         if (tokenPair && !key.stride2) key.stride2=second->line?second->line*8:32;
+        if (emeraldPair && !key.stride2) key.stride2=32;
         key.lodFrac = rdp->primLodFrac;
-        if (flamePair || tokenPair) {
+        if (flamePair || tokenPair || emeraldPair) {
             key.uls2=second->uls; key.ult2=second->ult;
             key.prim=rdp->primColor; key.env=rdp->envColor;
-            if (tokenPair) { key.uls0=tile->uls; key.ult0=tile->ult; }
+            if (tokenPair || emeraldPair) { key.uls0=tile->uls; key.ult0=tile->ult; }
         }
     }
     if (tile->fmt == G_IM_FMT_CI) {
@@ -777,6 +815,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         else for (int y = 0; y < h; y++) hash = ps2_texture_hash(secondSrc+y*key.stride2, rowBytes, hash);
     }
     if (flamePair) for (int y=0;y<32;y++) hash=ps2_texture_hash(secondSrc+y*key.stride2,32,hash);
+    if (emeraldPair) for (int y=0;y<32;y++) hash=ps2_texture_hash(secondSrc+y*key.stride2,32,hash);
     if (tokenPair) for (int y=0;y<64;y++) hash=ps2_texture_hash(secondSrc+y*key.stride2,32,hash);
     key.contentHash = hash;
     if (!s_cacheIndexReady) {
@@ -837,11 +876,12 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
 
     /* Map RGBA16 channels while decoding them, avoiding a full RGBA scratch
      * write/read pass. The two-source path retains its combined-alpha math. */
-    const CombinerLookup* mapping = pathPair || flamePair || tokenPair ? NULL : combiner_lookup(rdp);
-    bool mappedRGBA16 = !pathPair && !flamePair && !tokenPair && tile->fmt == G_IM_FMT_RGBA && tile->siz == G_IM_SIZ_16b;
-    bool mappedCompact = flamePair || tokenPair || (!pathPair && convert_compact_mapped(src, s_convBuf, w*h, tile, mapping));
+    const CombinerLookup* mapping = pathPair || flamePair || tokenPair || emeraldPair ? NULL : combiner_lookup(rdp);
+    bool mappedRGBA16 = !pathPair && !flamePair && !tokenPair && !emeraldPair && tile->fmt == G_IM_FMT_RGBA && tile->siz == G_IM_SIZ_16b;
+    bool mappedCompact = flamePair || tokenPair || emeraldPair || (!pathPair && convert_compact_mapped(src, s_convBuf, w*h, tile, mapping));
     if (flamePair) convert_flame(src,secondSrc,key.stride2,second,rdp);
     if (tokenPair) convert_token_flame(src,secondSrc,rowBytes,key.stride2,tile,rdp);
+    if (emeraldPair) convert_emerald(src,secondSrc,key.stride2,tile,second,rdp);
     /* ── Format conversion ──────────────────────────────── */
     if (!mappedCompact) switch (tile->fmt) {
         case G_IM_FMT_RGBA:
@@ -1082,7 +1122,7 @@ void rdp_settilesize(u32 w0, u32 w1, RDPState* rdp) {
     t->width  = ((t->lrs >> 2) - (t->uls >> 2)) + 1;
     t->height = ((t->lrt >> 2) - (t->ult >> 2)) + 1;
     t->gsTextureLoaded = false;
-    if ((ps2_combiner_flame(rdp) || ps2_combiner_token_flame(rdp)) && tile_idx == ((rdp->textureTile+1)&7))
+    if ((ps2_combiner_flame(rdp) || ps2_combiner_token_flame(rdp) || ps2_combiner_jewel(rdp)) && tile_idx == ((rdp->textureTile+1)&7))
         rdp->tile[rdp->textureTile].gsTextureLoaded = false;
 }
 
@@ -1106,7 +1146,7 @@ void rdp_loadtexture(u8 op, u32 w0, u32 w1, RDPState* rdp) {
             rdp->tile[i].gsTextureLoaded = false;
         }
     }
-    if ((ps2_combiner_path_lerp(rdp) || ps2_combiner_flame(rdp) || ps2_combiner_token_flame(rdp)) &&
+    if ((ps2_combiner_path_lerp(rdp) || ps2_combiner_flame(rdp) || ps2_combiner_token_flame(rdp) || ps2_combiner_jewel(rdp)) &&
         rdp->tile[(rdp->textureTile + 1) & 7].tmem == tmem)
         rdp->tile[rdp->textureTile].gsTextureLoaded = false;
 }

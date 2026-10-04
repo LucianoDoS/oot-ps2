@@ -1,6 +1,7 @@
 #include "transition_circle.h"
 
 #include "color.h"
+#include "color_packing.h"
 #include "gfx.h"
 #include "sfx.h"
 #include "tex_len.h"
@@ -78,9 +79,9 @@ void TransitionCircle_Start(void* thisx) {
     }
 
     if (this->colorType == TCC_BLACK) {
-        this->color.rgba = RGBA8(0, 0, 0, 255);
+        Color_RGBA8_SetPacked(&this->color, RGBA8(0, 0, 0, 255));
     } else if (this->colorType == TCC_WHITE) {
-        this->color.rgba = RGBA8(160, 160, 160, 255);
+        Color_RGBA8_SetPacked(&this->color, RGBA8(160, 160, 160, 255));
     } else if (this->colorType == TCC_GRAY) {
         this->color.r = 100;
         this->color.g = 100;
@@ -88,7 +89,8 @@ void TransitionCircle_Start(void* thisx) {
         this->color.a = 255;
     } else {
         this->speed = 40;
-        this->color.rgba = (this->appearanceType == TCA_WAVE) ? RGBA8(0, 0, 0, 255) : RGBA8(160, 160, 160, 255);
+        Color_RGBA8_SetPacked(&this->color,
+                             (this->appearanceType == TCA_WAVE) ? RGBA8(0, 0, 0, 255) : RGBA8(160, 160, 160, 255));
     }
 
     if (this->direction != TRANS_CIRCLE_DIR_IN) {
@@ -164,8 +166,8 @@ void TransitionCircle_Draw(void* thisx, Gfx** gfxP) {
     texScroll = Gfx_BranchTexScroll(&gfx, this->texX, this->texY, 16, 64);
     gSPSegment(gfx++, 9, texScroll);
     gSPSegment(gfx++, 8, this->texture);
-    gDPSetColor(gfx++, G_SETPRIMCOLOR, this->color.rgba);
-    gDPSetColor(gfx++, G_SETENVCOLOR, this->color.rgba);
+    gDPSetColor(gfx++, G_SETPRIMCOLOR, Color_RGBA8_GetPacked(&this->color));
+    gDPSetColor(gfx++, G_SETENVCOLOR, Color_RGBA8_GetPacked(&this->color));
     gSPMatrix(gfx++, &this->projection, G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_PROJECTION);
     gSPPerspNormalize(gfx++, this->normal);
     gSPMatrix(gfx++, &this->lookAt, G_MTX_NOPUSH | G_MTX_MUL | G_MTX_PROJECTION);
@@ -216,11 +218,11 @@ void TransitionCircle_SetType(void* thisx, s32 type) {
 void TransitionCircle_SetColor(void* thisx, u32 color) {
     TransitionCircle* this = (TransitionCircle*)thisx;
 
-    this->color.rgba = color;
+    Color_RGBA8_SetPacked(&this->color, color);
 }
 
 void TransitionCircle_SetUnkColor(void* thisx, u32 color) {
     TransitionCircle* this = (TransitionCircle*)thisx;
 
-    this->unkColor.rgba = color;
+    Color_RGBA8_SetPacked(&this->unkColor, color);
 }

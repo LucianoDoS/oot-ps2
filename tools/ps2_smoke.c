@@ -30,6 +30,7 @@ extern int ps2_audio_envelope_smoke(void);
 extern int ps2_sched_smoke(void);
 extern int ps2_sram_smoke(void);
 extern int ps2_font_smoke(void);
+extern int ps2_transition_smoke(void);
 extern int ps2_jpeg_smoke(void);
 
 typedef struct {
@@ -50,7 +51,7 @@ int main(void) {
     printf("[PS2 SMOKE] Entered main\n");
     fflush(stdout);
     SifInitRpc(0);
-    if (ps2_animation_smoke()) { fflush(stdout); SleepThread(); return 1; }
+    if (ps2_animation_smoke() || ps2_transition_smoke()) { fflush(stdout); SleepThread(); return 1; }
     if (ps2_jpeg_smoke()) {
         fflush(stdout);
         SleepThread();

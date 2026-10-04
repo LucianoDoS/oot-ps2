@@ -4,6 +4,50 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Fundidos, huevos de Gohma, esmeralda y búho — 2026-10-04
+
+- Los colores empaquetados `RRGGBBAA` de las transiciones se asignaban
+  directamente a una unión de bytes RGBA. En el EE, little-endian, el
+  blanco original `160,160,160,255` se convertía en `255,160,160,160`;
+  al actualizar el alfa quedaba un fundido rosa. Un helper convierte
+  explícitamente entre palabras empaquetadas y campos RGBA, sin cambiar
+  el layout de las estructuras. Se aplica a Fade, Wipe, Circle y Triforce,
+  manteniendo sus tiempos y el tono original. La prueba EE usa los setters
+  reales: 48 casos y 7008 listas de dibujo de Fade, con colores, duraciones,
+  velocidades y ambos sentidos de fundido; pasa sin diferencias.
+- Los huevos de Gohma llaman a `func_80094E78` para desplazar una textura
+  mediante `SETTILESIZE` de tamaño cero. La subida lo interpretaba como
+  ausencia de texels. Cuando existe una máscara de repetición, se conserva
+  el periodo de la imagen cargada. El diagnóstico reproduce los comandos
+  del huevo y el wrap de 12 bits: antes fallan 124 de 128 casos; después
+  pasan todos, incluyendo 32768 texels RGBA. Registros:
+  `build/PS2/pcsx2-egg-scroll-before.log` y
+  `build/PS2/pcsx2-visual-material-fixes-pass.log`.
+- La esmeralda Kokiri combina una intensidad I4 de 64x64 con ruido I8 de
+  32x32. Su alfa interpola ambas muestras; la ruta genérica usaba el mismo
+  texel para las dos. Se añade esa combinación, con scroll independiente,
+  shifts, tinte verde, factor LOD y alfa. Se conserva la imagen de ruido
+  completa aunque su ventana de scroll sea 16x16. La caché comprueba ambas
+  fuentes y orígenes, ignorando el padding. Pasan 114688 canales frente a
+  un evaluador independiente, cambios de tintes, scrolls y datos.
+- El cuello y cuerpo del búho repiten una imagen de 16x16 en una ventana
+  de clamp de 640x192. El buffer anterior no podía expandir esa ventana y
+  subía sólo 16x16 conservando un clamp de 640x192: el GS podía muestrear
+  otras texturas en VRAM. Los dos buffers temporales admiten ahora esa
+  expansión; el incremento total de RAM estática es 512 KiB. Pasan los
+  122880 texels del patrón repetido, límites de clamp y reutilización.
+- Pasan también las pruebas existentes de audio, sombras, transparencias,
+  suelo, inventario, aura del título y Skulltula, con los 120 fotogramas del
+  diagnóstico completo. Estas pruebas verifican campos, comandos y texels;
+  la comprobación visual de los cuatro casos en la partida sigue pendiente.
+  Las cinemáticas compiladas del Árbol Deku conservan sus 3448 bytes de
+  campos mixtos verificados, en `build/PS2/check-visual-fixes-cutscenes.log`.
+  Tras el guardado confirmado por el usuario se conserva la tarjeta en
+  `oot-port-before-visual-fixes.ps2` y el ELF anterior en
+  `oot_ps2-full-assets-native-actors-confirmed.elf`. La nueva versión visible
+  carga la partida y el Campo de Hyrule sin excepciones. Los cambios no
+  modifican los datos del juego ni su progresión.
+
 ## Recursos del mapa completo y reinicio de actores — 2026-10-04
 
 - El perfil `full` del conversor incluye todos los segmentos de datos

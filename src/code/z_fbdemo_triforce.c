@@ -1,4 +1,5 @@
 #include "transition_triforce.h"
+#include "color_packing.h"
 
 #include "gfx.h"
 #include "printf.h"
@@ -64,7 +65,7 @@ void TransitionTriforce_Update(void* thisx, s32 updateRate) {
 void TransitionTriforce_SetColor(void* thisx, u32 color) {
     TransitionTriforce* this = (TransitionTriforce*)thisx;
 
-    this->color.rgba = color;
+    Color_RGBA8_SetPacked(&this->color, color);
 }
 
 void TransitionTriforce_SetType(void* thisx, s32 type) {
@@ -97,7 +98,7 @@ void TransitionTriforce_Draw(void* thisx, Gfx** gfxP) {
     guTranslate(&modelView[2], 0.0f, 0.0f, 0.0f);
     gDPPipeSync(gfx++);
     gSPDisplayList(gfx++, sTransTriforceDL);
-    gDPSetColor(gfx++, G_SETPRIMCOLOR, this->color.rgba);
+    gDPSetColor(gfx++, G_SETPRIMCOLOR, Color_RGBA8_GetPacked(&this->color));
     gDPSetCombineMode(gfx++, G_CC_PRIMITIVE, G_CC_PRIMITIVE);
     gSPMatrix(gfx++, &this->projection, G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_PROJECTION);
     gSPMatrix(gfx++, &modelView[0], G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);

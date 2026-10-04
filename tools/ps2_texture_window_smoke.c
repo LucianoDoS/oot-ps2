@@ -75,6 +75,72 @@ int ps2_texture_window_smoke(void) {
                 !memcmp(tile.gsTexture.Mem,expected,extent*height*4)) failures++;
         }
     }
+    /* Gohma's eggs use func_80094E78: SETTILESIZE with width/height zero
+     * changes the sampling origin. Masked wrap still samples the loaded
+     * 16x16 image, including when the lower bound precedes the origin. */
+    unsigned scrollFailures=0, scrollChecks=0;
+    memset(source,0xa5,sizeof(source));
+    for (unsigned i=0;i<256;i++) {
+        u16 raw=(((i*3)&31)<<11)|(((i*5)&31)<<6)|(((i*7)&31)<<1)|1;
+        source[i*2]=raw>>8; source[i*2+1]=raw;
+    }
+    rdp_setothermode(2u<<20,0,rdp);
+    rdp_setcombine(0,0,rdp);
+    rdp->textureTile=0;
+    rdp->tile[0]=(TileDescriptor){.fmt=G_IM_FMT_RGBA,.siz=G_IM_SIZ_16b,
+        .line=4,.tmem=509,.masks=4,.maskt=4};
+    rdp->textureLoads[509].source=source; rdp->textureLoads[509].stride=0;
+    for (unsigned pass=0;pass<128;pass++) {
+        unsigned x=pass<64?0:pass-64, y=pass<64?pass:4095-(pass-64);
+        rdp_settilesize((x<<12)|y,(((x-4)&4095)<<12)|((y-4)&4095),rdp);
+        ps2_texture_upload(&rdp->tile[0],rdp);
+        TileDescriptor* tile=&rdp->tile[0];
+        if (!tile->gsTextureLoaded || tile->gsTexture.Width!=16 || tile->gsTexture.Height!=16) {
+            scrollFailures++; continue;
+        }
+        const u8* pixels=(const u8*)tile->gsTexture.Mem;
+        for (unsigned i=0;i<256;i++) {
+            u16 raw=(source[i*2]<<8)|source[i*2+1];
+            u8 color[4]={((raw>>11)<<3)|(raw>>13),
+                (((raw>>6)&31)<<3)|((raw>>8)&7),
+                (((raw>>1)&31)<<3)|((raw>>3)&7),128};
+            scrollFailures+=memcmp(pixels+i*4,color,4)!=0;
+            scrollChecks++;
+        }
+        ps2_texture_end_frame(rdp);
+    }
+    printf("[PS2 ZERO SIZE SCROLL TEST] cases=128 texels=%u masked egg scroll and 12-bit wrap failures=%u\n",
+        scrollChecks,scrollFailures);
+    failures+=scrollFailures;
+    /* Owl torso/neck: repeat the 16x16 image across its full clamp window. */
+    unsigned owlFailures=0, owlChecks=0;
+    rdp->tile[0]=(TileDescriptor){.fmt=G_IM_FMT_RGBA,.siz=G_IM_SIZ_16b,
+        .line=4,.tmem=509,.masks=4,.maskt=4,.cms=2,.cmt=2};
+    rdp_settilesize(0,(0x09fcu<<12)|0x02fc,rdp);
+    ps2_texture_upload(&rdp->tile[0],rdp);
+    TileDescriptor* owl=&rdp->tile[0];
+    if (!owl->gsTextureLoaded || owl->gsTexture.Width!=640 || owl->gsTexture.Height!=192) owlFailures++;
+    else {
+        const u8* pixels=(const u8*)owl->gsTexture.Mem;
+        for (unsigned y=0;y<192;y++) for (unsigned x=0;x<640;x++) {
+            unsigned i=(y&15)*16+(x&15);
+            u16 raw=(source[i*2]<<8)|source[i*2+1];
+            u8 color[4]={((raw>>11)<<3)|(raw>>13),
+                (((raw>>6)&31)<<3)|((raw>>8)&7),
+                (((raw>>1)&31)<<3)|((raw>>3)&7),128};
+            owlFailures+=memcmp(pixels+(y*640+x)*4,color,4)!=0;
+            owlChecks++;
+        }
+        ps2_texture_apply_tile(owl,rdp);
+        if (rdp->gs->Clamp->WMS!=2 || rdp->gs->Clamp->WMT!=2 ||
+            rdp->gs->Clamp->MAXU!=639 || rdp->gs->Clamp->MAXV!=191) owlFailures++;
+        unsigned uploads=rdp->stats.textureUploads;
+        source[512]^=0xff;
+        ps2_texture_upload(owl,rdp);
+        if (rdp->stats.textureUploads!=uploads) owlFailures++;
+    }
+    printf("[PS2 OWL WINDOW TEST] texels=%u repeated source, safe clamp and cache failures=%u\n",owlChecks,owlFailures);
+    failures+=owlFailures;
     *rdp=saved;
     rdp->gs_clamp_valid=false;
     printf("[PS2 TILE WINDOW TEST] texels=%u clamp/mirror, source rows, cache bounds and mutation failures=%u\n",checks,failures);

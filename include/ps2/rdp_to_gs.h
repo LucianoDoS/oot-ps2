@@ -240,6 +240,7 @@ bool ps2_combiner_dynamic_alpha(const RDPState* rdp);
 bool ps2_combiner_texture_lerp(const RDPState* rdp);
 bool ps2_combiner_path_lerp(const RDPState* rdp);
 bool ps2_combiner_flame(const RDPState* rdp);
+bool ps2_combiner_jewel(const RDPState* rdp);
 bool ps2_combiner_token_flame(const RDPState* rdp);
 void rdp_setprimcolor(u32 w0, u32 w1, RDPState* rdp);
 void rdp_setenvcolor(u32 w0, u32 w1, RDPState* rdp);

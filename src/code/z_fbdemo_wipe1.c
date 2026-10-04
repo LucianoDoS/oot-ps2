@@ -1,4 +1,5 @@
 #include "transition_wipe.h"
+#include "color_packing.h"
 
 #include "gfx.h"
 #include "save.h"
@@ -132,11 +133,11 @@ void TransitionWipe_SetType(void* thisx, s32 type) {
 void TransitionWipe_SetColor(void* thisx, u32 color) {
     TransitionWipe* this = (TransitionWipe*)thisx;
 
-    this->color.rgba = color;
+    Color_RGBA8_SetPacked(&this->color, color);
 }
 
 void TransitionWipe_SetUnkColor(void* thisx, u32 color) {
     TransitionWipe* this = (TransitionWipe*)thisx;
 
-    this->unkColor.rgba = color;
+    Color_RGBA8_SetPacked(&this->unkColor, color);
 }
