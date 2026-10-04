@@ -16,6 +16,8 @@ extern const void* ps2_prerender_fixture(int);
 extern void ps2_prerender_mutate(void);
 extern int ps2_prerender_failures(void);
 extern int ps2_lighting_smoke(void);
+extern int ps2_combiner_channel_smoke(void);
+extern int ps2_clip_projection_smoke(void);
 
 static void matrix(short* out, float scale, float translate) {
     memset(out, 0, 64);
@@ -120,6 +122,7 @@ static int texture_descriptor_lifetimes(void) {
 
 int ps2_renderer_smoke(void) {
     int failures = ps2_lighting_smoke();
+    failures += ps2_combiner_channel_smoke();
     static u8 readInputs[4112] __attribute__((aligned(128)));
     for (unsigned i=0;i<sizeof(readInputs);i++) readInputs[i]=(i*73+159)&255;
     for (unsigned offset=0;offset<16;offset++) for (unsigned i=0;i<256;i++) {
@@ -446,6 +449,7 @@ int ps2_renderer_smoke(void) {
     rdp_setothermode(0, 0, &g_rdpState);
 #ifdef PS2_RENDERER_SMOKE_CAPTURE
     failures+=texture_descriptor_lifetimes();
+    failures+=ps2_clip_projection_smoke();
 #endif
     static const u8 mirroredTexels[] = {
         10,0,0,0, 20,0,0,255, 30,0,0,255, 40,0,0,255,

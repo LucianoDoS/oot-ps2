@@ -4,6 +4,55 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Perfil de la vista lenta de Kokiri — 2026-10-03
+
+- El usuario confirma que desaparecieron las letras sobre la pared de la
+  tienda. La nueva captura del exterior, mirando hacia las vallas y plantas,
+  marca 14 FPS; la respuesta sitúa esa vista en 14–16 FPS. Sigue pendiente
+  mantener los 20 FPS naturales de la partida en todas las cámaras.
+- El perfil de esa cámara mide unos 41 ms de traducción tras descontar
+  14–18 ms de síntesis DSP; otras interrupciones siguen incluidas. Las
+  tablas del combinador consumen 3,5–4,2 ms con 9–10 construcciones por
+  fotograma. Dos fuentes I8 de 32×64 se vuelven a convertir con siete
+  colores de entorno cuyo alfa cambia entre fotogramas. RESAMPLE cuesta
+  0,7–1,6 ms por tarea de audio y FILTER alrededor de 1 ms. No se registran
+  bloques PCM perdidos ni nuevos errores de colas en la captura conservada
+  en `build/PS2/pcsx2-kokiri-before-channel-kernels-profile.log`.
+- Las tablas del combinador reutilizan por separado R, G, B y alfa según
+  las constantes que afectan a cada canal. Se propagan COMBINED y
+  COMBINED_ALPHA entre ciclos, conservando el alfa intermedio que necesita
+  RGB. Los canales donantes se copian antes de sustituir la entrada LRU,
+  incluso cuando esa entrada es el único donante de un canal. El builder
+  parcial conserva los canales no solicitados y las tablas RGBA16.
+- RESAMPLE usa punteros consecutivos cuando toda la caminata y el historial
+  caben en el búfer real; conserva la ruta enmascarada para desbordamientos
+  e índices altos. FILTER despliega sus ocho productos por salida y usa
+  sumas de 32 bits sin signo, preservando los bits 15–30 del resultado
+  anterior de 64 bits. Se conserva la actualización secuencial de LUTs
+  solapadas y el historial crudo antes de copiar el resultado.
+- Se evita proyectar inicialmente vértices exteriores, que se rechazan o
+  vuelven a proyectarse después del recorte. W degenerado, iluminación y
+  texgen se conservan. El recorte reutiliza distancias por plano, evita
+  divisiones enteras para recorrer aristas y omite copias interiores.
+- Diagnóstico EE/GS completo sin diferencias: 10496 casos RESAMPLE con
+  ambas rutas, 5121 FILTER y continuidad; 20 materiales y 2880 máscaras
+  parciales con referencia escalar, RGBA16 y LRU; 20432 polígonos y 192
+  comparaciones de puntos GS completos, niebla, decals y G_CULLDL. Pasan
+  también la vida de descriptores, diálogo, iluminación, colas, resto de
+  audio y 120 fotogramas en `build/PS2/pcsx2-channel-kernels-pass.log`.
+- Micropruebas: RESAMPLE 16289975→11482973 ciclos (30 % menos), FILTER
+  34074103→9350015 (73 %), tablas completas→caché por canal
+  36307363→11978894 (67 %, incluida la copia de salida del helper),
+  recorte 30798583→21546576 (30 %). El lote con 75 % de vértices exteriores
+  baja de 9950956 a 8190698 (18 %); el totalmente visible es comparable
+  (9647164→9695667). Son trabajos aislados y no se extrapolan a los FPS.
+- Juego reconstruido con 718 objetos, instalado y abierto sin los perfiles
+  optativos. El ELF instalado coincide por SHA256 con el recién enlazado;
+  el arranque produce PCM sin bloques perdidos y la ventana responde.
+  Pendiente comparación de FPS, imagen y audio en la misma vista de Kokiri.
+  Respaldo de la versión anterior:
+  `build/PS2-ntsc12/oot_ps2-before-channel-kernels.elf`.
+
 ## Letras sobre la pared y caída al seleccionar semillas — 2026-10-03
 
 - El usuario percibe mejora general con la reutilización de geometría,

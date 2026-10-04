@@ -155,6 +155,13 @@ static void rsp_update_mvp(RSPState* rsp) {
 /* ───────────────────────────────────────────────────────────────── *
  *  Transformación de vértice
  * ───────────────────────────────────────────────────────────────── */
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+/* Compare complete primitive output against the original eager viewport
+ * calculation. The production renderer never carries this switch. */
+static bool s_geometryReference;
+void f3dex2_test_geometry_reference(bool enabled) { s_geometryReference = enabled; }
+#endif
+
 static void project_vertex(RSPVertex* v, const RSPState* rsp) {
     if (v->cw > 0.0001f || v->cw < -0.0001f) {
         float invW = 1.0f / v->cw;
@@ -188,10 +195,16 @@ static void transform_vertex(RSPVertex* v, const RSPState* rsp) {
     if (v->cz < -v->cw) v->clipFlags |= 0x10;
     if (v->cz >  v->cw) v->clipFlags |= 0x20;
 
-    /* División perspectiva + viewport.
-     * El viewport llega en formato 2.10 fijo: scale y trans van
-     * multiplicados por 4 (de ahí el /4 al guardarlos). */
-    project_vertex(v, rsp);
+    /* Outside vertices are either rejected using clipFlags, or clipped in
+     * homogeneous space and projected afterwards. Their initial viewport
+     * values are never consumed by a primitive. Retain the near-zero W
+     * path: it also changes clipFlags to 0xFF, including unordered W. */
+    bool project = !v->clipFlags || !(v->cw > 0.0001f || v->cw < -0.0001f);
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+    project = project || s_geometryReference;
+#endif
+    if (project) project_vertex(v, rsp);
+    else { v->sx = v->sy = 0; v->sz = 1; }
 }
 
 static void generate_texture_coordinates(RSPVertex* v, const RSPState* rsp) {
@@ -563,7 +576,7 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
     rdp->stats.submitted++;
 }
 
-static float clip_distance(const RSPVertex* v, int plane) {
+static inline __attribute__((always_inline)) float clip_distance(const RSPVertex* v, int plane) {
     switch (plane) {
         case 0: return v->cw + v->cx;
         case 1: return v->cw - v->cx;
@@ -591,11 +604,23 @@ int ps2_clip_triangle(const RSPVertex* a, const RSPVertex* b, const RSPVertex* c
     for (int plane = 0; plane < 6 && count; plane++) {
         RSPVertex* src = polygons[current];
         RSPVertex* dst = polygons[current ^ 1];
+        float distances[12];
+        int inside = 0;
+        for (int i = 0; i < count; i++) {
+            distances[i] = clip_distance(&src[i], plane);
+            inside += distances[i] >= 0;
+        }
+        /* The original all-inside pass copied the polygon without changing
+         * its order or any field. Test the current interpolated polygon,
+         * rather than initial flags: rounding can cross a later plane. */
+        if (inside == count) continue;
+        if (!inside) { count = 0; break; }
         int nextCount = 0;
         for (int i = 0; i < count; i++) {
+            int next = i + 1 < count ? i + 1 : 0;
             const RSPVertex* first = &src[i];
-            const RSPVertex* last = &src[(i + 1) % count];
-            float d0 = clip_distance(first, plane), d1 = clip_distance(last, plane);
+            const RSPVertex* last = &src[next];
+            float d0 = distances[i], d1 = distances[next];
             if (d0 >= 0) dst[nextCount++] = *first;
             if ((d0 >= 0) != (d1 >= 0)) {
                 float t = d0 / (d0 - d1);

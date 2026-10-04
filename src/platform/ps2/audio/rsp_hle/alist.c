@@ -721,6 +721,11 @@ static void alist_resample_save(struct hle_t* hle, uint32_t address, uint16_t po
     *dram_u16(hle, address + 8) = pitch_accu;
 }
 
+#if defined(PLATFORM_PS2) && defined(PS2_RENDERER_SMOKE_CAPTURE)
+unsigned ps2_resample_direct_runs;
+unsigned ps2_resample_masked_runs;
+#endif
+
 void alist_resample(
         struct hle_t* hle,
         bool init,
@@ -745,6 +750,40 @@ void alist_resample(
         alist_resample_reset(hle, ipos, &pitch_accu);
     else
         alist_resample_load(hle, address, ipos, &pitch_accu);
+
+#ifdef PLATFORM_PS2
+    /* Native samples are consecutive. If the whole monotonic input walk,
+     * including the four samples saved as history, stays inside the real
+     * synthesis buffer, the per-tap ring masks only repeat address work.
+     * Leave wraparound and overflowing pitch additions to the original loop.
+     * Reads still precede each write, including overlapping input/output. */
+    const uint64_t advance = ((uint64_t)pitch_accu + (uint64_t)pitch * count) >> 16;
+    const unsigned samples = sizeof(hle->alist_buffer) / sizeof(int16_t);
+    if (pitch <= UINT32_MAX - 0xffffu && (uint64_t)ipos + advance + 4 <= samples &&
+        (unsigned)opos + count <= samples) {
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+        ++ps2_resample_direct_runs;
+#endif
+        int16_t* const base = (int16_t*)hle->alist_buffer;
+        const int16_t* input = base + ipos;
+        int16_t* output = base + opos;
+        while (count != 0) {
+            const int16_t* lut = RESAMPLE_LUT + ((pitch_accu & 0xfc00) >> 8);
+            *output++ = clamp_s16((
+                (input[0] * lut[0]) + (input[1] * lut[1]) +
+                (input[2] * lut[2]) + (input[3] * lut[3])) >> 15);
+            pitch_accu += pitch;
+            input += pitch_accu >> 16;
+            pitch_accu &= 0xffff;
+            --count;
+        }
+        alist_resample_save(hle, address, (uint16_t)(input - base), pitch_accu);
+        return;
+    }
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+    ++ps2_resample_masked_runs;
+#endif
+#endif
 
     while (count != 0) {
         const int16_t* lut = RESAMPLE_LUT + ((pitch_accu & 0xfc00) >> 8);
@@ -910,20 +949,32 @@ void alist_filter(
      * directly, unlike the other routines that honor S/S16. EE samples
      * and coefficients are consecutive: tap k uses input[n-k]. Keep the
      * last eight raw inputs, not the filtered output, across audio ticks. */
+    /* Average all taps before caching them: the two LUTs may overlap, so
+     * their existing sequential writes are observable. No synthesis-buffer
+     * or history writes occur until every output has been calculated.
+     * Output wraps to s16, selecting sum bits 15..30. Unsigned 32-bit sums
+     * therefore retain exactly the bits used by the original int64 sum. */
+    const int16_t c0=lutt6[0], c1=lutt6[1], c2=lutt6[2], c3=lutt6[3];
+    const int16_t c4=lutt6[4], c5=lutt6[5], c6=lutt6[6], c7=lutt6[7];
+#define FILTER_TAP(value, coefficient) ((uint32_t)((int32_t)(value) * (coefficient)))
+#define FILTER_OUTPUT(a,b,c,d,e,f,g,h) ((int16_t)((0x4000u + \
+    FILTER_TAP(a,c0) + FILTER_TAP(b,c1) + FILTER_TAP(c,c2) + FILTER_TAP(d,c3) + \
+    FILTER_TAP(e,c4) + FILTER_TAP(f,c5) + FILTER_TAP(g,c6) + FILTER_TAP(h,c7)) >> 15))
     for (x = 0; x < count; x += 16) {
-        for (int sample = 0; sample < 8; sample++) {
-            int64_t value = 0x4000;
-            for (int tap = 0; tap < 8; tap++) {
-                int index = sample - tap;
-                int16_t input = index >= 0 ? in2[index] : in1[8 + index];
-                value += (int32_t)input * lutt6[tap];
-            }
-            outp[sample] = (int16_t)(value >> 15);
-        }
+        outp[0] = FILTER_OUTPUT(in2[0],in1[7],in1[6],in1[5],in1[4],in1[3],in1[2],in1[1]);
+        outp[1] = FILTER_OUTPUT(in2[1],in2[0],in1[7],in1[6],in1[5],in1[4],in1[3],in1[2]);
+        outp[2] = FILTER_OUTPUT(in2[2],in2[1],in2[0],in1[7],in1[6],in1[5],in1[4],in1[3]);
+        outp[3] = FILTER_OUTPUT(in2[3],in2[2],in2[1],in2[0],in1[7],in1[6],in1[5],in1[4]);
+        outp[4] = FILTER_OUTPUT(in2[4],in2[3],in2[2],in2[1],in2[0],in1[7],in1[6],in1[5]);
+        outp[5] = FILTER_OUTPUT(in2[5],in2[4],in2[3],in2[2],in2[1],in2[0],in1[7],in1[6]);
+        outp[6] = FILTER_OUTPUT(in2[6],in2[5],in2[4],in2[3],in2[2],in2[1],in2[0],in1[7]);
+        outp[7] = FILTER_OUTPUT(in2[7],in2[6],in2[5],in2[4],in2[3],in2[2],in2[1],in2[0]);
         in1 = in2;
         in2 += 8;
         outp += 8;
     }
+#undef FILTER_OUTPUT
+#undef FILTER_TAP
     memcpy(dram_u8(hle, address), in2 - 8, 16);
     memcpy(hle->alist_buffer + dmem, outbuff, count);
     return;

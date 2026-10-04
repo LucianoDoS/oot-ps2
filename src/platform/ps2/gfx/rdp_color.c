@@ -223,6 +223,7 @@ static void combiner_sources(const RDPState* rdp, int cycle, bool alpha, u8 s[4]
 
 typedef struct {
     u32 w0, w1, type, blend, primMask, envMask;
+    u32 lookupPrimMask[4], lookupEnvMask[4];
     bool valid, shade[2], dynamicAlpha, textureLerp, pathLerp;
     u8 sources[2][2][4];
 } CombinerAnalysis;
@@ -263,6 +264,36 @@ static const CombinerAnalysis* combiner_analysis(const RDPState* rdp) {
     const u8* alpha = cache.sources[0][1];
     cache.dynamicAlpha = type == 0 && (alpha[0] == 1 || alpha[0] == 2) &&
         alpha[1] == 7 && alpha[2] == 3 && alpha[3] == 7 && cache.sources[0][0][2] != 10;
+    /* Each output channel may depend on an earlier cycle's channel or alpha.
+     * Keep conservative unions of constant inputs, including factors that
+     * might cancel algebraically, so reusing a LUT never drops a dependency. */
+    if (type != 2 && (cache.w0 || cache.w1)) {
+        for (int cycle = 0; cycle < cycles; cycle++) {
+            u32 nextPrim[4] = {0}, nextEnv[4] = {0};
+            for (int component = 0; component < 4; component++) {
+                const u8* selectors = cache.sources[cycle][component == 3];
+                for (int slot = 0; slot < 4; slot++) {
+                    unsigned source = selectors[slot];
+                    if (component != 3 && slot == 2 && source >= 7 && source <= 12) {
+                        if (source == 7) {
+                            nextPrim[component] |= cache.lookupPrimMask[3];
+                            nextEnv[component] |= cache.lookupEnvMask[3];
+                        } else if (source == 10) nextPrim[component] |= 255u;
+                        else if (source == 12) nextEnv[component] |= 255u;
+                    } else if (source == 0 && !(component == 3 && slot == 2)) {
+                        nextPrim[component] |= cache.lookupPrimMask[component];
+                        nextEnv[component] |= cache.lookupEnvMask[component];
+                    } else if (source == 3) nextPrim[component] |= 255u << ((3-component)*8);
+                    else if (source == 5) nextEnv[component] |= 255u << ((3-component)*8);
+                }
+            }
+            memcpy(cache.lookupPrimMask, nextPrim, sizeof(nextPrim));
+            memcpy(cache.lookupEnvMask, nextEnv, sizeof(nextEnv));
+        }
+        /* This material defers primitive alpha to the GS vertex; its texture
+         * alpha LUT is the identity rather than the scalar alpha equation. */
+        if (cache.dynamicAlpha) cache.lookupPrimMask[3] = cache.lookupEnvMask[3] = 0;
+    }
     return &cache;
 }
 
@@ -282,6 +313,12 @@ void ps2_combiner_constants(const RDPState* rdp, u32* prim, u32* env) {
 }
 bool ps2_combiner_dynamic_alpha(const RDPState* rdp) {
     return combiner_analysis(rdp)->dynamicAlpha;
+}
+
+void ps2_combiner_lookup_dependencies(const RDPState* rdp, u32 primMasks[4], u32 envMasks[4]) {
+    const CombinerAnalysis* analysis = combiner_analysis(rdp);
+    memcpy(primMasks, analysis->lookupPrimMask, sizeof(analysis->lookupPrimMask));
+    memcpy(envMasks, analysis->lookupEnvMask, sizeof(analysis->lookupEnvMask));
 }
 
 static int combiner_input(const RDPState* rdp, int source, int slot, bool alpha, int component,
@@ -411,13 +448,16 @@ void ps2_combiner_vertex_color(const RDPState* rdp, const u8 shade[4], u8 output
 static int lookup_value(u16 source, int value, const u8 combined[4]) {
     return source < 256 ? source : source == 256 ? value : combined[source - 257];
 }
-void ps2_combiner_build_lookup(const RDPState* rdp, u8 values[4][256]) {
+void ps2_combiner_build_lookup_channels(const RDPState* rdp, u8 values[4][256], unsigned channelMask) {
+    channelMask &= 15u;
+    if (!channelMask) return;
     const CombinerAnalysis* analysis = combiner_analysis(rdp);
     bool bypass = analysis->type == 2 || (!analysis->w0 && !analysis->w1);
     if (bypass) {
         for (int value = 0; value < 256; value++) {
-            for (int component = 0; component < 3; component++) values[component][value] = value;
-            values[3][value] = value * 128u / 255;
+            for (int component = 0; component < 3; component++)
+                if (channelMask & (1u << component)) values[component][value] = value;
+            if (channelMask & 8u) values[3][value] = value * 128u / 255;
         }
         return;
     }
@@ -425,6 +465,11 @@ void ps2_combiner_build_lookup(const RDPState* rdp, u8 values[4][256]) {
     const u8 zero[4] = {0}, previous[4] = {1,2,3,4};
     int cycles = analysis->type == 1 ? 2 : 1;
     for (int alphaPass = 0; alphaPass < 2; alphaPass++) {
+        unsigned requested = alphaPass ? channelMask & 8u : channelMask & 7u;
+        if (!requested) continue;
+        /* RGB equations can use the previous cycle's alpha. Compute that
+         * intermediate even when the final alpha channel is being reused. */
+        unsigned evaluated = alphaPass ? 8u : requested | 8u;
         if (alphaPass && analysis->dynamicAlpha) {
             for (int value = 0; value < 256; value++) values[3][value] = value * 128u / 255;
             continue;
@@ -437,6 +482,7 @@ void ps2_combiner_build_lookup(const RDPState* rdp, u8 values[4][256]) {
             texel1[0] = texel1[1] = texel1[2] = 255; texel1[3] = 1;
         }
         for (int cycle = 0; cycle < cycles; cycle++) for (int component = firstComponent; component < 4; component++) {
+            if (!(evaluated & (1u << component))) continue;
             LookupEquation* equation = &equations[cycle][component];
             const u8* selectors = analysis->sources[cycle][component == 3];
             for (int slot = 0; slot < 4; slot++) {
@@ -453,6 +499,7 @@ void ps2_combiner_build_lookup(const RDPState* rdp, u8 values[4][256]) {
             for (int cycle = 0; cycle < cycles; cycle++) {
                 u8 next[4] = {0};
                 for (int component = firstComponent; component < 4; component++) {
+                    if (!(evaluated & (1u << component))) continue;
                     const LookupEquation* equation = &equations[cycle][component];
                     int result = lookup_value(equation->source[3], value, combined);
                     if (equation->operation != 1) {
@@ -466,9 +513,14 @@ void ps2_combiner_build_lookup(const RDPState* rdp, u8 values[4][256]) {
                 memcpy(combined, next, 4);
             }
             if (alphaPass) values[3][value] = combined[3] * 128u / 255;
-            else for (int component = 0; component < 3; component++) values[component][value] = combined[component];
+            else for (int component = 0; component < 3; component++)
+                if (requested & (1u << component)) values[component][value] = combined[component];
         }
     }
+}
+
+void ps2_combiner_build_lookup(const RDPState* rdp, u8 values[4][256]) {
+    ps2_combiner_build_lookup_channels(rdp, values, 15u);
 }
 
 /* ─────────────────────────────────────────────────────────── *

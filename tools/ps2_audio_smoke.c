@@ -6,6 +6,7 @@
 #include "../src/platform/ps2/audio/rsp_hle/alist.h"
 #include "../src/platform/ps2/audio/rsp_hle/memory.h"
 extern int PS2RspAudio_Process(void*, unsigned);
+extern int ps2_rsp_kernel_smoke_run(void);
 static int16_t input[64] __attribute__((aligned(16)));
 static int16_t resampledFull[32] __attribute__((aligned(16)));
 static int16_t resampledParts[32] __attribute__((aligned(16)));
@@ -133,6 +134,7 @@ static int envmix_smoke(void) {
 
 int ps2_audio_smoke(void) {
     int failures = envmix_smoke();
+    failures += ps2_rsp_kernel_smoke_run();
     uint32_t random=0xa317ca09;
     int16_t actual[64],expected[64];
     const unsigned aliases[][3]={{8,24,40},{8,8,40},{9,8,40},{7,8,40},{40,8,40}};

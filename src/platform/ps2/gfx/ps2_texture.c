@@ -136,11 +136,17 @@ typedef struct CombinerLookup {
 #define COMBINER_LOOKUP_SLOTS 64
 static CombinerLookup s_lookups[COMBINER_LOOKUP_SLOTS];
 static u32 s_lookupClock;
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+static unsigned s_testGeneratedChannels;
+#endif
 extern volatile unsigned gPS2GfxTraceStage;
 
 /* Many tiles share a combiner. Cache its compiled channel mappings rather
  * than resolving source selectors on every texture upload. */
 static const CombinerLookup* combiner_lookup(const RDPState* rdp) {
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+    s_testGeneratedChannels = 0;
+#endif
     u32 cycle = (rdp->otherMode.hi >> 20) & 3;
     u32 prim, env;
     ps2_combiner_constants(rdp, &prim, &env);
@@ -158,18 +164,62 @@ static const CombinerLookup* combiner_lookup(const RDPState* rdp) {
     }
     CombinerLookup* entry = &s_lookups[slot];
     u32 materialStart = ps2_gfx_profile_enter();
+    u32 primMasks[4], envMasks[4];
+    int donors[4] = {-1,-1,-1,-1};
+    ps2_combiner_lookup_dependencies(rdp, primMasks, envMasks);
+    unsigned missing = 15u;
+    for (int i = 0; i < COMBINER_LOOKUP_SLOTS && missing; i++) {
+        const CombinerLookup* cached = &s_lookups[i];
+        if (!cached->valid || cached->combine0 != rdp->combiner.w0 ||
+            cached->combine1 != rdp->combiner.w1 || cached->cycle != cycle) continue;
+        for (unsigned channel = 0; channel < 4; channel++) {
+            if ((missing & (1u << channel)) &&
+                !((cached->prim ^ prim) & primMasks[channel]) &&
+                !((cached->env ^ env) & envMasks[channel])) {
+                donors[channel] = i;
+                missing &= ~(1u << channel);
+            }
+        }
+    }
+    /* All donors must be selected and copied before changing the LRU key.
+     * The selected entry can itself be the only donor of an unchanged
+     * channel; each row stays independent of the rows copied around it. */
+    for (unsigned channel = 0; channel < 4; channel++) {
+        if (donors[channel] >= 0 && donors[channel] != slot) {
+            memcpy(entry->values[channel], s_lookups[donors[channel]].values[channel], sizeof(entry->values[channel]));
+            memcpy(entry->rgba16[channel], s_lookups[donors[channel]].rgba16[channel], sizeof(entry->rgba16[channel]));
+        }
+    }
     entry->combine0 = rdp->combiner.w0; entry->combine1 = rdp->combiner.w1;
     entry->prim = prim; entry->env = env; entry->cycle = cycle;
-    ps2_combiner_build_lookup(rdp, entry->values);
-    for (unsigned channel = 0; channel < 3; channel++) for (unsigned value = 0; value < 32; value++)
-        entry->rgba16[channel][value] = (u32)entry->values[channel][(value << 3) | (value >> 2)] << (channel*8);
-    entry->rgba16[3][0] = (u32)entry->values[3][0] << 24;
-    entry->rgba16[3][1] = (u32)entry->values[3][255] << 24;
+    ps2_combiner_build_lookup_channels(rdp, entry->values, missing);
+    for (unsigned channel = 0; channel < 3; channel++) if (missing & (1u << channel))
+        for (unsigned value = 0; value < 32; value++)
+            entry->rgba16[channel][value] = (u32)entry->values[channel][(value << 3) | (value >> 2)] << (channel*8);
+    if (missing & 8u) {
+        entry->rgba16[3][0] = (u32)entry->values[3][0] << 24;
+        entry->rgba16[3][1] = (u32)entry->values[3][255] << 24;
+    }
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+    s_testGeneratedChannels = missing;
+#endif
     entry->used = ++s_lookupClock;
     entry->valid = 1;
     ps2_gfx_profile_leave(GFX_PROFILE_MATERIAL, materialStart);
     return entry;
 }
+
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+unsigned ps2_texture_test_combiner_lookup(const RDPState* rdp, u8 values[4][256]) {
+    const CombinerLookup* entry = combiner_lookup(rdp);
+    memcpy(values, entry->values, sizeof(entry->values));
+    return s_testGeneratedChannels;
+}
+void ps2_texture_test_combiner_rgba16(const RDPState* rdp, u32 values[4][32]) {
+    const CombinerLookup* entry = combiner_lookup(rdp);
+    memcpy(values, entry->rgba16, sizeof(entry->rgba16));
+}
+#endif
 
 /* The GS has region repeat but no mirrored repeat. Store one forward and
  * one reversed period in cached texels; interpolate coordinates normally. */
