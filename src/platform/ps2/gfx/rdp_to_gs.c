@@ -257,6 +257,8 @@ void rdp_to_gs_exec(const Gfx* dl) {
                         ps2_offscreen_begin(&g_rdpState,(const PS2RenderTarget*)(uintptr_t)w1);
                     else if (w0 == PS2_GFX_TARGET_END)
                         ps2_offscreen_end(&g_rdpState);
+                    else if (w0 == PS2_GFX_CAPTURE_FRAME)
+                        ps2_capture_frame(&g_rdpState,(const void*)(uintptr_t)w1);
                     break;
 
                 case G_VTX: {

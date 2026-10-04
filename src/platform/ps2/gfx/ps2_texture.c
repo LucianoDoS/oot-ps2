@@ -50,6 +50,7 @@ typedef struct TextureCacheEntry {
     uintptr_t source;
     uintptr_t source2;
     u32 stride2;
+    u16 uls2, ult2;
     u8 lodFrac;
     u32 stride, combine0, combine1, prim, env, cycle, paletteHash, contentHash;
     u32 vram, size, used, frame;
@@ -136,6 +137,61 @@ typedef struct CombinerLookup {
 #define COMBINER_LOOKUP_SLOTS 64
 static CombinerLookup s_lookups[COMBINER_LOOKUP_SLOTS];
 static u32 s_lookupClock;
+
+/* The title combines a 64x64 I4 silhouette and scrolling 32x32 I8 noise.
+ * Compile the 16 mask intensities against every noise value once per tint,
+ * retaining the two separate texels and the primitive LOD fraction. */
+static const u32* flame_lookup(const RDPState* rdp) {
+    static struct { u32 prim, env; u8 lod, valid; u32 colors[16*256]; } cache;
+    if (cache.valid && cache.prim == rdp->primColor && cache.env == rdp->envColor &&
+        cache.lod == rdp->primLodFrac) return cache.colors;
+    cache.prim=rdp->primColor; cache.env=rdp->envColor; cache.lod=rdp->primLodFrac; cache.valid=1;
+    for (int mask=0;mask<16;mask++) for (int noise=0;noise<256;noise++) {
+        u32 color=0;
+        for (int channel=0;channel<4;channel++) {
+            int prim=(cache.prim>>((3-channel)*8))&255;
+            int env=(cache.env>>((3-channel)*8))&255;
+            int first=mask*17+(noise-(channel==3?255:prim))*cache.lod/255;
+            if (first<0) first=0; else if (first>255) first=255;
+            int value=channel==3 ? first*prim/255 : env+(prim-env)*first/255;
+            if (channel==3) value=value*128/255;
+            color|=(u32)value<<(channel*8);
+        }
+        cache.colors[mask*256+noise]=color;
+    }
+    return cache.colors;
+}
+
+static unsigned flame_sample(const u8* source, unsigned stride, int x, int y) {
+    /* S has no mask: the bilinear neighbour past column 31 continues in
+     * the next TMEM row. T repeats every 32 rows. The loaded image occupies
+     * the second 1 KiB half of TMEM used by these I8 texels. */
+    unsigned index=(((y&31)*32)+x)&1023;
+    return source[(index/32)*stride+(index&31)];
+}
+
+static void convert_flame(const u8* mask, const u8* noise, unsigned stride,
+                          const TileDescriptor* effect, const RDPState* rdp) {
+    const u32* colors=flame_lookup(rdp);
+    u32* output=(u32*)s_convBuf;
+    for (int y=0;y<64;y++) for (int x=0;x<64;x++) {
+        int s=x*2-effect->uls, t=y*2-effect->ult;
+        int sx=s>>2, sy=t>>2, fs=s&3, ft=t&3;
+        int a=flame_sample(noise,stride,sx,sy), value;
+        /* N64's bilinear filter uses one of two triangles in the 2x2
+         * texel neighbourhood, including the half/quarter-texel scroll. */
+        if (fs+ft<=4) value=(a*(4-fs-ft)+flame_sample(noise,stride,sx+1,sy)*fs+
+                                      flame_sample(noise,stride,sx,sy+1)*ft)/4;
+        else {
+            a=flame_sample(noise,stride,sx+1,sy+1);
+            value=(a*(fs+ft-4)+flame_sample(noise,stride,sx,sy+1)*(4-fs)+
+                               flame_sample(noise,stride,sx+1,sy)*(4-ft))/4;
+        }
+        unsigned m=mask[(y*64+x)/2];
+        m=(x&1)?m&15:m>>4;
+        output[y*64+x]=colors[m*256+value];
+    }
+}
 #ifdef PS2_RENDERER_SMOKE_CAPTURE
 static unsigned s_testGeneratedChannels;
 #endif
@@ -593,10 +649,21 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         second->shifts == tile->shifts && second->shiftt == tile->shiftt &&
         second->cms == tile->cms && second->cmt == tile->cmt &&
         second->masks == tile->masks && second->maskt == tile->maskt;
-    if (pathPair) {
+    bool flamePair = ps2_combiner_flame(rdp) && tile == &rdp->tile[rdp->textureTile] &&
+        tile->fmt == G_IM_FMT_I && tile->siz == G_IM_SIZ_4b && w==64 && h==64 &&
+        !tile->uls && !tile->ult && !tile->shifts && !tile->shiftt && !mirror && secondSrc &&
+        second->fmt == G_IM_FMT_I && second->siz == G_IM_SIZ_8b &&
+        second->width==32 && second->height==32 && second->shifts==1 && second->shiftt==1 &&
+        !second->cms && !second->cmt && !second->masks && second->maskt==5;
+    if (pathPair || flamePair) {
         key.source2 = (uintptr_t)secondSrc;
         key.stride2 = rdp->textureLoads[second->tmem].stride;
+        if (flamePair && !key.stride2) key.stride2=second->line?second->line*8:32;
         key.lodFrac = rdp->primLodFrac;
+        if (flamePair) {
+            key.uls2=second->uls; key.ult2=second->ult;
+            key.prim=rdp->primColor; key.env=rdp->envColor;
+        }
     }
     if (tile->fmt == G_IM_FMT_CI) {
         unsigned first = tile->siz == G_IM_SIZ_4b ? tile->palette * 16 : 0;
@@ -613,6 +680,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         if (!key.stride2 || key.stride2 == rowBytes) hash = ps2_texture_hash(secondSrc, rowBytes*h, hash);
         else for (int y = 0; y < h; y++) hash = ps2_texture_hash(secondSrc+y*key.stride2, rowBytes, hash);
     }
+    if (flamePair) for (int y=0;y<32;y++) hash=ps2_texture_hash(secondSrc+y*key.stride2,32,hash);
     key.contentHash = hash;
     if (!s_cacheIndexReady) {
         memset(s_cacheHeads, 0xff, sizeof(s_cacheHeads));
@@ -637,6 +705,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
             (profileCandidate < 0 || cached->used > s_cache[profileCandidate].used)) profileCandidate = i;
         if (cached->valid && cached->source == key.source &&
             cached->source2 == key.source2 && cached->stride2 == key.stride2 && cached->lodFrac == key.lodFrac &&
+            cached->uls2 == key.uls2 && cached->ult2 == key.ult2 &&
             cached->stride == key.stride && cached->width == w && cached->height == h &&
             cached->uploadWidth == uploadW && cached->uploadHeight == uploadH &&
             cached->fmt == key.fmt && cached->siz == key.siz && cached->palette == key.palette && cached->mirror == key.mirror &&
@@ -670,9 +739,10 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
 
     /* Map RGBA16 channels while decoding them, avoiding a full RGBA scratch
      * write/read pass. The two-source path retains its combined-alpha math. */
-    const CombinerLookup* mapping = pathPair ? NULL : combiner_lookup(rdp);
-    bool mappedRGBA16 = !pathPair && tile->fmt == G_IM_FMT_RGBA && tile->siz == G_IM_SIZ_16b;
-    bool mappedCompact = !pathPair && convert_compact_mapped(src, s_convBuf, w*h, tile, mapping);
+    const CombinerLookup* mapping = pathPair || flamePair ? NULL : combiner_lookup(rdp);
+    bool mappedRGBA16 = !pathPair && !flamePair && tile->fmt == G_IM_FMT_RGBA && tile->siz == G_IM_SIZ_16b;
+    bool mappedCompact = flamePair || (!pathPair && convert_compact_mapped(src, s_convBuf, w*h, tile, mapping));
+    if (flamePair) convert_flame(src,secondSrc,key.stride2,second,rdp);
     /* ── Format conversion ──────────────────────────────── */
     if (!mappedCompact) switch (tile->fmt) {
         case G_IM_FMT_RGBA:
@@ -913,6 +983,8 @@ void rdp_settilesize(u32 w0, u32 w1, RDPState* rdp) {
     t->width  = ((t->lrs >> 2) - (t->uls >> 2)) + 1;
     t->height = ((t->lrt >> 2) - (t->ult >> 2)) + 1;
     t->gsTextureLoaded = false;
+    if (ps2_combiner_flame(rdp) && tile_idx == ((rdp->textureTile+1)&7))
+        rdp->tile[rdp->textureTile].gsTextureLoaded = false;
 }
 
 /* ─────────────────────────────────────────────────────────── *
@@ -935,7 +1007,8 @@ void rdp_loadtexture(u8 op, u32 w0, u32 w1, RDPState* rdp) {
             rdp->tile[i].gsTextureLoaded = false;
         }
     }
-    if (ps2_combiner_path_lerp(rdp) && rdp->tile[(rdp->textureTile + 1) & 7].tmem == tmem)
+    if ((ps2_combiner_path_lerp(rdp) || ps2_combiner_flame(rdp)) &&
+        rdp->tile[(rdp->textureTile + 1) & 7].tmem == tmem)
         rdp->tile[rdp->textureTile].gsTextureLoaded = false;
 }
 

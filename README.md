@@ -11,8 +11,10 @@ caídas según la cámara. El objetivo de 20 FPS estables sigue pendiente. Las
 tres salas de Kokiri tienen sus recursos convertidos; el usuario confirma
 que ya puede acceder a la zona que antes se bloqueaba. También confirma el
 retrato del equipamiento y los objetos sobre las manos al recibirlos; se
-corrige el evento del último fotograma que los omitía en PS2. Sigue pendiente
-revisar la apertura y transparencia del inventario y el aura del título.
+corrige el evento del último fotograma que los omitía en PS2. La captura del
+framebuffer real mejora la apertura y transparencia del inventario, y el aura
+del título ya se mueve al combinar sus dos texturas; el usuario confirma ambas
+correcciones. Sigue pendiente completar la validación del resto del juego.
 El registro detallado
 de las correcciones y pruebas está en [CHANGELOG_PS2_PORT.md](CHANGELOG_PS2_PORT.md).
 Ya se compila la capa PS2 con ps2dev real
@@ -21,7 +23,7 @@ Las pruebas en el EE verifican matrices, trigonometría, formato de texto,
 secciones críticas, colas de mensajes y temporizadores. El renderer envía
 120 fotogramas; esto aún no constituye una validación visual del juego.
 
-El juego completo ya enlaza: 719 objetos generan `build/PS2-ntsc12/oot_ps2.elf`.
+El juego completo ya enlaza: 720 objetos generan `build/PS2-ntsc12/oot_ps2.elf`.
 En PCSX2 completa `Play_Init` y la ejecución de diagnóstico alcanzó 900
 fotogramas del estado `Play` en la secuencia del título sin excepciones registradas.
 Esto no confirma una imagen correcta ni jugabilidad. El conversor local adapta estructuras, vértices, matrices, listas

@@ -4,6 +4,50 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Apertura de pausa, transparencia y aura del título — 2026-10-04
+
+- El usuario señala corrupción y espera al abrir la pausa, falta de
+  transparencia del inventario y un aura inmóvil alrededor del título.
+  Confirma después que ambas cosas del inventario mejoraron y que el aura
+  ya se mueve como una llama.
+- La copia N64 del fondo operaba sobre `curFrameBuffer`, que el renderer
+  nativo no rellena: el dibujo vive en GS VRAM. Sus pases de cobertura se
+  dibujaban en la pantalla y el filtro CPU leía un búfer sin imagen válida.
+  `Play_Draw` ahora emite una captura nativa al acabar la escena, antes del
+  HUD. Espera su terminación y utiliza ese fondo para la pausa; en PS2 se
+  omiten los pases de cobertura y el filtro de reconstrucción N64.
+- La captura descarga filas del framebuffer activo y publica 320×240
+  RGBA5551 big-endian. Usa sólo 40 KiB de memoria temporal, sin reservar
+  más VRAM. La transferencia VIF1 sigue el
+  [SDK de ps2dev](https://github.com/ps2dev/ps2sdk/blob/master/ee/debug/src/screenshot.c),
+  adaptada al formato CT16S y al ancho del framebuffer. Conserva el fence
+  FINISH de gsKit para que la siguiente cola pueda continuar.
+- Los paneles originales IA8 ya contienen alfa parcial y usan el mezclador
+  XLU. Por ejemplo, 2228 de los 2560 texels de `gPauseSelectItem11Tex`
+  tienen alfa 11/15. Al restaurar una captura válida, esas partes permiten
+  ver el escenario. Se conserva su alfa y el comportamiento original.
+- El título usa una máscara I4 de 64×64 y ruido I8 de 32×32, con shifts y
+  desplazamiento de medio texel. Antes TEXEL1 se evaluaba como TEXEL0.
+  Ahora ese material combina ambos datos, su fracción LOD, colores y alfa
+  de los dos ciclos. Una tabla reutilizada evita resolver el combinador
+  por cada píxel. La caché incluye desplazamiento y contenido de ambas
+  fuentes; la ruta queda limitada a este material y sus dimensiones.
+- Las pruebas EE comprueban 230400 píxeles descargados, orden de bytes,
+  límites, comandos inválidos, segunda captura sin cambiar la imagen y
+  continuidad de la cola. El GS también pasa el dibujo de paneles IA8 con
+  alfa cero, parcial y opaco sobre una imagen conocida.
+  El aura pasa 81920 comprobaciones de canales con scroll fraccionario,
+  distintas tintas, alfa, reutilización y mutación de la segunda textura.
+  También pasan audio, retrato y los 120 fotogramas del diagnóstico.
+  Registros: `build/PS2/pcsx2-pause-flame-pass.log` y
+  `build/PS2/pcsx2-pause-flame-final-pass.log`. La sesión en juego muestra
+  varias capturas correctas al reabrir el inventario; se conserva en
+  `build/PS2/pcsx2-pause-flame-game-confirmed.log`.
+- El juego enlaza 720 objetos. Se conserva
+  `build/PS2-ntsc12/oot_ps2-before-pause-flame.elf` como copia anterior.
+  El objetivo de 20 FPS estables y la validación completa de escenas
+  siguen pendientes; estas correcciones no los dan por alcanzados.
+
 ## Modelos recibidos y retrato de equipamiento — 2026-10-04
 
 - El usuario confirma el retrato de equipamiento, aunque conserva su

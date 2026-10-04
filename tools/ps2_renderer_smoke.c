@@ -20,6 +20,8 @@ extern int ps2_combiner_channel_smoke(void);
 extern int ps2_clip_projection_smoke(void);
 extern int ps2_texture_window_smoke(void);
 extern int ps2_offscreen_smoke(void);
+extern int ps2_frame_capture_smoke(void);
+extern int ps2_flame_smoke(void);
 
 static void matrix(short* out, float scale, float translate) {
     memset(out, 0, 64);
@@ -1282,6 +1284,8 @@ int ps2_renderer_smoke(void) {
     }
     printf("[PS2 COMPACT FUSED TEST] I4/I8/IA4/IA8/IA16/CI4/CI8 exhaustive inputs, five materials and palette banks failures=%d\n",failures);
     failures += ps2_offscreen_smoke();
+    failures += ps2_frame_capture_smoke();
+    failures += ps2_flame_smoke();
     printf("[PS2 RENDER TEST] %s: matrices, viewport, othermode, textures and palettes (%d)\n",
            failures ? "FAIL" : "PASS", failures);
     return failures;

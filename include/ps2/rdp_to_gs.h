@@ -220,6 +220,7 @@ void rdp_to_gs_flip(void);
  * remains serialized by the graphics worker and may wait for vblank. */
 void rdp_to_gs_submit(void);
 void rdp_to_gs_present(void);
+void ps2_capture_frame(RDPState* rdp, const void* target);
 
 /* RDP command handlers (implemented in rdp_to_gs.c and f3dex2_ps2.c) */
 void rdp_settimg(u32 w0, u32 w1, RDPState* rdp);
@@ -238,6 +239,7 @@ void ps2_combiner_constants(const RDPState* rdp, u32* prim, u32* env);
 bool ps2_combiner_dynamic_alpha(const RDPState* rdp);
 bool ps2_combiner_texture_lerp(const RDPState* rdp);
 bool ps2_combiner_path_lerp(const RDPState* rdp);
+bool ps2_combiner_flame(const RDPState* rdp);
 void rdp_setprimcolor(u32 w0, u32 w1, RDPState* rdp);
 void rdp_setenvcolor(u32 w0, u32 w1, RDPState* rdp);
 void rdp_setfogcolor(u32 w0, u32 w1, RDPState* rdp);

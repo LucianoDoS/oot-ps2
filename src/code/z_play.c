@@ -41,6 +41,9 @@
 #include "play_state.h"
 #include "player.h"
 #include "prerender.h"
+#if PLATFORM_PS2
+#include "ps2_offscreen.h"
+#endif
 #include "printf.h"
 #include "quake.h"
 #include "regs.h"
@@ -1275,7 +1278,9 @@ void Play_Draw(PlayState* this) {
             // content and can be used by `PreRender_ApplyFilters` below.
             Sched_FlushTaskQueue();
 
+#if !PLATFORM_PS2
             PreRender_ApplyFilters(&this->pauseBgPreRender);
+#endif
 
             R_PAUSE_BG_PRERENDER_STATE = PAUSE_BG_PRERENDER_READY;
         } else if (R_PAUSE_BG_PRERENDER_STATE >= PAUSE_BG_PRERENDER_MAX) {
@@ -1409,10 +1414,25 @@ void Play_Draw(PlayState* this) {
             // The zbuffer must then stay untouched until unpausing
             this->pauseBgPreRender.fbuf = gfxCtx->curFrameBuffer;
             this->pauseBgPreRender.fbufSave = (u16*)gZBuffer;
+#if PLATFORM_PS2
+            /* The displayed image lives in GS VRAM, not curFrameBuffer.
+             * Capture it at this point in the list, before drawing the HUD.
+             * There is no N64 coverage image to reconstruct or filter. */
+            PS2RenderTarget* capture = Graph_Alloc(gfxCtx, sizeof(*capture));
+            capture->image = this->pauseBgPreRender.fbufSave;
+            capture->width = SCREEN_WIDTH;
+            capture->height = SCREEN_HEIGHT;
+            gfxP->words.w0 = PS2_GFX_CAPTURE_FRAME;
+            gfxP->words.w1 = (u32)capture;
+            gfxP++;
+#else
             PreRender_SaveFramebuffer(&this->pauseBgPreRender, &gfxP);
+#endif
             if (R_PAUSE_BG_PRERENDER_STATE == PAUSE_BG_PRERENDER_SETUP) {
+#if !PLATFORM_PS2
                 this->pauseBgPreRender.cvgSave = (u8*)gfxCtx->curFrameBuffer;
                 PreRender_DrawCoverage(&this->pauseBgPreRender, &gfxP);
+#endif
 
                 R_PAUSE_BG_PRERENDER_STATE = PAUSE_BG_PRERENDER_PROCESS;
             } else {
