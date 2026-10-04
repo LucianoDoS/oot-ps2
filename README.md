@@ -2,24 +2,29 @@
 
 Port de **The Legend of Zelda: Ocarina of Time** a PlayStation 2, basado en la descompilación [zeldaret/oot](https://github.com/zeldaret/oot).
 
-## Estado comprobado — 1 de octubre de 2026
+## Estado comprobado — 3 de octubre de 2026
 
-**Port parcial, todavía con fallos visuales, de audio y rendimiento.**
+**Port parcial, todavía con fallos visuales y de rendimiento.**
 Se puede iniciar una partida y salir al bosque; falta validar el juego completo.
+El usuario confirma audio correcto y mejora de rendimiento, pero todavía hay
+caídas según la cámara. El objetivo de 20 FPS estables sigue pendiente. Las
+tres salas de Kokiri tienen sus recursos convertidos; el usuario confirma
+que ya puede acceder a la zona que antes se bloqueaba. El registro detallado
+de las correcciones y pruebas está en [CHANGELOG_PS2_PORT.md](CHANGELOG_PS2_PORT.md).
 Ya se compila la capa PS2 con ps2dev real
 (GCC 15.2.0), y el ejecutable de diagnóstico arranca en PCSX2 2.8.0.
 Las pruebas en el EE verifican matrices, trigonometría, formato de texto,
 secciones críticas, colas de mensajes y temporizadores. El renderer envía
 120 fotogramas; esto aún no constituye una validación visual del juego.
 
-El juego completo ya enlaza: 715 objetos generan `build/PS2-ntsc12/oot_ps2.elf`.
+El juego completo ya enlaza: 718 objetos generan `build/PS2-ntsc12/oot_ps2.elf`.
 En PCSX2 completa `Play_Init` y la ejecución de diagnóstico alcanzó 900
 fotogramas del estado `Play` en la secuencia del título sin excepciones registradas.
 Esto no confirma una imagen correcta ni jugabilidad. El conversor local adapta estructuras, vértices, matrices, listas
 gráficas y cinemáticas; las texturas conservan su secuencia de bytes original.
 La conversión cubre el título, escenas de demostración, dependencias de objetos,
 recursos del selector de partida y los 38 bancos de instrumentos. El perfil
-`play` incluye 104 segmentos y las 573 tablas de animación del jugador,
+`play` incluye 141 segmentos y las 573 tablas de animación del jugador,
 además de recursos iniciales de Kokiri y la casa de Link. Los JPEG conservan
 sus bytes comprimidos; PS2 ahora decodifica los fondos de 320×240 a RGBA16 con
 libjpeg y reconoce los rectángulos S2DEX, dibujados en tiras mediante la caché.
@@ -39,11 +44,11 @@ perspectiva de las texturas; las pruebas EE verifican coordenadas, shifts,
 paletas CI4 e IA4. Añadida generación esférica/lineal de coordenadas con LookAt.
 El framebuffer de color usa RGB5551 CT16S, conservando profundidad de 24 bits
 después de inicializar gsKit. CT16 cambiaba automáticamente la profundidad a 16 bits.
-La caché comparte hasta 1792 KiB de VRAM entre 256 entradas según su tamaño y reutiliza
+La caché comparte hasta 1792 KiB de VRAM entre 512 entradas según su tamaño y reutiliza
 tablas del combinador; valida los bytes de fuentes y paletas para detectar
 texturas modificadas en RAM. Reutiliza variantes de fotogramas anteriores,
 conservando las usadas juntas en el fotograma actual. Todavía faltan fidelidad
-visual, calidad del audio y un benchmark comparable de rendimiento.
+visual completa y rendimiento estable en todas las vistas.
 Los triángulos con la etapa estándar de niebla usan los parámetros reales
 del juego y niebla nativa del GS; las pruebas EE verifican factores y límites.
 Start abre el selector de partida y sus textos y botones se ven correctamente.

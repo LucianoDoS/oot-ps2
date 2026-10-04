@@ -18,6 +18,7 @@ extern int ps2_prerender_failures(void);
 extern int ps2_lighting_smoke(void);
 extern int ps2_combiner_channel_smoke(void);
 extern int ps2_clip_projection_smoke(void);
+extern int ps2_texture_window_smoke(void);
 
 static void matrix(short* out, float scale, float translate) {
     memset(out, 0, 64);
@@ -483,6 +484,7 @@ int ps2_renderer_smoke(void) {
     ps2_texture_build_vertex(&mirrored,&mirrorRsp,&g_rdpState,&mirrorVertex,0,0,&mirrorPoint);
     if (mirrorPoint.stq.st.s != 1 || mirrorPoint.stq.st.t != -1) failures++;
     printf("[PS2 MIRROR TEST] S/T texels, alpha, cache variants and coordinates failures=%d\n", failures);
+    failures += ps2_texture_window_smoke();
     rdp_setothermode(0, 0, &g_rdpState);
     static const u8 texture[] = {255,255, 255,255, 255,255, 255,255};
     for (int i = 0; i < 2; i++) {

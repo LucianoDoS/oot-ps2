@@ -4,6 +4,54 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Ventanas de textura de Link y salas restantes de Kokiri — 2026-10-03
+
+- El usuario percibe otra mejora de rendimiento, con caídas al mirar a
+  ciertas cámaras, y señala una mancha rosa detrás de la oreja de Link y
+  un patrón verde oscuro en el torso. No aporta una nueva cifra de FPS.
+  También vuelve a encontrar un bloqueo al pasar a otra parte del bosque.
+- Las listas originales cargan el pelo como RGBA16 de 16×16, pero fijan
+  una ventana de 32×16 con máscara horizontal de 16 texels. La túnica usa
+  I8 de 16×32 con una ventana de 32×32, espejo y clamp. El port confundía
+  la ventana con la imagen y leía bytes del siguiente recurso como texels;
+  además sólo reconocía espejo cuando el bit de clamp estaba apagado.
+- Se decodifica el periodo que puede seleccionar la máscara, conservando
+  el stride de LOADTILE o la fila TMEM de LOADBLOCK. Luego se materializan
+  la repetición o el espejo dentro de la ventana limitada del GS. Las
+  coordenadas se interpolan como antes, y la caché incluye las dimensiones
+  de la imagen enviada, además de los texels y paletas que sí se usan.
+  El orden clamp→mask/mirror se contrastó con el código de referencia de
+  [angrylion-rdp-plus](https://github.com/ata4/angrylion-rdp-plus/blob/master/src/core/n64video/rdp/tex.c).
+- La nueva prueba usa los formatos, máscaras y filas del pelo y la túnica,
+  con ventanas de 24 y 32 texels, repetición, espejo y bytes de relleno que
+  delatan lecturas del recurso siguiente. También comprueba los límites
+  GS, la clave de caché y cambios de RAM dentro y fuera del periodo usado.
+  Pasan sus 5376 texels, el resto de gráficos y audio y 120 fotogramas en
+  `build/PS2/pcsx2-link-tile-window-pass.log`. La primera comprobación tenía
+  14 diferencias de alfa en el valor I8 255: la referencia nueva esperaba
+  128, pero el decodificador existente conserva 127. Se ajustó la referencia
+  para verificar la corrección de filas sin alterar la cuantización de alfa.
+- Los dos registros del bloqueo terminan en Scene_CommandObjectList y
+  Actor_Spawn sin cargar una escena diferente de Kokiri. La imagen anterior
+  sólo convertía `spot04_room_0`: faltaban `spot04_room_1` y `spot04_room_2`.
+  El perfil play ahora incluye las tres salas y sus dependencias. Se añade
+  un registro por carga de sala para identificar futuras transiciones.
+- `check_ps2_kokiri_rooms.py` valida comandos, objetos, actores y texturas
+  contra la ROM original: 33 recursos de escena y 68/46/22 de las salas,
+  además de sus direcciones VROM. Los 139 segmentos previos son idénticos
+  byte por byte. La misma comprobación falla en la imagen anterior por
+  faltar `spot04_room_1`. Registros: `build/PS2/kokiri-rooms-check.log` y
+  `build/PS2/kokiri-rooms-before-check.log`. Juego enlazado con 718 objetos
+  e instalado junto a la nueva imagen de datos; ambos coinciden por SHA256
+  con sus archivos verificados. La ventana responde y el arranque no registra
+  excepciones ni bloques PCM perdidos. El usuario confirma la corrección de
+  Link y que ya puede entrar en la zona; el registro muestra la carga de
+  `spot04_room_2` y el regreso a la sala 0 sin excepciones. Al recoger la
+  espada aparece otro fallo del modelo recibido y la vista de equipamiento
+  muestra corrupto el retrato de Link; se investigan por separado.
+- Respaldos de la versión anterior: `oot_ps2-before-link-windows.elf` y
+  `oot-before-kokiri-rooms.z64/json`, dentro de `build/PS2-ntsc12`.
+
 ## Mezcla NEAD y ciclo final de materiales — 2026-10-03
 
 - El usuario confirma 18 FPS quieto y 16 caminando en la misma vista de

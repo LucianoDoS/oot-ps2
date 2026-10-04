@@ -727,6 +727,10 @@ s32 Room_RequestNewRoom(PlayState* play, RoomContext* roomCtx, s32 roomNum) {
         ASSERT(roomNum < play->roomList.count, "read_room_ID < game_play->room_rom_address.num", "../z_room.c", 1009);
 
         size = play->roomList.romFiles[roomNum].vromEnd - play->roomList.romFiles[roomNum].vromStart;
+#if PLATFORM_PS2
+        osSyncPrintf("[PS2 ROOM LOAD] scene=%d room=%d vrom=%08x size=%u\n",
+                     play->sceneId, roomNum, play->roomList.romFiles[roomNum].vromStart, size);
+#endif
         roomCtx->roomRequestAddr = (void*)ALIGN16((uintptr_t)roomCtx->bufPtrs[roomCtx->activeBufPage] -
                                                   ((size + 8) * roomCtx->activeBufPage + 7));
 
