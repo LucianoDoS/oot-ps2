@@ -127,6 +127,11 @@ no valida la lectura de un dispositivo USB físico. Otras dos comprobaciones
 cargan los módulos USB reales en el IOP de PCSX2 y exigen el error acotado por
 ausencia del archivo: en BOOTTEST y en el juego con los módulos de mandos,
 tarjeta y sonido ya cargados. Comprueban el inicio de los controladores, sin dispositivo.
+El arranque válido del juego también exige un BOOT.LOG con etapas de módulos,
+vídeo, mando, guardado, audio, vblank, apertura de datos e inicialización del
+primer estado y fotograma. BOOTTEST debe mostrar el final de un registro mayor
+que su buffer y conservar su SHA256; los errores de datos no deben crear uno.
+El archivo es evidencia del arranque, no una certificación de juego completo.
 La copia comprueba que la unidad elegida sea extraíble FAT32 y verifica todos
 los archivos mediante SHA256. Sólo copia la carpeta OOTPS2; conserva otros
 archivos y respalda archivos del paquete anteriores si van a cambiar. No

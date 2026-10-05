@@ -39,6 +39,7 @@
 #include "ps2_os_internal.h"
 #ifdef PS2_USB_BOOT
 #include "ps2_usb_boot.h"
+#include "ps2_boot_trace.h"
 #endif
 
 typedef void* OSMesg;
@@ -145,6 +146,7 @@ static bool rom_open(void) {
     if (s_romOpen) return true;
 #ifdef PS2_USB_BOOT
     kRomPaths[0] = ps2_usb_data_path();
+    ps2_boot_trace_stage("DATOS: abriendo archivo para el juego");
 #endif
 
     for (int i = 0; kRomPaths[i] != NULL; i++) {
@@ -160,6 +162,9 @@ static bool rom_open(void) {
             s_romSize = (u32)size;
             printf("[osRom] ROM abierta: %s (%d bytes)\n",
                    kRomPaths[i], size);
+#ifdef PS2_USB_BOOT
+            ps2_boot_trace_stage("DATOS: archivo abierto para el juego");
+#endif
             return true;
         }
     }

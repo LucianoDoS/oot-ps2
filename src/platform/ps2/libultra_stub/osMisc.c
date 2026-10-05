@@ -19,6 +19,9 @@
 #include <stdio.h>
 
 #include "ps2_os_internal.h"
+#ifdef PS2_USB_BOOT
+#include "ps2_boot_trace.h"
+#endif
 
 typedef void* OSMesg;
 struct OSMesgQueue;
@@ -31,6 +34,11 @@ void osInitialize(void) {
 }
 
 void __attribute__((noreturn)) ps2_report_fatal(const char* first, const char* second) {
+#ifdef PS2_USB_BOOT
+    char message[160];
+    snprintf(message, sizeof(message), "[PS2 FATAL] %s: %s", first ? first : "", second ? second : "");
+    ps2_boot_trace_game_message(message);
+#endif
     printf("[PS2 FATAL] %s: %s\n", first ? first : "", second ? second : "");
     fflush(stdout);
     for (;;) SleepThread();
@@ -73,6 +81,16 @@ void osSyncPrintf(const char* fmt, ...) {
     if (!osSyncPrintfEnabled) return;
     va_list args;
     va_start(args, fmt);
+#ifdef PS2_USB_BOOT
+    if (strncmp(fmt, "[PS2 STATE]", 11) == 0 || strncmp(fmt, "[PS2 FRAME]", 11) == 0) {
+        char message[160];
+        va_list copy;
+        va_copy(copy, args);
+        vsnprintf(message, sizeof(message), fmt, copy);
+        va_end(copy);
+        ps2_boot_trace_game_message(message);
+    }
+#endif
     vprintf(fmt, args);
     va_end(args);
 }

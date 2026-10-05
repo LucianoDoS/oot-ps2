@@ -286,9 +286,10 @@ ifeq ($(PLATFORM),PS2)
 OBJS += $(BUILD_DIR)/generated/audsrv_irx.o
 OBJS += $(BUILD_DIR)/generated/freesd_irx.o
 ifeq ($(PS2_USB_BOOT),1)
-OBJS := $(filter-out $(BUILD_DIR)/src/platform/ps2/ps2_main.o $(BUILD_DIR)/src/platform/ps2/libultra_stub/osRom.o,$(OBJS))
-OBJS += $(BUILD_DIR)/src/platform/ps2/ps2_main_usb.o $(BUILD_DIR)/src/platform/ps2/libultra_stub/osRom_usb.o
-DEPS += $(BUILD_DIR)/src/platform/ps2/ps2_main_usb.d $(BUILD_DIR)/src/platform/ps2/libultra_stub/osRom_usb.d
+OBJS := $(filter-out $(BUILD_DIR)/src/platform/ps2/ps2_main.o $(BUILD_DIR)/src/platform/ps2/ps2_boot.o $(BUILD_DIR)/src/platform/ps2/libultra_stub/osRom.o $(BUILD_DIR)/src/platform/ps2/libultra_stub/osMisc.o,$(OBJS))
+USB_TRACE_OBJS := $(BUILD_DIR)/src/platform/ps2/ps2_main_usb.o $(BUILD_DIR)/src/platform/ps2/ps2_boot_usb.o $(BUILD_DIR)/src/platform/ps2/libultra_stub/osRom_usb.o $(BUILD_DIR)/src/platform/ps2/libultra_stub/osMisc_usb.o $(BUILD_DIR)/src/platform/ps2/ps2_boot_trace.o
+OBJS += $(USB_TRACE_OBJS)
+DEPS += $(USB_TRACE_OBJS:.o=.d)
 ifeq ($(PS2_USB_HOST_TEST),1)
 OBJS += $(BUILD_DIR)/generated/ps2_usb_boot_host.o
 DEPS += $(BUILD_DIR)/generated/ps2_usb_boot_host.d
@@ -392,6 +393,18 @@ $(BUILD_DIR)/src/platform/ps2/ps2_main_usb.o: src/platform/ps2/ps2_main.c
 $(BUILD_DIR)/src/platform/ps2/libultra_stub/osRom_usb.o: src/platform/ps2/libultra_stub/osRom.c
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) $(CFLAGS) -DPS2_USB_BOOT=1 -Iinclude -Isrc $(PLATFORM_INCLUDES) $(DEPFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/src/platform/ps2/ps2_boot_usb.o: src/platform/ps2/ps2_boot.c
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CFLAGS) -DPS2_USB_BOOT=1 -Iinclude -Isrc $(PLATFORM_INCLUDES) $(DEPFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/src/platform/ps2/libultra_stub/osMisc_usb.o: src/platform/ps2/libultra_stub/osMisc.c
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CFLAGS) -DPS2_USB_BOOT=1 -Iinclude -Isrc $(PLATFORM_INCLUDES) $(DEPFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/src/platform/ps2/ps2_boot_trace.o: src/platform/ps2/ps2_boot_trace.c
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CFLAGS) -Iinclude/ps2 $(PLATFORM_INCLUDES) $(DEPFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/generated/ps2_usb_boot.o: src/platform/ps2/ps2_usb_boot.c $(BUILD_DIR)/generated/usb_data_expected.h
 	$(Q)$(CC) $(CFLAGS) -Iinclude/ps2 -I$(BUILD_DIR)/generated $(PLATFORM_INCLUDES) $(DEPFLAGS) -c $< -o $@

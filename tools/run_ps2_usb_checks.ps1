@@ -24,6 +24,14 @@ foreach ($case in 'valid','wrong-size','wrong-block','valid-game','missing-usb',
     $builtElf = if ($case -eq 'valid-game') { 'oot_ps2_usb_game_host_test.elf' } elseif ($case -eq 'missing-usb') { 'oot_ps2_usb_diagnostic.elf' } elseif ($case -eq 'missing-usb-game') { 'oot_ps2_usb.elf' } else { 'oot_ps2_usb_host_test.elf' }
     Copy-Item -LiteralPath (Join-Path $project ('build\PS2-ntsc12\'+$builtElf)) $elf
     Copy-Item -LiteralPath (Join-Path $project 'build\PS2-ntsc12\oot-full-next.z64') $data
+    $bootLog = Join-Path $folder 'BOOT.LOG'
+    $priorHash = $null
+    if ($case -eq 'valid') {
+        # A log longer than the reader's buffer must survive BOOTTEST unchanged.
+        $fixture = (1..120 | ForEach-Object { "$_ JUEGO: etapa anterior de prueba`n" }) -join ''
+        [IO.File]::WriteAllText($bootLog, $fixture, [Text.Encoding]::ASCII)
+        $priorHash = (Get-FileHash -LiteralPath $bootLog -Algorithm SHA256).Hash
+    }
     if ($case -in 'wrong-size','wrong-block') {
         $stream = [IO.File]::Open($data, [IO.FileMode]::Open, [IO.FileAccess]::Write)
         try {
@@ -45,19 +53,31 @@ foreach ($case in 'valid','wrong-size','wrong-block','valid-game','missing-usb',
                 $reader = [IO.StreamReader]::new($s)
                 try { $text=$reader.ReadToEnd() } finally { $reader.Dispose() }
             }
-        } while ($text -notmatch '\[PS2 USB DIAGNOSTIC\] PASS|\[PS2 USB BOOT\] FAIL|\[PS2 FRAME\].*frame 1' -and (Get-Date) -lt $deadline)
+            $done = $text -match '\[PS2 USB DIAGNOSTIC\] PASS|\[PS2 USB BOOT\] FAIL|\[PS2 FRAME\].*frame 1'
+            if ($case -eq 'valid-game' -and $done) {
+                $done = (Test-Path -LiteralPath $bootLog) -and ([IO.File]::ReadAllText($bootLog) -match '\[PS2 FRAME\].*frame 1\r?\n')
+            }
+        } while (!$done -and (Get-Date) -lt $deadline)
         if ($text -match 'TLB Miss|Address ?Error|\[PS2 FAULT\]') { throw 'Native boot check faulted.' }
         if ($case -in 'missing-usb','missing-usb-game') {
             if ($text -notmatch '\[PS2 USB MODULE\] USBD id=\d+ rv=0' -or $text -notmatch '\[PS2 USB MODULE\] USBHDFSD id=\d+ rv=0' -or $text -notmatch '\[PS2 USB BOOT\] FAIL No encuentro OOT.Z64') { throw 'USB driver startup or bounded missing-file handling failed.' }
             if ($case -eq 'missing-usb-game' -and $text -notmatch 'Modulos IOP cargados\.') { throw 'Game IOP modules were not initialized before USB.' }
         } elseif ($case -eq 'valid-game') {
             if ($text -notmatch '\[PS2 USB BOOT\] PASS' -or $text -notmatch '\[osRom\] ROM abierta: host:OOT.Z64' -or $text -notmatch '\[PS2 FRAME\].*frame 1') { throw 'Game did not boot through the validated data path.' }
+            $bootText = [IO.File]::ReadAllText($bootLog)
+            foreach ($stage in 'MAIN: ejecutable iniciado','ACTORES: datos iniciales conservados','IOP: reinicio terminado','USB: DATOS OK','BOOT.LOG: registro activo','VIDEO: listo','MANDO init resultado=','GUARDADO: inicializacion terminada','AUDIO: inicializacion terminada','VBLANK: activo','DATOS: archivo abierto para el juego','\[PS2 STATE\] Init completed','\[PS2 FRAME\].*frame 1') {
+                if ($bootText -notmatch $stage) { throw "BOOT.LOG is missing stage: $stage" }
+            }
+            if ($bootText -match 'ERROR:|BOOT.LOG: fallo|BOOT.LOG: no pude') { throw 'Startup tracing failed.' }
         } elseif ($case -eq 'valid') {
             if ($text -notmatch '\[PS2 USB DIAGNOSTIC\] PASS data=1 cardWrites=0 hardwareValidated=0') { throw 'Valid data was rejected.' }
+            if ($text -notmatch '\[PS2 USB PREVIOUS LOG\]' -or $text -notmatch '120 JUEGO: etapa anterior de prueba' -or $text -match '110 JUEGO: etapa anterior de prueba') { throw 'Previous log tail was not displayed correctly.' }
+            if ((Get-FileHash -LiteralPath $bootLog -Algorithm SHA256).Hash -ne $priorHash) { throw 'BOOTTEST modified the previous log.' }
         } else {
             $expected = if ($case -eq 'wrong-size') { 'Tamano incorrecto' } else { 'Datos incorrectos o corruptos' }
             if ($text -notmatch "\[PS2 USB BOOT\] FAIL $expected" -or $text -match '\[PS2 USB BOOT\] PASS') { throw 'Invalid data was accepted or wrong failure.' }
         }
+        if ($case -notin 'valid','valid-game' -and (Test-Path -LiteralPath $bootLog)) { throw 'Unexpected diagnostic log write.' }
         $results += @{case=$case;status='PASS';log=$log}
         Write-Output "$case PASS"
     } finally {

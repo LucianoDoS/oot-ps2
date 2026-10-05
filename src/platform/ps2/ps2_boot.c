@@ -57,6 +57,14 @@
 
 #include "ps2_types.h"
 #include "ps2_init.h"
+#ifdef PS2_USB_BOOT
+#include "ps2_boot_trace.h"
+#define BOOT_STAGE(message) ps2_boot_trace_stage(message)
+#define BOOT_RESULT(name, result) ps2_boot_trace_result(name, result)
+#else
+#define BOOT_STAGE(message) ((void)0)
+#define BOOT_RESULT(name, result) ((void)0)
+#endif
 
 /* ───────────────────────────────────────────────────────────────── *
  *  Funciones del propio juego
@@ -141,12 +149,14 @@ static void vblank_thread(void* arg) {
 }
 
 static void start_vblank_thread(void) {
+    BOOT_STAGE("VBLANK: creando semaforo y hilo");
     ee_sema_t sema;
     memset(&sema, 0, sizeof(sema));
     sema.init_count = 0;
     sema.max_count  = 1;      /* si nos retrasamos, se pierden frames,
                                  que es mejor que acumular retraso */
     s_vblankSema = CreateSema(&sema);
+    BOOT_RESULT("VBLANK semaforo", s_vblankSema);
 
     ee_thread_t th;
     memset(&th, 0, sizeof(th));
@@ -157,13 +167,17 @@ static void start_vblank_thread(void) {
     th.initial_priority = 8;   /* alta: es el reloj del sistema */
 
     s_vblankThread = CreateThread(&th);
+    BOOT_RESULT("VBLANK hilo", s_vblankThread);
     if (s_vblankThread >= 0) {
         StartThread(s_vblankThread, NULL);
     }
 
     /* Enganchar al VSync del GS (INTC_VBLANK_START = 2) */
-    AddIntcHandler(2, vblank_handler, 0);
+    int handler = AddIntcHandler(2, vblank_handler, 0);
+    BOOT_RESULT("VBLANK handler", handler);
+    (void)handler;
     EnableIntc(2);
+    BOOT_STAGE("VBLANK: activo");
 
     printf("[boot] Latido de vblank en marcha\n");
 }
@@ -176,6 +190,7 @@ void ps2_boot_game(void) {
 
     /* El orden importa: las tablas laterales deben existir antes de que
      * nadie cree un hilo o una cola. */
+    BOOT_STAGE("JUEGO: tablas de hilos y mensajes");
     ps2_thread_init();
     ps2_mesgqueue_init();
     ps2_event_init();
@@ -184,14 +199,19 @@ void ps2_boot_game(void) {
 
     /* Heap del juego.
      * ANTES: ps2_heap_init() existía pero no la llamaba nadie. */
+    BOOT_STAGE("JUEGO: inicializando heap");
     ps2_heap_init();
 
     /* Guardado en memory card.
      * ANTES: ps2_save_init() tampoco la llamaba nadie. */
+    BOOT_STAGE("GUARDADO: cargando memory card");
     ps2_save_init();
+    BOOT_STAGE("GUARDADO: inicializacion terminada");
 
     /* Audio */
+    BOOT_STAGE("AUDIO: inicializando controlador");
     PS2Audio_Init();
+    BOOT_STAGE("AUDIO: inicializacion terminada");
 
     /* Latido por frame */
     start_vblank_thread();
@@ -201,7 +221,9 @@ void ps2_boot_game(void) {
     /* Y aquí se le cede el control al código original de OoT.
      * bootproc() crea el hilo idle, que crea el hilo main, que crea el
      * hilo graph. A partir de este punto manda el juego. */
+    BOOT_STAGE("JUEGO: llamando bootproc");
     bootproc();
+    BOOT_STAGE("JUEGO: bootproc ha retornado");
 
     /* bootproc() vuelve enseguida (sólo arranca hilos). El hilo actual
      * se queda vivo a prioridad mínima para no morir y llevarse por

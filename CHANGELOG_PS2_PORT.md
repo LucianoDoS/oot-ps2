@@ -4,6 +4,36 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Diagnóstico del arranque en consola — 2026-10-04
+
+- El usuario confirma `DATOS OK` en BOOTTEST en una SCPH-90010 conectada
+  mediante convertidor AV a HDMI. OOTPS2.ELF queda negro. Está confirmada
+  la lectura inicial de datos en hardware, pero no el arranque del juego
+  ni la causa del bloqueo. Se registra en `BUGS_PS2.md`.
+- La variante USB muestra la etapa desde la entrada de main y registra
+  resultados de módulos, reset, memory card, vídeo, mando, audio, heap,
+  vblank y apertura de datos. Conserva las etapas previas en RAM y crea
+  `BOOT.LOG` junto a OOT.Z64 después de validarlo. Cierra cada escritura
+  para conservar la última etapa al reiniciar. El texto de pantalla se
+  desactiva antes de gsKit; el registro se limita a 96 etapas y sólo al
+  primer fotograma, sin registrar todos los fotogramas del juego.
+- BOOTTEST muestra las diez últimas líneas del registro anterior con
+  lectura acotada y sin modificarlo. También informa si aún no existe.
+  Los objetos de boot y osSyncPrintf son independientes en la variante
+  USB; el ELF habitual de PCSX2 y la tarjeta del jugador no se sustituyen.
+- Pasan seis comprobaciones en PCSX2: datos válidos/incorrectos, inicio
+  del juego hasta el primer fotograma con BOOT.LOG completo y los dos
+  arranques sin dispositivo USB. La prueba de BOOTTEST conserva el hash
+  de un registro mayor que su buffer y muestra correctamente su final.
+  Informe: `build/PS2/usb-host-checks/20261004-232202-361/report.json`.
+- El nuevo juego USB termina sus segmentos estáticos en `0x0116e430`,
+  dentro de la RAM del EE. Los datos convertidos no cambian. La prueba
+  del nuevo diagnóstico en la consola real queda pendiente.
+- Se copian y verifican siete archivos en `D:\OOTPS2`. El juego tiene
+  SHA256 `ca2d317e3b01b6cbd3691745c58168e0183f9bb4c2540d81d3c680c491122040`.
+  Los archivos sustituidos se conservan en
+  `D:\OOTPS2-backup-20261004-232349`; informe `build/PS2/usb-copy-report.json`.
+
 ## Recorrido de salas y preparación USB — 2026-10-04
 
 - El usuario da por resuelto el Árbol Deku y pide ampliar las pruebas y

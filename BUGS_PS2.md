@@ -1,5 +1,13 @@
 # Fallos y límites encontrados por las pruebas
 
+## Pantalla negra al arrancar en PS2 real
+
+Estado: pendiente de localizar. El usuario confirma `DATOS OK` en BOOTTEST,
+pero OOTPS2.ELF queda negro en una SCPH-90010 con convertidor AV a HDMI.
+No hay evidencia aún para atribuirlo al vídeo, al mando, al audio o a otra etapa.
+La variante USB incluye mensajes antes de iniciar el GS y un BOOT.LOG junto
+a los datos; BOOTTEST muestra el final del registro tras reiniciar.
+
 ## Campo de Entrenamiento Gerudo, sala 2
 
 Estado: pendiente. El nuevo recorrido de salas encuentra una excepción de
@@ -40,6 +48,7 @@ correctas. Esto cambia sólo el criterio de la prueba, no el juego ni la escena.
 
 Los recorridos inicializan salas con una edad elegida por escena y prueban
 funciones de estado. No resuelven cada puzle, combate, diálogo, transición
-natural, cambio de edad ni final. La primera ejecución en PS2 real queda
-pendiente. El Árbol Deku y el audio se mantienen como casos confirmados por el
+natural, cambio de edad ni final. En PS2 real sólo está confirmada la
+comprobación inicial de datos; el juego aún no arranca. El Árbol Deku y el audio
+en PCSX2 se mantienen como casos confirmados por el
 usuario; el rendimiento adicional sigue aplazado.

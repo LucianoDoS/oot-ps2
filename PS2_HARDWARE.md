@@ -4,12 +4,19 @@ Paquete privado para arrancar desde un USB FAT32 mediante Free McBoot y
 wLaunchELF. Aún necesita comprobarse en una consola real. Los resultados de
 PCSX2 no certifican el comportamiento en hardware.
 
+Primera prueba del usuario: en una SCPH-90010, conectada mediante un
+convertidor AV a HDMI, BOOTTEST muestra `DATOS OK`. OOTPS2.ELF queda negro.
+La lectura inicial del USB está confirmada; la causa del bloqueo y el
+funcionamiento del juego en esa consola siguen pendientes.
+
 1. Copia la carpeta `OOTPS2` completa a la raíz del USB.
 2. En wLaunchELF abre `mass:/OOTPS2/BOOTTEST.ELF`.
 3. Espera el resultado. Debe aparecer `DATOS OK` y el estado de la memory card
    del puerto 1. El diagnóstico sólo consulta la tarjeta; no guarda ni formatea.
 4. Reinicia la consola, vuelve a wLaunchELF y abre
    `mass:/OOTPS2/OOTPS2.ELF`.
+   Esta versión muestra la etapa de arranque antes de activar el vídeo del
+   juego. Si se detiene ahí, anota la última etapa visible.
 5. Comprueba el logo, el título, el mando, la música y la carga de una partida.
    Después prueba Kokiri y el interior del Árbol Deku.
 6. Para comprobar el guardado, usa una partida de prueba en una tarjeta PS2
@@ -27,9 +34,20 @@ distribuidos mediante CRC32; esto detecta archivos equivocados y parte de la
 corrupción, pero no sustituye el SHA256 completo de `HASHES.sha256`.
 
 Ante un error de datos, el juego muestra una explicación en pantalla y no
-inicia la partida. Reinicia para regresar al lanzador. Si se queda negro antes
-de ese mensaje, anota el último texto visible en BOOTTEST y el modelo/región
-de la consola. También interesa saber si falla con otro USB compatible.
+inicia la partida. Reinicia para regresar al lanzador.
+
+Si queda negro después de activar el vídeo, reinicia y abre BOOTTEST.ELF
+otra vez. Mostrará las diez últimas etapas de `mass:/OOTPS2/BOOT.LOG`, sin
+modificar ese archivo. Comunica la última línea o toma una foto de la pantalla.
+También se puede leer el archivo desde el PC. Cada nuevo arranque del juego
+reemplaza BOOT.LOG después de validar los datos; BOOTTEST lo conserva.
+Si no aparece ningún mensaje desde el principio y BOOTTEST indica que no hay
+registro, informa de ese caso: el juego podría no haber llegado a su entrada.
+
+El registro se limita a etapas del arranque, estados del juego y su primer
+fotograma. Desactiva el texto de diagnóstico antes de que gsKit controle la
+pantalla. No escribe un registro en cada fotograma. Si el USB no permite crear
+el archivo, muestra esa condición mientras aún está activa la pantalla de texto.
 
 El informe `package.json` verifica las direcciones estáticas del ELF dentro
 de los 32 MiB del EE. El espacio restante no garantiza por sí solo que todas

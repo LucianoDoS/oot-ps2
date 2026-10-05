@@ -11,7 +11,11 @@
 
 static char sDataPath[256];
 static char sError[128];
+static void (*sProgress)(const char*);
 static unsigned char sBlock[4096] __attribute__((aligned(64)));
+
+void ps2_usb_set_progress(void (*callback)(const char*)) { sProgress = callback; }
+static void progress(const char* message) { if (sProgress) sProgress(message); }
 
 static unsigned int crc32(const unsigned char* data, unsigned int size) {
     unsigned int crc = ~0u;
@@ -30,6 +34,7 @@ static int fail(const char* message) {
 
 #ifndef PS2_USB_HOST_TEST
 static int load_driver(unsigned char* data, unsigned int bytes, const char* name) {
+    progress(name);
     int result = -1;
     int module = SifExecModuleBuffer(data, bytes, 0, NULL, &result);
     printf("[PS2 USB MODULE] %s id=%d rv=%d\n", name, module, result);
@@ -70,6 +75,7 @@ int ps2_usb_prepare(const char* launch_path) {
         }
     }
 #endif
+    progress("USB: buscando OOT.Z64");
     int fd = -1;
     for (int attempt = 0; attempt < 100; attempt++) {
         fd = open(sDataPath, O_RDONLY);
@@ -77,6 +83,7 @@ int ps2_usb_prepare(const char* launch_path) {
         usleep(100000);
     }
     if (fd < 0) return fail("No encuentro OOT.Z64 junto al ELF en el USB");
+    progress("USB: comprobando tamano y bloques");
     int size = lseek(fd, 0, SEEK_END);
     if (size < 0 || (unsigned int)size != PS2_USB_DATA_SIZE) {
         close(fd);
@@ -97,6 +104,7 @@ int ps2_usb_prepare(const char* launch_path) {
         }
     }
     close(fd);
+    progress("USB: DATOS OK");
     printf("[PS2 USB BOOT] PASS path=%s bytes=%u samples=%u\n", sDataPath,
            PS2_USB_DATA_SIZE, (unsigned int)(sizeof(sUsbSamples) / sizeof(sUsbSamples[0])));
     return 1;

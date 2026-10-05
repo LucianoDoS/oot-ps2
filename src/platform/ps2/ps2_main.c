@@ -53,7 +53,13 @@
 #include "rdp_to_gs.h"
 #ifdef PS2_USB_BOOT
 #include "ps2_usb_boot.h"
+#include "ps2_boot_trace.h"
 static const char* s_usbLaunchPath;
+#define BOOT_STAGE(message) ps2_boot_trace_stage(message)
+#define BOOT_RESULT(name, result) ps2_boot_trace_result(name, result)
+#else
+#define BOOT_STAGE(message) ((void)0)
+#define BOOT_RESULT(name, result) ((void)0)
 #endif
 
 /* ───────────────────────────────────────────────────────────────── *
@@ -75,12 +81,16 @@ extern s32  osContInit(void* siHandle, u8* numControllers, void* status);
  *  que rehacer SifInitRpc.
  * ───────────────────────────────────────────────────────────────── */
 static void reset_iop(void) {
+    BOOT_STAGE("IOP: iniciando RPC");
     SifInitRpc(0);
 
     /* Reset completo del IOP */
+    BOOT_STAGE("IOP: solicitando reinicio");
     while (!SifIopReset("", 0)) {}
+    BOOT_STAGE("IOP: esperando sincronizacion");
     while (!SifIopSync()) {}
 
+    BOOT_STAGE("IOP: restaurando RPC y parches");
     SifInitRpc(0);
     SifLoadFileInit();
     SifInitIopHeap();
@@ -89,6 +99,7 @@ static void reset_iop(void) {
      * audsrv, que no está en la ROM de la consola) */
     sbv_patch_enable_lmb();
     sbv_patch_disable_prefix_check();
+    BOOT_STAGE("IOP: reinicio terminado");
 }
 
 /* ───────────────────────────────────────────────────────────────── *
@@ -106,17 +117,25 @@ void ps2_init_iop(void) {
     int ret;
 
     /* ── Mandos ─────────────────────────────────────────────────── */
+    BOOT_STAGE("IOP: cargando SIO2MAN");
     ret = SifLoadModule("rom0:SIO2MAN", 0, NULL);
+    BOOT_RESULT("SIO2MAN", ret);
     if (ret < 0) printf("[OoT-PS2] AVISO: SIO2MAN fallo (%d)\n", ret);
 
+    BOOT_STAGE("IOP: cargando PADMAN");
     ret = SifLoadModule("rom0:PADMAN", 0, NULL);
+    BOOT_RESULT("PADMAN", ret);
     if (ret < 0) printf("[OoT-PS2] AVISO: PADMAN fallo (%d)\n", ret);
 
     /* ── Memory card ────────────────────────────────────────────── */
+    BOOT_STAGE("IOP: cargando MCMAN");
     ret = SifLoadModule("rom0:MCMAN", 0, NULL);
+    BOOT_RESULT("MCMAN", ret);
     if (ret < 0) printf("[OoT-PS2] AVISO: MCMAN fallo (%d)\n", ret);
 
+    BOOT_STAGE("IOP: cargando MCSERV");
     ret = SifLoadModule("rom0:MCSERV", 0, NULL);
+    BOOT_RESULT("MCSERV", ret);
     if (ret < 0) printf("[OoT-PS2] AVISO: MCSERV fallo (%d)\n", ret);
 
     /* ── Audio ──────────────────────────────────────────────────── */
@@ -125,10 +144,15 @@ void ps2_init_iop(void) {
     extern unsigned char freesd_irx[];
     extern unsigned int size_freesd_irx;
     int soundRv = 0;
+    BOOT_STAGE("IOP: cargando FREESD");
     ret = SifExecModuleBuffer(freesd_irx, size_freesd_irx, 0, NULL, &soundRv);
+    BOOT_RESULT("FREESD id", ret);
+    BOOT_RESULT("FREESD rv", soundRv);
     if (ret < 0 || soundRv != 0) {
         printf("[PS2 SOUND MODULE] SDK failed ret=%d rv=%d; ROM fallback\n", ret, soundRv);
+        BOOT_STAGE("IOP: cargando LIBSD de ROM");
         ret = SifLoadModule("rom0:LIBSD", 0, NULL);
+        BOOT_RESULT("LIBSD", ret);
         if (ret < 0) printf("[OoT-PS2] AVISO: LIBSD fallo (%d)\n", ret);
     } else printf("[PS2 SOUND MODULE] SDK libsd loaded id=%d\n", ret);
 
@@ -137,7 +161,10 @@ void ps2_init_iop(void) {
     extern unsigned char audsrv_irx[];
     extern unsigned int  size_audsrv_irx;
     int rv = 0;
+    BOOT_STAGE("IOP: cargando AUDSRV");
     ret = SifExecModuleBuffer(audsrv_irx, size_audsrv_irx, 0, NULL, &rv);
+    BOOT_RESULT("AUDSRV id", ret);
+    BOOT_RESULT("AUDSRV rv", rv);
     if (ret < 0 || rv != 0) {
         printf("[OoT-PS2] AVISO: audsrv.irx fallo (%d, rv=%d). Sin sonido.\n", ret, rv);
     }
@@ -149,9 +176,11 @@ void ps2_init_iop(void) {
  *  ps2_init_gs() — Graphics Synthesizer
  * ───────────────────────────────────────────────────────────────── */
 void ps2_init_gs(void) {
+    BOOT_STAGE("VIDEO: reservando contexto GS");
     g_gsGlobal = gsKit_init_global();
     if (!g_gsGlobal) {
         printf("[OoT-PS2] ERROR FATAL: gsKit_init_global fallo\n");
+        BOOT_STAGE("ERROR: gsKit_init_global fallo");
         return;
     }
 
@@ -170,24 +199,34 @@ void ps2_init_gs(void) {
     g_gsGlobal->PrimAlphaEnable  = GS_SETTING_ON;
     g_gsGlobal->PrimAAEnable     = GS_SETTING_OFF;
 
+    BOOT_STAGE("VIDEO: inicializando DMA");
     dmaKit_init(D_CTRL_RELE_OFF, D_CTRL_MFD_OFF, D_CTRL_STS_UNSPEC,
                 D_CTRL_STD_OFF, D_CTRL_RCYC_8, 1 << DMA_CHANNEL_GIF);
     dmaKit_chan_init(DMA_CHANNEL_GIF);
     dmaKit_chan_init(DMA_CHANNEL_FROMSPR);
     dmaKit_chan_init(DMA_CHANNEL_TOSPR);
 
+#ifdef PS2_USB_BOOT
+    ps2_boot_trace_screen_off();
+#endif
+    BOOT_STAGE("VIDEO: gsKit_init_screen NTSC 640x448 interlazado");
     gsKit_init_screen(g_gsGlobal);
+    BOOT_STAGE("VIDEO: pantalla inicializada");
     printf("[PS2 GS FORMAT] color=%02x depth=%02x textureStart=%08x\n",
            g_gsGlobal->PSM, g_gsGlobal->PSMZ, g_gsGlobal->CurrentPointer);
     gsKit_mode_switch(g_gsGlobal, GS_ONESHOT);
 
     gsKit_clear(g_gsGlobal, GS_SETREG_RGBAQ(0, 0, 0, 0x80, 0));
+    BOOT_STAGE("VIDEO: enviando primer borrado");
     gsKit_queue_exec(g_gsGlobal);
+    BOOT_STAGE("VIDEO: esperando primer sync_flip");
     gsKit_sync_flip(g_gsGlobal);
 
     /* ESTO FALTABA: sin esta llamada g_rdpState.gs se quedaba a NULL y
      * el primer rdp_to_gs_flip() reventaba. */
+    BOOT_STAGE("VIDEO: inicializando renderer");
     rdp_to_gs_init(g_gsGlobal);
+    BOOT_STAGE("VIDEO: listo");
 
     printf("[OoT-PS2] GS listo: %dx%d NTSC\n", PS2_SCREEN_W, PS2_SCREEN_H);
 }
@@ -199,8 +238,11 @@ void ps2_init_gs(void) {
  *  Ahora delega en osContInit(), que es el único dueño de los puertos.
  * ───────────────────────────────────────────────────────────────── */
 void ps2_init_pad(void) {
+    BOOT_STAGE("MANDO: iniciando puertos");
     u8 numControllers = 0;
-    osContInit(NULL, &numControllers, NULL);
+    s32 result = osContInit(NULL, &numControllers, NULL);
+    BOOT_RESULT("MANDO init", result);
+    (void)result;
 }
 
 /* ───────────────────────────────────────────────────────────────── *
@@ -214,10 +256,14 @@ void ps2_init_all(void) {
     ps2_init_iop();
 
     /* 3. Memory card (necesita MCMAN/MCSERV ya cargados) */
-    mcInit(MC_TYPE_MC);
+    BOOT_STAGE("TARJETA: iniciando RPC");
+    int mcResult = mcInit(MC_TYPE_MC);
+    BOOT_RESULT("TARJETA init", mcResult);
+    (void)mcResult;
 
 #ifdef PS2_USB_BOOT
     if (!ps2_usb_prepare(s_usbLaunchPath)) ps2_usb_fail_screen();
+    ps2_boot_trace_file_ready(ps2_usb_data_path());
 #endif
 
     /* 4. Gráficos */
@@ -227,6 +273,7 @@ void ps2_init_all(void) {
     ps2_init_pad();
 
     printf("[OoT-PS2] Sistema inicializado.\n");
+    BOOT_STAGE("SISTEMA: inicializado");
 }
 
 /* ───────────────────────────────────────────────────────────────── *
@@ -252,17 +299,28 @@ int main(int argc, char* argv[]) {
     (void)argv;
 #endif
 
-    SifInitRpc(0);
     setvbuf(stdout, NULL, _IONBF, 0);
+#ifdef PS2_USB_BOOT
+    ps2_boot_trace_init();
+    ps2_usb_set_progress(ps2_boot_trace_stage);
+    BOOT_RESULT("RAM EE bytes", GetMemorySize());
+#endif
+    SifInitRpc(0);
 
     printf("\n=================================\n");
     printf("  OoT PS2 Port - Build " __DATE__ "\n");
     printf("=================================\n\n");
 
+    BOOT_STAGE("ACTORES: conservando datos iniciales");
     if (!ps2_actor_overlays_init()) {
         printf("[OoT-PS2] Cannot preserve initial actor overlay data\n");
+        BOOT_STAGE("ERROR: no hay memoria para los datos de actores");
+#ifdef PS2_USB_BOOT
+        for (;;) SleepThread();
+#endif
         return 1;
     }
+    BOOT_STAGE("ACTORES: datos iniciales conservados");
     ps2_init_all();
 
     /* Cede el control a la cadena de arranque real del juego
