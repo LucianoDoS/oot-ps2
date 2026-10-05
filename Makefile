@@ -250,6 +250,7 @@ endif
 PS2_PLATFORM_SRCS := \
   src/platform/ps2/ps2_main.c \
   src/platform/ps2/ps2_boot.c \
+  src/platform/ps2/ps2_cache.c \
   src/platform/ps2/ps2_actor_overlays.c \
   $(call find_c, src/platform/ps2/libultra_stub) \
   $(call find_c, src/platform/ps2/gfx) \
@@ -288,6 +289,8 @@ OBJS += $(BUILD_DIR)/generated/freesd_irx.o
 ifeq ($(PS2_USB_BOOT),1)
 OBJS := $(filter-out $(BUILD_DIR)/src/platform/ps2/ps2_main.o $(BUILD_DIR)/src/platform/ps2/ps2_boot.o $(BUILD_DIR)/src/platform/ps2/libultra_stub/osRom.o $(BUILD_DIR)/src/platform/ps2/libultra_stub/osMisc.o,$(OBJS))
 USB_TRACE_OBJS := $(BUILD_DIR)/src/platform/ps2/ps2_main_usb.o $(BUILD_DIR)/src/platform/ps2/ps2_boot_usb.o $(BUILD_DIR)/src/platform/ps2/libultra_stub/osRom_usb.o $(BUILD_DIR)/src/platform/ps2/libultra_stub/osMisc_usb.o $(BUILD_DIR)/src/platform/ps2/ps2_boot_trace.o
+OBJS := $(filter-out $(BUILD_DIR)/src/code/game.o $(BUILD_DIR)/src/overlays/gamestates/ovl_title/z_title.o,$(OBJS))
+USB_TRACE_OBJS += $(BUILD_DIR)/src/code/game_usb.o $(BUILD_DIR)/src/overlays/gamestates/ovl_title/z_title_usb.o
 OBJS += $(USB_TRACE_OBJS)
 DEPS += $(USB_TRACE_OBJS:.o=.d)
 ifeq ($(PS2_USB_HOST_TEST),1)
@@ -405,6 +408,14 @@ $(BUILD_DIR)/src/platform/ps2/libultra_stub/osMisc_usb.o: src/platform/ps2/libul
 $(BUILD_DIR)/src/platform/ps2/ps2_boot_trace.o: src/platform/ps2/ps2_boot_trace.c
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) $(CFLAGS) -Iinclude/ps2 $(PLATFORM_INCLUDES) $(DEPFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/src/code/game_usb.o: src/code/game.c
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CFLAGS) -DPS2_USB_BOOT=1 $(INCLUDES) $(DEPFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/src/overlays/gamestates/ovl_title/z_title_usb.o: src/overlays/gamestates/ovl_title/z_title.c
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CFLAGS) -DPS2_USB_BOOT=1 $(INCLUDES) $(DEPFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/generated/ps2_usb_boot.o: src/platform/ps2/ps2_usb_boot.c $(BUILD_DIR)/generated/usb_data_expected.h
 	$(Q)$(CC) $(CFLAGS) -Iinclude/ps2 -I$(BUILD_DIR)/generated $(PLATFORM_INCLUDES) $(DEPFLAGS) -c $< -o $@

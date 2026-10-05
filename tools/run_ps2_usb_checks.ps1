@@ -65,12 +65,13 @@ foreach ($case in 'valid','wrong-size','wrong-block','valid-game','missing-usb',
         } elseif ($case -eq 'valid-game') {
             if ($text -notmatch '\[PS2 USB BOOT\] PASS' -or $text -notmatch '\[osRom\] ROM abierta: host:OOT.Z64' -or $text -notmatch '\[PS2 FRAME\].*frame 1') { throw 'Game did not boot through the validated data path.' }
             $bootText = [IO.File]::ReadAllText($bootLog)
-            foreach ($stage in 'MAIN: ejecutable iniciado','ACTORES: datos iniciales conservados','IOP: reinicio terminado','USB: DATOS OK','BOOT.LOG: registro activo','VIDEO: listo','MANDO init resultado=','GUARDADO: inicializacion terminada','AUDIO: inicializacion terminada','VBLANK: activo','DATOS: archivo abierto para el juego','\[PS2 STATE\] Init completed','\[PS2 FRAME\].*frame 1') {
+            foreach ($stage in 'MAIN: ejecutable iniciado','ACTORES: datos iniciales conservados','IOP: reinicio terminado','USB: DATOS OK','BOOT.LOG: registro activo','VIDEO: listo','MANDO init resultado=','GUARDADO: inicializacion terminada','AUDIO: inicializacion terminada','VBLANK: activo','DATOS: archivo abierto para el juego','LOGO N64: segmento cargado','LOGO N64: inicializacion terminada','ESTADO: mensaje grafico enviado','\[PS2 STATE\] Init completed','\[PS2 FRAME\].*frame 1') {
                 if ($bootText -notmatch $stage) { throw "BOOT.LOG is missing stage: $stage" }
             }
             if ($bootText -match 'ERROR:|BOOT.LOG: fallo|BOOT.LOG: no pude') { throw 'Startup tracing failed.' }
         } elseif ($case -eq 'valid') {
             if ($text -notmatch '\[PS2 USB DIAGNOSTIC\] PASS data=1 cardWrites=0 hardwareValidated=0') { throw 'Valid data was rejected.' }
+            if ($text -notmatch '\[PS2 CACHE CHECK\] PASS neighbours=1 cpuPayload=1 dmaAlias=1 interruptState=1') { throw 'Cache/payload check failed.' }
             if ($text -notmatch '\[PS2 USB PREVIOUS LOG\]' -or $text -notmatch '120 JUEGO: etapa anterior de prueba' -or $text -match '110 JUEGO: etapa anterior de prueba') { throw 'Previous log tail was not displayed correctly.' }
             if ((Get-FileHash -LiteralPath $bootLog -Algorithm SHA256).Hash -ne $priorHash) { throw 'BOOTTEST modified the previous log.' }
         } else {

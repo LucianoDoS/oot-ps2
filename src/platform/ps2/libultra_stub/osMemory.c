@@ -16,8 +16,9 @@
  * 3. Las operaciones de caché eran no-ops con un comentario de
  *    "descomentar si hay problemas". En PS2 SÍ hacen falta: el EE tiene
  *    caché de escritura diferida y la GIF/DMA lee de RAM física. Si no
- *    se vuelca la caché, la GPU dibuja datos viejos. Ahora usan
- *    FlushCache() de verdad.
+ *    se vuelca la caché, la GPU dibuja datos viejos. Las operaciones
+ *    por rango están ahora en ps2_cache.c; descartar toda la caché de
+ *    datos también descartaba pilas y mensajes pendientes en hardware.
  *
  * 4. bzero/bcopy se definían aquí, pero ps2sdk ya las trae en su libc.
  *    Duplicarlas da "multiple definition" al enlazar. Se eliminan.
@@ -93,37 +94,8 @@ u32 ps2_heap_size(void) {
     return (u32)sizeof(s_gameHeap);
 }
 
-/* ───────────────────────────────────────────────────────────────── *
- *  Operaciones de caché
- *
- *  ps2sdk expone FlushCache(mode):
- *      0 = volcar la caché de datos (writeback)
- *      1 = invalidar la caché de datos
- *      2 = invalidar la caché de instrucciones
- *
- *  Nota: FlushCache actúa sobre TODA la caché, no sobre un rango. Es
- *  más lento que el osWritebackDCache de N64, pero es correcto, que es
- *  lo que importa ahora. Si más adelante el rendimiento lo pide, se
- *  puede bajar a instrucciones SYNC/CACHE por línea.
- * ───────────────────────────────────────────────────────────────── */
-void osWritebackDCache(void* va, s32 len) {
-    (void)va; (void)len;
-    FlushCache(0);
-}
-
-void osWritebackDCacheAll(void) {
-    FlushCache(0);
-}
-
-void osInvalDCache(void* va, s32 len) {
-    (void)va; (void)len;
-    FlushCache(1);
-}
-
-void osInvalICache(void* va, s32 len) {
-    (void)va; (void)len;
-    FlushCache(2);
-}
+/* Cache calls live in ps2_cache.c. Invalidation must never discard dirty
+ * stacks, queue fields or CPU-produced payloads outside the requested range. */
 
 /* ───────────────────────────────────────────────────────────────── *
  *  TLB — el EE no necesita el mapeo de overlays de N64

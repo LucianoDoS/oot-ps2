@@ -132,6 +132,20 @@ vídeo, mando, guardado, audio, vblank, apertura de datos e inicialización del
 primer estado y fotograma. BOOTTEST debe mostrar el final de un registro mayor
 que su buffer y conservar su SHA256; los errores de datos no deben crear uno.
 El archivo es evidencia del arranque, no una certificación de juego completo.
+BOOTTEST exige además conservación de buffers vecinos, pila, alias físico,
+payloads de CPU y estado de interrupciones. En PCSX2 esta comprobación no
+certifica la caché del hardware. El modelo CPU/RAM se ejecuta con:
+
+```powershell
+wsl -d Ubuntu -- python3 tools/test_ps2_cache_ranges.py
+```
+
+Prueba rangos desalineados y límites exactos de línea, vecinos sin tocar,
+writeback solicitado, tamaños nulos/negativos y writeback global explícito.
+Una variante negativa con la invalidación global anterior debe fallar por
+pérdida de datos vecinos. Las funciones de rango usan
+[SyncDCache del SDK](https://github.com/ps2dev/ps2sdk/blob/master/ee/kernel/src/glue.c),
+que redondea los límites a líneas del EE y conserva el estado de interrupciones.
 La copia comprueba que la unidad elegida sea extraíble FAT32 y verifica todos
 los archivos mediante SHA256. Sólo copia la carpeta OOTPS2; conserva otros
 archivos y respalda archivos del paquete anteriores si van a cambiar. No

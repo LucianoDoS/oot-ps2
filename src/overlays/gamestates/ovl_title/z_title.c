@@ -28,6 +28,12 @@
 #include "actor.h"
 #include "environment.h"
 #include "save.h"
+#ifdef PS2_USB_BOOT
+#include "ps2/ps2_boot_trace.h"
+#define BOOT_STAGE(message) ps2_boot_trace_stage(message)
+#else
+#define BOOT_STAGE(message) ((void)0)
+#endif
 
 #include "assets/textures/nintendo_rogo_static/nintendo_rogo_static.h"
 
@@ -231,13 +237,18 @@ void ConsoleLogo_Init(GameState* thisx) {
     }
 #endif
 
+    BOOT_STAGE("LOGO N64: reservando segmento");
     this->staticSegment = GAME_STATE_ALLOC(&this->state, size, "../z_title.c", 611);
     PRINTF("z_title.c\n");
     ASSERT(this->staticSegment != NULL, "this->staticSegment != NULL", "../z_title.c", 614);
+    BOOT_STAGE("LOGO N64: cargando segmento por DMA");
     DMA_REQUEST_SYNC(this->staticSegment, (uintptr_t)_nintendo_rogo_staticSegmentRomStart, size, "../z_title.c", 615);
+    BOOT_STAGE("LOGO N64: segmento cargado");
     R_UPDATE_RATE = 1;
     Matrix_Init(&this->state);
+    BOOT_STAGE("LOGO N64: matrices inicializadas");
     View_Init(&this->view, this->state.gfxCtx);
+    BOOT_STAGE("LOGO N64: vista inicializada");
     this->state.main = ConsoleLogo_Main;
     this->state.destroy = ConsoleLogo_Destroy;
     this->exit = false;
@@ -252,10 +263,12 @@ void ConsoleLogo_Init(GameState* thisx) {
     gSaveContext.fileNum = 0xFF;
 #endif
 
+    BOOT_STAGE("LOGO N64: reservando buffer SRAM");
     Sram_Alloc(&this->state, &this->sramCtx);
     this->ult = 0;
     this->unk_1D4 = 0x14;
     this->coverAlpha = 255;
     this->addAlpha = -3;
     this->visibleDuration = 0x3C;
+    BOOT_STAGE("LOGO N64: inicializacion terminada");
 }

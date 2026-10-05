@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include "ps2_usb_boot.h"
+extern int ps2_cache_smoke(void);
 
 /* Read the tail only; do not truncate the game's evidence on the next boot. */
 static void show_previous_boot(void) {
@@ -75,6 +76,13 @@ int main(int argc, char** argv) {
     scr_printf("Comprobando datos. Espera hasta 10 segundos...\n");
     if (!ps2_usb_prepare(argc > 0 ? argv[0] : NULL)) ps2_usb_fail_screen();
     scr_printf("DATOS OK: %s\n", ps2_usb_data_path());
+    int memory_result = ps2_cache_smoke();
+    if (memory_result != 0) {
+        scr_printf("ERROR MEMORIA: prueba %d\n", memory_result);
+        printf("[PS2 CACHE CHECK] FAIL case=%d\n", memory_result);
+        for (;;) SleepThread();
+    }
+    scr_printf("MEMORIA OK: buffers y cache conservados\n");
     int sio = SifLoadModule("rom0:SIO2MAN", 0, NULL);
     int mcm = SifLoadModule("rom0:MCMAN", 0, NULL);
     int mcs = SifLoadModule("rom0:MCSERV", 0, NULL);

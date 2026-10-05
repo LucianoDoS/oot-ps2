@@ -11,6 +11,7 @@ make PLATFORM=PS2 OOT_VERSION=NTSC_1_2 BUILD_DIR="$build" OOT_UPSTREAM="$upstrea
     -Iinclude/ps2 -I"$build/generated" -I"$PS2SDK/ee/include" -I"$PS2SDK/common/include" \
     -T"$PS2SDK/ee/startup/linkfile" -Wl,-zmax-page-size=128 \
     tools/ps2_usb_diagnostic.c src/platform/ps2/ps2_usb_boot.c \
+    tools/ps2_cache_smoke.c src/platform/ps2/ps2_cache.c \
     "$build/generated/usbd_irx.c" "$build/generated/usbhdfsd_irx.c" \
     -L"$PS2SDK/ee/lib" -lmc -lpatches -ldebug -o "$build/oot_ps2_usb_diagnostic.elf"
 if [[ "${1:-}" == --host-test ]]; then
@@ -21,5 +22,6 @@ if [[ "${1:-}" == --host-test ]]; then
         -I"$PS2SDK/ee/include" -I"$PS2SDK/common/include" \
         -T"$PS2SDK/ee/startup/linkfile" -Wl,-zmax-page-size=128 \
         tools/ps2_usb_diagnostic.c src/platform/ps2/ps2_usb_boot.c \
+        tools/ps2_cache_smoke.c src/platform/ps2/ps2_cache.c \
         -L"$PS2SDK/ee/lib" -lmc -lpatches -ldebug -o "$build/oot_ps2_usb_host_test.elf"
 fi

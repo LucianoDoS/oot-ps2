@@ -6,6 +6,30 @@ trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
 ## Diagnóstico del arranque en consola — 2026-10-04
 
+- El segundo intento en la consola termina en `[PS2 STATE] Init 0x486b60`.
+  Ese símbolo corresponde a ConsoleLogo_Init, no al arranque del GS. Se
+  conserva BOOT.LOG del USB en `build/PS2/hardware-boot/scph90010-before-cache`.
+- Se sustituye la invalidación de toda la caché de datos por sincronización
+  del rango solicitado. Conserva escrituras de CPU y los vecinos de líneas
+  parciales. Las funciones se separan en ps2_cache.c; la versión anterior
+  podía perder pilas y mensajes de otros hilos al cargar el segmento del logo.
+  El registro aún no permite afirmar que sea la única causa del bloqueo.
+- BOOTTEST añade una prueba de buffers vecinos/pila, alias físico, datos
+  producidos por CPU e interrupciones. El modelo de caché CPU/RAM pasa y
+  rechaza expresamente la invalidación global anterior. Pasan también los
+  seis casos de arranque, incluido el logo y primer fotograma, en
+  `build/PS2/usb-host-checks/20261004-234222-172/report.json`. El comportamiento
+  de caché en consola queda pendiente de la nueva prueba.
+- Se registran pasos de la arena y constructor del estado y de la reserva,
+  DMA, matrices, vista y SRAM del logo, sólo en la variante USB. El logo
+  conserva su configuración de 60 FPS (R_UPDATE_RATE=1), como pide el usuario.
+- El paquete corregido se copia y verifica en `D:\OOTPS2`, conservando el
+  BOOT.LOG anterior. Juego SHA256
+  `d4c7c98dfa1a41ec0c0c31ab49fb718b0692ae90555d52bc8f4dabf39f0022ab`,
+  segmentos estáticos hasta `0x0116e730`. Se respaldan los archivos sustituidos
+  en `D:\OOTPS2-backup-20261004-234548`. El ELF habitual y la tarjeta del
+  jugador conservan sus hashes.
+
 - El usuario confirma `DATOS OK` en BOOTTEST en una SCPH-90010 conectada
   mediante convertidor AV a HDMI. OOTPS2.ELF queda negro. Está confirmada
   la lectura inicial de datos en hardware, pero no el arranque del juego

@@ -8,6 +8,22 @@ No hay evidencia aún para atribuirlo al vídeo, al mando, al audio o a otra eta
 La variante USB incluye mensajes antes de iniciar el GS y un BOOT.LOG junto
 a los datos; BOOTTEST muestra el final del registro tras reiniciar.
 
+El segundo intento alcanza todos los módulos, GS, mando, guardado, audio,
+vblank y apertura de datos. Completa `Setup_Init` (`0x003a7708` en ese ELF),
+pero no completa `ConsoleLogo_Init` (`0x00486b60`, instancia de 488 bytes).
+Se conserva el archivo físico en
+`build/PS2/hardware-boot/scph90010-before-cache/BOOT.LOG`.
+
+Se encuentra y corrige un fallo independiente de caché: `osInvalDCache`
+ignoraba el rango e invalidaba toda la caché de datos, descartando posibles
+escrituras pendientes de pilas, colas y payloads producidos por CPU. Ahora
+sincroniza las líneas del rango mediante SyncDCache. Una prueba con modelo
+CPU/RAM detecta la pérdida de vecinos de la implementación anterior y acepta
+la nueva. BOOTTEST prueba además vecinos, alias físico y estado de interrupciones.
+En PCSX2 pasan la prueba y el logo hasta el primer fotograma; sigue pendiente
+confirmar si esta corrección resuelve el bloqueo en la consola. Se añaden
+etapas dentro de GameState_Init y ConsoleLogo_Init para acotarlo si persiste.
+
 ## Campo de Entrenamiento Gerudo, sala 2
 
 Estado: pendiente. El nuevo recorrido de salas encuentra una excepción de

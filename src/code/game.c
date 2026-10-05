@@ -31,6 +31,12 @@
 #include "game.h"
 #include "play_state.h"
 #include "vis.h"
+#ifdef PS2_USB_BOOT
+#include "ps2/ps2_boot_trace.h"
+#define BOOT_STAGE(message) ps2_boot_trace_stage(message)
+#else
+#define BOOT_STAGE(message) ((void)0)
+#endif
 
 #pragma increment_block_number "gc-eu:0 gc-eu-mq:0 gc-jp:0 gc-jp-ce:0 gc-jp-mq:0 gc-us:0 gc-us-mq:0"
 
@@ -463,6 +469,7 @@ void GameState_Init(GameState* gameState, GameStateFunc init, GraphicsContext* g
     UNUSED_NDEBUG OSTime startTime;
     UNUSED_NDEBUG OSTime endTime;
 
+    BOOT_STAGE("ESTADO: preparando datos y arena");
     PRINTF(T("game コンストラクタ開始\n", "game constructor start\n"));
     gameState->gfxCtx = gfxCtx;
     gameState->frames = 0;
@@ -489,9 +496,11 @@ void GameState_Init(GameState* gameState, GameStateFunc init, GraphicsContext* g
            OS_CYCLES_TO_USEC(endTime - startTime));
     startTime = endTime;
     GameState_InitArena(gameState, 0x100000);
+    BOOT_STAGE("ESTADO: arena reservada, llamando constructor");
 
     R_UPDATE_RATE = 3;
     init(gameState);
+    BOOT_STAGE("ESTADO: constructor terminado");
     endTime = osGetTime();
     PRINTF(T("init 処理時間 %d us\n", "init processing time %d us\n"), OS_CYCLES_TO_USEC(endTime - startTime));
 
@@ -504,8 +513,11 @@ void GameState_Init(GameState* gameState, GameStateFunc init, GraphicsContext* g
         ViMode_Init(&sViMode);
     }
     SpeedMeter_Init(&D_801664D0);
+    BOOT_STAGE("ESTADO: iniciando rumble");
     Rumble_Init();
+    BOOT_STAGE("ESTADO: enviando mensaje a cola grafica");
     osSendMesg(&gameState->gfxCtx->queue, NULL, OS_MESG_BLOCK);
+    BOOT_STAGE("ESTADO: mensaje grafico enviado");
     endTime = osGetTime();
     PRINTF(T("その他初期化 処理時間 %d us\n", "Other initialization processing time %d us\n"),
            OS_CYCLES_TO_USEC(endTime - startTime));

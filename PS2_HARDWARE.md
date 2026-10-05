@@ -11,8 +11,9 @@ funcionamiento del juego en esa consola siguen pendientes.
 
 1. Copia la carpeta `OOTPS2` completa a la raíz del USB.
 2. En wLaunchELF abre `mass:/OOTPS2/BOOTTEST.ELF`.
-3. Espera el resultado. Debe aparecer `DATOS OK` y el estado de la memory card
+3. Espera el resultado. Debe aparecer `DATOS OK`, `MEMORIA OK` y el estado de la memory card
    del puerto 1. El diagnóstico sólo consulta la tarjeta; no guarda ni formatea.
+   Si aparece `ERROR MEMORIA`, comunica el número de prueba y no continúes.
 4. Reinicia la consola, vuelve a wLaunchELF y abre
    `mass:/OOTPS2/OOTPS2.ELF`.
    Esta versión muestra la etapa de arranque antes de activar el vídeo del
@@ -48,6 +49,17 @@ El registro se limita a etapas del arranque, estados del juego y su primer
 fotograma. Desactiva el texto de diagnóstico antes de que gsKit controle la
 pantalla. No escribe un registro en cada fotograma. Si el USB no permite crear
 el archivo, muestra esa condición mientras aún está activa la pantalla de texto.
+
+La primera pantalla negra se localiza antes de completar la inicialización
+del logo Nintendo 64. Esta versión corrige la invalidación global de caché y
+registra la reserva, carga del segmento, matrices, vista y buffer SRAM del logo.
+Todavía necesita la comprobación en hardware. Su ritmo sigue configurado con
+`R_UPDATE_RATE = 1`, una actualización por retrace NTSC, para el logo a 60 FPS.
+
+`MEMORIA OK` comprueba conservación de buffers vecinos y pila, publicación
+de bytes de CPU a RAM, lectura de bytes nuevos desde el alias físico y el
+estado de interrupciones. No comprueba todas las reservas del juego ni toda
+la RAM física. La ejecución en PCSX2 no certifica la caché del EE real.
 
 El informe `package.json` verifica las direcciones estáticas del ELF dentro
 de los 32 MiB del EE. El espacio restante no garantiza por sí solo que todas
