@@ -31,9 +31,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
-#ifdef PS2_FLOOR_DIAGNOSTIC
 #include <math.h>
-#endif
 
 #include "ps2_types.h"
 #include "ps2_segment.h"
@@ -495,7 +493,6 @@ void ps2_texture_build_vertex_prepared(const PS2TextureVertexSetup* setup,
     output->xyz2 = vertex_to_XYZ2(setup->gs, vertex->sx, vertex->sy, depth);
 }
 
-#ifdef PS2_FLOOR_DIAGNOSTIC
 static unsigned texture_repeat_period(unsigned mode, unsigned mask, unsigned extent) {
     if ((mode & 2) || !mask || mask > 10) return 0;
     unsigned period = 1u << mask;
@@ -505,10 +502,11 @@ static unsigned texture_repeat_period(unsigned mode, unsigned mask, unsigned ext
     return period;
 }
 
-PS2TextureWrapResult ps2_texture_rebase_triangle(const TileDescriptor* tile,
+void ps2_texture_rebase_triangle(const TileDescriptor* tile,
     const RSPState* rsp, const RDPState* rdp,
-    const RSPVertex* const vertices[3], GSPRIMSTQPOINT points[3], bool apply) {
-    PS2TextureWrapResult result = {0};
+    const RSPVertex* const vertices[3], GSPRIMSTQPOINT points[3], bool apply,
+    PS2TextureWrapResult* result) {
+    if (result) memset(result, 0, sizeof(*result));
     PS2TextureVertexSetup setup;
     ps2_texture_prepare_vertices(&setup, tile, rsp, rdp);
     const TileDescriptor* coordinates = coordinate_tile(tile, rdp);
@@ -526,8 +524,7 @@ PS2TextureWrapResult ps2_texture_rebase_triangle(const TileDescriptor* tile,
             if (uv[axis][i] < minimum) minimum = uv[axis][i];
             if (uv[axis][i] > maximum) maximum = uv[axis][i];
         }
-        float span = maximum - minimum;
-        if (span > result.maxSpan) result.maxSpan = span;
+        if (result && maximum - minimum > result->maxSpan) result->maxSpan = maximum - minimum;
         if (apply && periods[axis]) {
             /* A common translation preserves the perspective interpolant.
              * Center the interval to also reduce GS floating-point loss well
@@ -535,24 +532,22 @@ PS2TextureWrapResult ps2_texture_rebase_triangle(const TileDescriptor* tile,
             float center = (minimum + maximum) * 0.5f;
             offsets[axis] = (int)(center / periods[axis]) * (float)periods[axis];
         }
-        for (unsigned i = 0; i < 3; i++) {
+        if (result) for (unsigned i = 0; i < 3; i++) {
             float before = fabsf(uv[axis][i]);
             float after = fabsf(uv[axis][i] - offsets[axis]);
-            if (before > result.maxBefore) result.maxBefore = before;
-            if (after > result.maxAfter) result.maxAfter = after;
-            result.outsideBefore += before > 2047.0f;
-            result.outsideAfter += after > 2047.0f;
+            if (before > result->maxBefore) result->maxBefore = before;
+            if (after > result->maxAfter) result->maxAfter = after;
+            result->outsideBefore += before > 2047.0f;
+            result->outsideAfter += after > 2047.0f;
         }
     }
-    result.offsetS = offsets[0]; result.offsetT = offsets[1];
+    if (result) { result->offsetS = offsets[0]; result->offsetT = offsets[1]; }
     if (offsets[0] || offsets[1]) for (unsigned i = 0; i < 3; i++) {
         float q = points[i].rgbaq.color.q;
         points[i].stq = vertex_to_STQ((uv[0][i] - offsets[0]) * q * setup.invWidth,
                                      (uv[1][i] - offsets[1]) * q * setup.invHeight);
     }
-    return result;
 }
-#endif
 
 void ps2_texture_end_frame(RDPState* rdp) {
     /* Recheck source bytes next frame: animated/reused RAM cannot retain an

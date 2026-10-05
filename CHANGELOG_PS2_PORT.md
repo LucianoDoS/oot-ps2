@@ -4,6 +4,46 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Suelo confirmado en PS2 real e integrado al juego — 2026-10-05
+
+- El usuario confirma que Arriba de FLOOR v3 elimina las olas del suelo
+  al mover la cámara en su SCPH-90010. Se conservan BOOT.LOG, DIAG.LOG,
+  el ELF probado, el manifiesto y sus hashes en
+  `build/PS2/hardware-runtime/floor-v3-confirmed-20261005-184050`.
+  El log identifica el ELF v3 confirmado, SHA-256
+  `49c72707b78e58c3153910d0eabc15379cf44957f4a59ce898da06bb482f2cec`.
+- Los 24 fotogramas muestreados con el ajuste activo reducen el máximo UV
+  de 2222.5 a 411.188 texeles: 58 coordenadas fuera del rango ±2047 antes y
+  ninguna después. Los 105 intervalos no contienen errores USB, pérdidas o
+  NUL. El máximo de 248 ms por escritura pertenece al diagnóstico y no
+  demuestra una mejora de FPS ni certifica otras zonas.
+- Se integra el mismo cálculo en la segunda capa de los materiales de
+  suelo del juego habitual. Es automático en OOTPS2.ELF, DIAG.ELF,
+  DIAG224.ELF y la compilación para PCSX2; no requiere pulsar la cruceta.
+  Mantiene escala, perspectiva, ambas texturas, mezcla, profundidad y
+  niebla. La variante de comparación conserva sus modos.
+- El cálculo permite omitir las medidas UV pasando NULL para el resultado.
+  El juego habitual omite esas medidas y el registro de FLOOR. Las pruebas
+  comparan sus puntos GS con los que incluyen mediciones: son idénticos.
+  También pasan repetición, espejo, clamp, intervalos anchos, perspectiva,
+  recorte, reutilización de vértices, mezcla y límites de estado junto al
+  diagnóstico completo de 120 fotogramas sin activar el laboratorio:
+  `build/PS2/floor-production-smoke-20261005-184649/report.json`.
+- Pasa casa → Kokiri → casa con USB nativo emulado, 120 fotogramas por fase,
+  HostFs desactivado y tarjetas del jugador desactivadas:
+  `build/PS2/usb-stack-checks/20261005-184942-622/report.json`.
+  Se recompilan los tres ELF USB habituales y el ELF para PCSX2, se verifica
+  su memoria estática y la correspondencia de datos y se copian y verifican
+  los nueve archivos del paquete en D:, con copia de los archivos anteriores
+  en `D:\OOTPS2-backup-20261005-185331`. El ELF de comparación confirmado
+  se conserva y se actualizan sus instrucciones. Su script de copia omite
+  archivos idénticos y usa una nota neutra al conservar registros previos.
+  La captura física, OOT.Z64 y la tarjeta del jugador se conservan.
+  Informe final: `build/PS2/floor-production-final-verification.json`.
+  La confirmación
+  del suelo corresponde al ELF de comparación; queda seguir validando
+  zonas, audio, rendimiento y guardado físico con el paquete habitual.
+
 ## Coordenadas repetidas del suelo en hardware — 2026-10-05
 
 - El usuario confirma que FLOOR v2 conserva las mismas olas tanto arriba

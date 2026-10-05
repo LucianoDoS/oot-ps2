@@ -25,11 +25,11 @@ el nuevo BOOT.LOG físico en `build/PS2/hardware-boot/scph90010-first-gameplay`.
 
 ## Pausas, suelo y audio en la consola
 
-Estado: las olas persisten después de la corrección del recorte en hardware. Las cargas
-se recuperan solas después de esperar. El usuario precisa en su última prueba
-que el suelo hace olas al mover la cámara y no las observa con la cámara quieta;
-el audio se distorsiona con FPS bajos. No está demostrada una
-causa única. DIAG.ELF añade DIAG.LOG con cargas, tiempos de USB, vídeo y cola de
+Estado: las olas del suelo se corrigen con UV centradas en la segunda capa,
+confirmado por el usuario en la SCPH-90010 con FLOOR v3. El juego habitual
+incorpora automáticamente la corrección. Las cargas se recuperan solas después
+de esperar y sigue pendiente mejorar el audio durante FPS bajos.
+DIAG.ELF añade DIAG.LOG con cargas, tiempos de USB, vídeo y cola de
 audio. La caché USB se amplía y separa las lecturas de muestras de las cargas;
 se añade lectura anticipada acotada y se evita el seek consecutivo redundante.
 La reserva de audio USB aumenta a 60 ms. DIAG224.ELF permite comparar un render
@@ -37,8 +37,8 @@ de 640x224 con líneas duplicadas, manteniendo la señal NTSC entrelazada del
 convertidor. Los ELF normales conservan 640x448. La comparación física a 224
 líneas sigue mostrando las mismas olas. Se corrige una pérdida independiente
 de precisión al truncar las UV interpoladas en cada plano del recorte. Pasan
-256 cámaras y las pruebas del suelo, pero todavía no se da por corregido el
-defecto observado en la PS2; el usuario confirma que sigue igual tras ese cambio.
+256 cámaras y las pruebas del suelo, pero el usuario confirma que esa
+corrección por sí sola no cambió las olas.
 La comparación física de FLOOR v1 conserva las olas con perspectiva forzada;
 omitir la segunda capa las elimina pero pierde parte del suelo. El log confirma
 perspectiva activa y los modos en Kokiri, sin errores USB ni pérdidas. FLOOR v2
@@ -48,7 +48,11 @@ una coordenada de la segunda capa de 32 píxeles que supera el rango ±2047
 del GS. FLOOR v3 recupera la profundidad original y centra las UV de la segunda
 capa mediante repeticiones completas por triángulo. Arriba selecciona esa
 prueba; derecha recupera las UV anteriores. Instrucciones y límites en
-`PS2_FLOOR_DIAGNOSTIC.md`; todavía no confirma una solución física.
+`PS2_FLOOR_DIAGNOSTIC.md`. El usuario confirma que arriba elimina las olas.
+La captura `build/PS2/hardware-runtime/floor-v3-confirmed-20261005-184050`
+registra 58 coordenadas fuera de rango antes del ajuste y cero después en
+24 fotogramas muestreados, sin errores USB ni pérdidas de registros. Quedan
+pendientes otras zonas y circunstancias; no es una validación de todo el juego.
 Uso y límites generales en `PS2_HARDWARE.md`.
 
 ## Pantalla negra después del logo con DIAG224

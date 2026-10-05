@@ -612,17 +612,21 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
                     prepare_texture_point(second,rsp,rdp,vertices[i],color,depths[i],fog,
                                           pointSlots[i],true,&points[i]);
                 }
-#ifdef PS2_FLOOR_DIAGNOSTIC
                 /* Work on draw copies, never the shared vertex cache. A whole
                  * triangle moves by the same integer number of wrap periods. */
-                PS2TextureWrapResult wrap=ps2_texture_rebase_triangle(second,rsp,rdp,
-                    floorVertices,points,ps2_floor_mode()==PS2_FLOOR_NORMAL);
+                const RSPVertex* wrapVertices[3]={v0,v1,v2};
+#ifdef PS2_FLOOR_DIAGNOSTIC
+                PS2TextureWrapResult wrap;
+                ps2_texture_rebase_triangle(second,rsp,rdp,wrapVertices,points,
+                    ps2_floor_mode()==PS2_FLOOR_NORMAL,&wrap);
                 s_floorTriangles++;
                 s_floorRebased += !!(wrap.offsetS || wrap.offsetT);
                 s_floorOutsideBefore += wrap.outsideBefore; s_floorOutsideAfter += wrap.outsideAfter;
                 if (wrap.maxBefore>s_floorMaxBefore) s_floorMaxBefore=wrap.maxBefore;
                 if (wrap.maxAfter>s_floorMaxAfter) s_floorMaxAfter=wrap.maxAfter;
                 if (wrap.maxSpan>s_floorMaxSpan) s_floorMaxSpan=wrap.maxSpan;
+#else
+                ps2_texture_rebase_triangle(second,rsp,rdp,wrapVertices,points,true,NULL);
 #endif
 #ifdef PS2_RENDERER_SMOKE_CAPTURE
                 capture_points(points);

@@ -37,16 +37,16 @@ void ps2_texture_build_vertex(const TileDescriptor* tile, const RSPState* rsp,
     const RDPState* rdp, const RSPVertex* vertex, u32 color, u32 depth,
     GSPRIMSTQPOINT* output);
 
-#ifdef PS2_FLOOR_DIAGNOSTIC
 typedef struct {
     float offsetS, offsetT, maxBefore, maxAfter, maxSpan;
     unsigned outsideBefore, outsideAfter;
 } PS2TextureWrapResult;
 /* Translate an entire triangle by whole repeat periods before forming STQ.
  * Per-vertex modulo would change interpolation across texture seams. */
-PS2TextureWrapResult ps2_texture_rebase_triangle(const TileDescriptor* tile,
+/* Pass NULL for result in regular gameplay to skip diagnostic measurements. */
+void ps2_texture_rebase_triangle(const TileDescriptor* tile,
     const RSPState* rsp, const RDPState* rdp,
-    const RSPVertex* const vertices[3], GSPRIMSTQPOINT points[3], bool apply);
-#endif
+    const RSPVertex* const vertices[3], GSPRIMSTQPOINT points[3], bool apply,
+    PS2TextureWrapResult* result);
 
 #endif /* PS2_TEXTURE_H */

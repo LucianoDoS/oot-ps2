@@ -1,5 +1,10 @@
 # Comparación del suelo en la PS2
 
+El usuario confirma que el modo Arriba de FLOOR v3 elimina las olas en su
+PS2 real. OOTPS2.ELF, DIAG.ELF y DIAG224.ELF ya incorporan automáticamente
+ese cálculo. Para jugar utiliza OOTPS2.ELF; FLOOR.ELF queda como comparación
+opcional con las coordenadas anteriores.
+
 Ejecuta `mass:/OOTPS2/FLOOR.ELF` desde wLaunchELF y carga tu partida.
 Busca el suelo donde aparecen las olas al girar la cámara.
 
@@ -60,8 +65,13 @@ La muestra física de v2 alcanza unas 2058 unidades en la segunda capa de
 32 píxeles; esto motiva la comparación, pero aún no demuestra que sea la
 única causa de las olas. Centrar no puede reducir el intervalo de un triángulo
 que ya abarque más de 4094 texeles: el log también registra esos casos.
-La derecha recupera exactamente las UV anteriores. Sigue pendiente confirmar
-la imagen en hardware; el ejecutable habitual no incorpora esta prueba.
+La derecha recupera exactamente las UV anteriores. El usuario ya confirma
+que arriba corrige la imagen en la SCPH-90010. La captura física de v3 se
+conserva en `build/PS2/hardware-runtime/floor-v3-confirmed-20261005-184050`:
+24 fotogramas muestreados con máximos UV de 2222.5 antes y 411.188 después,
+58 coordenadas fuera de rango antes y cero después. No certifica otras zonas.
+El juego habitual incorpora el cálculo sin los controles ni las mediciones
+de esta variante, y conserva la profundidad, mezcla, niebla y ambas texturas.
 
 Para volver al juego habitual ejecuta `mass:/OOTPS2/OOTPS2.ELF`.
 

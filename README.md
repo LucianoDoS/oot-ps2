@@ -16,12 +16,12 @@ de la casa y juego hasta conseguir la espada desde USB. El fallo anterior de
 DIAG.ELF al salir de casa se reproduce y corrige:
 el registro cambiaba la identidad de la función que selecciona la siguiente
 escena. La regresión casa → Kokiri → casa ya pasa con el controlador USB
-nativo de PCSX2 y el usuario confirma la salida en la consola. Quedan el
-guardado físico, las olas del suelo al mover la cámara y el audio durante
-caídas de rendimiento. La comparación física a 224 líneas mantiene las olas.
-Se corrige una pérdida de precisión de las coordenadas de textura durante el
-recorte de triángulos; pasa la prueba de cámara, pero falta comparar ese cambio
-en hardware antes de dar el suelo por corregido.
+nativo de PCSX2 y el usuario confirma la salida en la consola. El usuario
+confirma además que centrar las coordenadas de la segunda capa elimina las
+olas del suelo al mover la cámara en la PS2 real. Esa corrección ya se aplica
+automáticamente en el juego habitual, preservando ambas texturas y su escala.
+Quedan el guardado físico, el audio durante caídas de rendimiento y la
+validación del resto de zonas en hardware.
 
 El usuario confirma la partida inicial, el bosque Kokiri, casas y tienda,
 la entrada exterior al Árbol Deku y el movimiento en su sala principal.
@@ -81,18 +81,17 @@ del reset del IOP, selecciona los datos junto al ELF y muestra un error si
 faltan o no corresponden. Incluye un diagnóstico de lectura. La prueba real
 se hará con Free McBoot y wLaunchELF; instrucciones y límites en
 [PS2_HARDWARE.md](PS2_HARDWARE.md). El usuario ya confirma el arranque y una
-partida en su SCPH-90010 tras corregir la caché del EE. Quedan pausas que se
-recuperan, temblor del suelo y audio distorsionado con caídas de FPS. El
+partida en su SCPH-90010 tras corregir la caché del EE. Las olas del suelo
+se resuelven al centrar las UV de la segunda capa y el usuario confirma esa
+corrección en hardware. Quedan pausas que se recuperan y audio distorsionado
+con caídas de FPS. El
 paquete incluye DIAG.ELF, que guarda tiempos y eventos en DIAG.LOG durante la
 partida, y cachés específicas para reducir lecturas repetidas del USB.
-DIAG224.ELF permite comparar el temblor del suelo con líneas duplicadas y
-menor detalle vertical, conservando la señal NTSC entrelazada. La comparación
-queda aplazada: el primer intento físico se detuvo después del logo y su
-registro sólo conservó la cabecera. El siguiente DIAG.ELF también se detuvo al
-iniciar el registro. La prueba nueva del controlador USB en PCSX2, sin HostFs,
-detectó corrupción de los registros y errores de transferencia. BOOT.LOG y
-DIAG.LOG ahora usan escrituras alineadas por sectores. La siguiente prueba
-física usa DIAG.ELF con vídeo normal; el modo de 224 líneas sigue aplazado.
+DIAG224.ELF conserva el diagnóstico de vídeo a 224 líneas duplicadas; esa
+comparación no solucionó las olas. BOOT.LOG y DIAG.LOG usan escrituras
+alineadas por sectores, tras corregir los primeros bloqueos del registro.
+Para jugar usa OOTPS2.ELF, que ya incorpora la corrección del suelo sin los
+controles de comparación ni las mediciones de FLOOR.ELF.
 El registro detallado está en [CHANGELOG_PS2_PORT.md](CHANGELOG_PS2_PORT.md).
 
 El juego completo ya enlaza: 724 objetos generan `build/PS2-ntsc12/oot_ps2.elf`.

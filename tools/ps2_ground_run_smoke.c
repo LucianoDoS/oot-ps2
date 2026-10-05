@@ -5,7 +5,6 @@
 #include "ps2_texture.h"
 #include "ps2_gfx_profile.h"
 
-#ifdef PS2_FLOOR_DIAGNOSTIC
 static float gs_texture_precision(float value) {
     union { float f; u32 bits; } number = {.f=value};
     number.bits &= ~255u;
@@ -35,7 +34,7 @@ static int texture_wrap_smoke(void) {
         RSPState rsp={.texScaleS=1,.texScaleT=1};
         RDPState rdp={.gs=g_rdpState.gs}; rdp.otherMode.hi=1u<<19;
         RSPVertex vertices[3]; const RSPVertex* addresses[3];
-        GSPRIMSTQPOINT original[3],rebased[3];
+        GSPRIMSTQPOINT original[3],rebased[3],withoutStats[3];
         float sign=fixture==1?-1:1;
         for (unsigned i=0;i<3;i++) {
             vertices[i]=(RSPVertex){.tc_s=sign*(16000+i*512),.tc_t=12000+i*256,
@@ -46,9 +45,13 @@ static int texture_wrap_smoke(void) {
             ps2_texture_build_vertex(&tile,&rsp,&rdp,&vertices[i],0x40806020,12345,&original[i]);
         }
         memcpy(rebased,original,sizeof(rebased));
-        PS2TextureWrapResult legacy=ps2_texture_rebase_triangle(&tile,&rsp,&rdp,addresses,rebased,false);
+        PS2TextureWrapResult legacy,result;
+        ps2_texture_rebase_triangle(&tile,&rsp,&rdp,addresses,rebased,false,&legacy);
         if (memcmp(original,rebased,sizeof(original)) || legacy.offsetS || legacy.offsetT) failures++;
-        PS2TextureWrapResult result=ps2_texture_rebase_triangle(&tile,&rsp,&rdp,addresses,rebased,true);
+        ps2_texture_rebase_triangle(&tile,&rsp,&rdp,addresses,rebased,true,&result);
+        memcpy(withoutStats,original,sizeof(original));
+        ps2_texture_rebase_triangle(&tile,&rsp,&rdp,addresses,withoutStats,true,NULL);
+        if (memcmp(rebased,withoutStats,sizeof(rebased))) failures++;
         if (fixture<3 && (!result.outsideBefore || result.outsideAfter || result.maxAfter>128)) failures++;
         if (fixture==3 && result.offsetS) failures++;
         if (fixture==4 && memcmp(original,rebased,sizeof(original))) failures++;
@@ -77,7 +80,6 @@ static int texture_wrap_smoke(void) {
         failures,errorBefore,errorAfter);
     return failures;
 }
-#endif
 
 /* Compare every GS point in draw order with the existing immediate path.
  * Different layer extents also force the base clamp to be restored after
@@ -90,7 +92,7 @@ int ps2_ground_run_smoke(void) {
     static const u8 overlay[16] __attribute__((aligned(16)))={
         0,0x3f,0xf8,1,0xff,0xff,7,0xc1,7,0xc1,0xff,0xff,0xf8,1,0,0x3f};
     savedRsp=g_rspState; savedRdp=g_rdpState;
-    int failures=0;
+    int failures=texture_wrap_smoke();
     u32 immediateCycles=0, reusedCycles=0;
     for (unsigned fixture=0;fixture<8;fixture++) {
         g_rspState=savedRsp;
@@ -128,7 +130,6 @@ int ps2_ground_run_smoke(void) {
         const GSPRIMSTQPOINT* points=f3dex2_test_points(&referenceCount);
         u32 referencePackets=g_rdpState.stats.texturePackets-packets;
         memcpy(reference,points,referenceCount*sizeof(*points));
-#ifdef PS2_FLOOR_DIAGNOSTIC
         if (g_rdpState.zWriteEnabled != !!(low & 0x20) ||
             g_rdpState.gs->Test->ZTST != ((low & 0x10)?2:1)) failures++;
         if (fixture!=0) for (unsigned i=0;i+5<referenceCount;i+=6) {
@@ -143,7 +144,6 @@ int ps2_ground_run_smoke(void) {
                     layer->rgbaq.color.q!=receiver->rgbaq.color.q) failures++;
             }
         }
-#endif
         packets=g_rdpState.stats.texturePackets;
         u32 builds=g_rdpState.stats.textureVertexBuilds, hits=g_rdpState.stats.textureVertexHits;
         f3dex2_test_capture(true);
@@ -182,7 +182,7 @@ int ps2_ground_run_smoke(void) {
 #ifdef PS2_FLOOR_DIAGNOSTIC
     /* The laboratory must change exactly the selected material, and a pad
      * request must not change cached vertex setup midway through a frame. */
-    int labFailures=texture_wrap_smoke();
+    int labFailures=0;
     g_rspState.geometryMode=0;
     rdp_setothermode(1u<<20,0xc8112078u,&g_rdpState);
     rdp_setenvcolor(0,128,&g_rdpState);
@@ -234,7 +234,7 @@ int ps2_ground_run_smoke(void) {
     }
     GSPRIMSTQPOINT adjusted[3]; memcpy(adjusted,points+3,sizeof(adjusted));
     const RSPVertex* inputs[3]={&g_rspState.vtx[0],&g_rspState.vtx[1],&g_rspState.vtx[2]};
-    ps2_texture_rebase_triangle(&g_rdpState.tile[1],&g_rspState,&g_rdpState,inputs,adjusted,true);
+    ps2_texture_rebase_triangle(&g_rdpState.tile[1],&g_rspState,&g_rdpState,inputs,adjusted,true,NULL);
     if (memcmp(reference,points,3*sizeof(*points)) || memcmp(reference+3,adjusted,sizeof(adjusted))) labFailures++;
     PS2TextureVertexSetup setup;
     GSPRIMSTQPOINT direct, prepared;

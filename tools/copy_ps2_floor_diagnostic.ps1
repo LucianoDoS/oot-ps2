@@ -34,18 +34,20 @@ foreach ($name in 'BOOT.LOG','DIAG.LOG') {
         $logs += @{name=$name;sha256=$sha;bytes=(Get-Item -LiteralPath $oldLog).Length}
     }
 }
-@{logs=$logs;observation='User reports FLOOR v2 read-only and legacy modes unchanged; logs may belong to earlier ELF sessions.'} |
+@{logs=$logs;observation='Previous physical logs preserved before updating the optional floor package; identify the tested build using its log marker and captured manifest.'} |
     ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $capture 'capture.json') -Encoding utf8
 $verified = @()
 foreach ($file in $files) {
     $target = Join-Path $destination $file.Name
     $sha = (Get-FileHash -LiteralPath $file.FullName).Hash
+    $existingSha = $null
     if (Test-Path -LiteralPath $target) {
-        if ((Get-FileHash -LiteralPath $target).Hash -ne $sha) {
+        $existingSha = (Get-FileHash -LiteralPath $target).Hash
+        if ($existingSha -ne $sha) {
             Copy-Item -LiteralPath $target -Destination (Join-Path $capture ('previous-'+$file.Name))
         }
     }
-    Copy-Item -LiteralPath $file.FullName -Destination $target -Force
+    if ($existingSha -ne $sha) { Copy-Item -LiteralPath $file.FullName -Destination $target -Force }
     if ((Get-FileHash -LiteralPath $target).Hash -ne $sha) { throw "USB verification failed: $($file.Name)" }
     $verified += @{name=$file.Name;sha256=$sha;bytes=$file.Length}
 }

@@ -8,9 +8,10 @@ Primera prueba del usuario: en una SCPH-90010, conectada mediante un
 convertidor AV a HDMI, BOOTTEST muestra `DATOS OK`. El primer juego quedaba negro;
 tras corregir la invalidación global de caché, inicia y permite jugar.
 Quedan pausas de carga que se recuperan y distorsión del audio cuando caen los
-FPS. En la última comprobación, el usuario precisa que el suelo parece hacer
-olas al mover la cámara; con la cámara quieta no las observa. El guardado físico
-sigue pendiente.
+FPS. Las olas del suelo al mover la cámara ya se corrigen al centrar las
+coordenadas de la segunda capa; el usuario confirma la solución en esta
+consola con FLOOR v3. OOTPS2.ELF aplica ese cálculo automáticamente, sin
+seleccionar modos. El guardado físico sigue pendiente.
 
 La última revisión del registro ya permite cargar la partida en hardware.
 Se corrigió además un fallo propio de DIAG.ELF que terminaba la partida al
@@ -175,7 +176,13 @@ completas para reducir el tamaño de STQ y evitar el límite de texeles del GS.
 Registra el modo, máximos UV por fotograma muestreado y muestras UV/W/STQ/XYZ,
 incluidas dimensiones y desplazamientos de la segunda capa. Instrucciones en
 `PS2_FLOOR_DIAGNOSTIC.md` y `SUELO.txt` del paquete adicional. El ELF habitual
-se conserva; esta comparación todavía no es una corrección física confirmada.
+ya incorpora automáticamente el mismo cálculo confirmado por el usuario.
+La captura física de FLOOR v3 se conserva con hashes en
+`build/PS2/hardware-runtime/floor-v3-confirmed-20261005-184050`.
+Sus 24 fotogramas muestreados reducen el máximo UV de 2222.5 a 411.188 texeles,
+con 58 coordenadas originalmente fuera del rango ±2047 y ninguna después
+del ajuste. Los 105 intervalos no contienen errores USB, pérdidas o NUL.
+Esto documenta la vista comprobada; no certifica todo el juego en hardware.
 
 Para comparar el juego sin el coste de escribir DIAG.LOG, ejecuta OOTPS2.ELF.
 DIAG.ELF se usa cuando hay que recoger tiempos o un bloqueo. Sus escrituras
