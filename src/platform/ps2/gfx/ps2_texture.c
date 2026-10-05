@@ -37,6 +37,9 @@
 #include "rdp_to_gs.h"
 #include "ps2_texture.h"
 #include "ps2_gfx_profile.h"
+#ifdef PS2_FLOOR_DIAGNOSTIC
+#include "f3dex2_ps2.h"
+#endif
 
 /* ─────────────────────────────────────────────────────────── *
  *  Scratch conversion buffer (static to avoid heap alloc per frame)
@@ -446,7 +449,11 @@ void ps2_texture_build_vertex(const TileDescriptor* tile, const RSPState* rsp,
     tile=coordinate_tile(tile,rdp);
     float u = texture_shift(vertex->tc_s * rsp->texScaleS / 32.0f, tile->shifts) - tile->uls / 4.0f;
     float v = texture_shift(vertex->tc_t * rsp->texScaleT / 32.0f, tile->shiftt) - tile->ult / 4.0f;
-    float q = (rdp->otherMode.hi & (1u << 19)) && vertex->cw > 0.0001f ? 1.0f / vertex->cw : 1.0f;
+    bool perspective = !!(rdp->otherMode.hi & (1u << 19));
+#ifdef PS2_FLOOR_DIAGNOSTIC
+    if (ps2_floor_mode() == PS2_FLOOR_PERSPECTIVE && ps2_combiner_texture_lerp(rdp)) perspective = true;
+#endif
+    float q = perspective && vertex->cw > 0.0001f ? 1.0f / vertex->cw : 1.0f;
     if (ps2_combiner_dynamic_alpha(rdp)) {
         u32 alpha = (color >> 24) * (rdp->primColor & 255) / 255;
         color = (color & 0xffffffu) | (alpha << 24);
@@ -471,6 +478,9 @@ void ps2_texture_prepare_vertices(PS2TextureVertexSetup* setup,
         texture_extent_reciprocal(tile->gsTexture.Height ? tile->gsTexture.Height : tile->height);
     setup->gs = rdp->gs;
     setup->perspective = !!(rdp->otherMode.hi & (1u << 19));
+#ifdef PS2_FLOOR_DIAGNOSTIC
+    if (ps2_floor_mode() == PS2_FLOOR_PERSPECTIVE && ps2_combiner_texture_lerp(rdp)) setup->perspective = true;
+#endif
     setup->dynamicAlpha = ps2_combiner_dynamic_alpha(rdp);
     setup->primAlpha = rdp->primColor & 255;
 }

@@ -156,8 +156,14 @@ La siguiente revisión conserva fracciones en las coordenadas de textura de
 los vértices recortados. Antes las truncaba a un entero en cada plano del
 recorte, cambiando el mapeado con la cámara. Una prueba independiente de
 interpolación perspectiva pasa 256 cámaras y 1323 esquinas, junto a las pruebas
-de las dos capas del suelo. Esto demuestra la corrección del cálculo; todavía
-falta comprobar cuánto cambia las olas observadas en la consola.
+de las dos capas del suelo. Esto demuestra la corrección del cálculo, pero el
+usuario ya confirma que las olas siguen igual después de esta revisión física.
+
+La comparación adicional `mass:/OOTPS2/FLOOR.ELF` permite alternar con la
+cruceta entre dibujo normal, una capa y perspectiva forzada sin reiniciar.
+Registra el modo y muestras UV/W/STQ/XYZ del material. Instrucciones en
+`PS2_FLOOR_DIAGNOSTIC.md` y `SUELO.txt` del paquete adicional. El ELF habitual
+se conserva; esta comparación todavía no es una corrección física confirmada.
 
 Para comparar el juego sin el coste de escribir DIAG.LOG, ejecuta OOTPS2.ELF.
 DIAG.ELF se usa cuando hay que recoger tiempos o un bloqueo. Sus escrituras

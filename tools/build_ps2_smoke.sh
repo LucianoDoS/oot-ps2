@@ -10,6 +10,9 @@ flags=(-D_EE -DPLATFORM_PS2=1 -DPS2_RENDERER_SMOKE_CAPTURE=1 -G0 -O2 -std=gnu11 
        -fno-strict-aliasing '-DPS2_ROM_TEST_PATH="host:ps2-rom-smoke.bin"' -Iinclude/ps2 -I"$PS2SDK/ee/include"
        -I"$PS2SDK/common/include" -I"$PS2SDK/ports/include" -I"$GSKIT/include")
 objects=()
+if [[ "${PS2_SMOKE_FLOOR_DIAGNOSTIC:-0}" == 1 ]]; then
+    flags+=(-DPS2_FLOOR_DIAGNOSTIC=1)
+fi
 if [[ "${PS2_SMOKE_USB_CACHE:-0}" == 1 ]]; then
     flags+=(-DPS2_ROM_USB_CACHE=1 -DPS2_USB_AUDIO_RESERVE=1)
 fi

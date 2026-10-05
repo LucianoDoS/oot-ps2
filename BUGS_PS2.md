@@ -25,7 +25,7 @@ el nuevo BOOT.LOG físico en `build/PS2/hardware-boot/scph90010-first-gameplay`.
 
 ## Pausas, suelo y audio en la consola
 
-Estado: pendiente de validar la corrección del recorte en hardware. Las cargas
+Estado: las olas persisten después de la corrección del recorte en hardware. Las cargas
 se recuperan solas después de esperar. El usuario precisa en su última prueba
 que el suelo hace olas al mover la cámara y no las observa con la cámara quieta;
 el audio se distorsiona con FPS bajos. No está demostrada una
@@ -38,7 +38,11 @@ convertidor. Los ELF normales conservan 640x448. La comparación física a 224
 líneas sigue mostrando las mismas olas. Se corrige una pérdida independiente
 de precisión al truncar las UV interpoladas en cada plano del recorte. Pasan
 256 cámaras y las pruebas del suelo, pero todavía no se da por corregido el
-defecto observado en la PS2. Uso y límites en `PS2_HARDWARE.md`.
+defecto observado en la PS2; el usuario confirma que sigue igual tras ese cambio.
+FLOOR.ELF añade una comparación opcional de las dos capas y la perspectiva,
+con selección por cruceta y muestras del material en DIAG.LOG. Prueba e
+instrucciones en `PS2_FLOOR_DIAGNOSTIC.md`; todavía no confirma una solución.
+Uso y límites generales en `PS2_HARDWARE.md`.
 
 ## Pantalla negra después del logo con DIAG224
 

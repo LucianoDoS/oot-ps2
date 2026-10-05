@@ -326,6 +326,38 @@ static bool s_runRgbShade, s_runAlphaShade, s_runFog;
 static u64 s_runVertexValid;
 static GSPRIMSTQPOINT s_runVertices[RSP_VTX_CACHE_SIZE];
 static bool s_runGround;
+#ifdef PS2_FLOOR_DIAGNOSTIC
+static volatile unsigned s_floorRequested;
+static unsigned s_floorMode, s_floorFrame;
+static bool s_floorSampled;
+void ps2_floor_request_mode(unsigned mode) {
+    if (mode <= PS2_FLOOR_PERSPECTIVE) s_floorRequested = mode;
+}
+void ps2_floor_begin_frame(void) {
+    s_floorMode = s_floorRequested;
+    s_floorFrame++;
+    s_floorSampled = false;
+}
+unsigned ps2_floor_mode(void) { return s_floorMode; }
+static void floor_trace(const RSPState* rsp, const RDPState* rdp,
+                        const TileDescriptor* tile, const RSPVertex* const* vertices,
+                        const GSPRIMSTQPOINT* points) {
+    if (s_floorSampled || s_floorFrame % 60 || !ps2_combiner_texture_lerp(rdp)) return;
+    s_floorSampled = true;
+    printf("[PS2 FLOOR] frame=%u mode=%u hi=%08x lo=%08x env=%08x size=%ux%u scale=%.6g,%.6g shift=%u,%u\n",
+        s_floorFrame, s_floorMode, rdp->otherMode.hi, rdp->otherMode.lo,
+        rdp->envColor, (unsigned)tile->gsTexture.Width, (unsigned)tile->gsTexture.Height,
+        rsp->texScaleS, rsp->texScaleT, (unsigned)tile->shifts, (unsigned)tile->shiftt);
+    for (unsigned i=0; i<3; i++) {
+        const RSPVertex* v=vertices[i];
+        printf("[PS2 FLOOR V] i=%u uv=%.6g,%.6g w=%.6g xy=%.6g,%.6g stq=%.9g,%.9g,%.9g gs=%u,%u,%u\n",
+            i, v->tc_s, v->tc_t, v->cw, v->sx, v->sy,
+            points[i].stq.st.s, points[i].stq.st.t, points[i].rgbaq.color.q,
+            (unsigned)points[i].xyz2.xyz.x, (unsigned)points[i].xyz2.xyz.y,
+            (unsigned)points[i].xyz2.xyz.z);
+    }
+}
+#endif
 static u64 s_runGroundVertexValid;
 static GSPRIMSTQPOINT s_runGroundVertices[RSP_VTX_CACHE_SIZE];
 static u32 s_runGroundColors[RSP_VTX_CACHE_SIZE], s_runGroundDepths[RSP_VTX_CACHE_SIZE];
@@ -532,6 +564,10 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
         if (!pointReady[0]) prepare_texture_point(tile,rsp,rdp,v0,(u32)c0,z0,fog,pointSlots[0],false,&points[0]);
         if (!pointReady[1]) prepare_texture_point(tile,rsp,rdp,v1,(u32)c1,z1,fog,pointSlots[1],false,&points[1]);
         if (!pointReady[2]) prepare_texture_point(tile,rsp,rdp,v2,(u32)c2,z2,fog,pointSlots[2],false,&points[2]);
+#ifdef PS2_FLOOR_DIAGNOSTIC
+        const RSPVertex* floorVertices[3]={v0,v1,v2};
+        floor_trace(rsp,rdp,tile,floorVertices,points);
+#endif
 #ifdef PS2_RENDERER_SMOKE_CAPTURE
         capture_points(points);
 #endif
@@ -550,7 +586,11 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
         /* Kokiri ground uses (TEXEL1-TEXEL0)*ENV_ALPHA+TEXEL0, then
          * SHADE. Match that opaque material using a second GS pass with
          * its own tile coordinates, and the same depth and fog factors. */
-        if ((s_triangleRun?s_runGround:ps2_combiner_texture_lerp(rdp)) && (rdp->envColor & 255)) {
+        if ((s_triangleRun?s_runGround:ps2_combiner_texture_lerp(rdp)) && (rdp->envColor & 255)
+#ifdef PS2_FLOOR_DIAGNOSTIC
+            && ps2_floor_mode() != PS2_FLOOR_BASE_ONLY
+#endif
+        ) {
             TileDescriptor* second = &rdp->tile[(rsp->texTile + 1) & 7];
             if (!second->gsTextureLoaded) ps2_texture_upload(second, rdp);
             if (second->gsTextureLoaded) {

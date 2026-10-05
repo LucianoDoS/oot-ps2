@@ -196,6 +196,9 @@ void rdp_to_gs_init(GSGLOBAL* gs) {
  * ═══════════════════════════════════════════════════════════════════ */
 void rdp_to_gs_exec(const Gfx* dl) {
     if (!dl) return;
+#ifdef PS2_FLOOR_DIAGNOSTIC
+    ps2_floor_begin_frame();
+#endif
     ps2_gs_state_reset();
     ps2_gfx_profile_begin();
     s_s2dex = false;

@@ -16,6 +16,13 @@ void f3dex2_tri2(u32 w0, u32 w1, RSPState* rsp, RDPState* rdp);
  * state change, vertex load, display-list branch or end command. */
 bool f3dex2_batch_begin(RSPState* rsp, RDPState* rdp);
 void f3dex2_batch_end(RDPState* rdp);
+#ifdef PS2_FLOOR_DIAGNOSTIC
+enum { PS2_FLOOR_NORMAL, PS2_FLOOR_BASE_ONLY, PS2_FLOOR_PERSPECTIVE };
+/* Controller requests become visible only at a display-list frame boundary. */
+void ps2_floor_request_mode(unsigned mode);
+void ps2_floor_begin_frame(void);
+unsigned ps2_floor_mode(void);
+#endif
 #ifdef PS2_RENDERER_SMOKE_CAPTURE
 void f3dex2_test_capture(bool enabled);
 const GSPRIMSTQPOINT* f3dex2_test_points(unsigned* count);

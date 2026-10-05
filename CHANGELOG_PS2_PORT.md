@@ -4,6 +4,31 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Comparación de capas y perspectiva del suelo — 2026-10-05
+
+- El usuario confirma que las olas siguen igual con la revisión del recorte.
+  Se conserva esa corrección matemática, pero no se considera solución del
+  defecto observado en la SCPH-90010.
+- FLOOR.ELF es una variante USB separada: arriba vuelve al dibujo normal,
+  izquierda omite la segunda capa del suelo y derecha fuerza su perspectiva.
+  La selección se aplica al principio del siguiente fotograma. Los controles
+  se mantienen en menús, diálogos y transiciones; no sustituye callbacks de estado.
+- El logger registra las selecciones con escena/fotograma y una muestra
+  acotada UV/W/STQ/XYZ cada sesenta fotogramas que dibujan ese material.
+  No añade trazas al juego habitual. No confirma una causa por sí solo.
+- Las pruebas del renderer pasan el aislamiento de capas, ambos caminos
+  de vértices, los límites de fotograma y los materiales ajenos, junto a los
+  120 fotogramas del diagnóstico completo. Informe privado:
+  `build/PS2/floor-lab-smoke-20261005-173936/report.json`.
+- Pasa el arranque con el controlador USB nativo emulado, sin HostFs ni
+  tarjetas del jugador: `build/PS2/usb-stack-checks/20261005-173936-172/report.json`.
+  DIAG.LOG conserva el marcador FLOOR_LAB y muestras del suelo. Falta la
+  comparación física de los modos; no se afirma que desaparezcan las olas.
+- Se añaden scripts reproducibles de construcción, paquete y copia del
+  diagnóstico opcional. La copia verifica OOT.Z64 y los hashes, conserva los
+  registros físicos anteriores y mantiene los ELF habituales. Instrucciones
+  en `PS2_FLOOR_DIAGNOSTIC.md`.
+
 ## Prueba física hasta la espada y precisión del recorte — 2026-10-05
 
 - El usuario confirma que DIAG.ELF revisado inicia, carga la partida, sale de
@@ -29,7 +54,8 @@ trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
   Pasan además 20432 casos de recorte, 27648 puntos y las pruebas de las dos
   capas del suelo, transparencia y perspectiva. Informe privado:
   `build/PS2/clip-camera-after-20261005-164931/report.json`.
-  Falta comparar este cambio con las olas observadas en la consola física.
+  La comprobación física posterior mantiene las mismas olas; este cambio
+  corrige el cálculo independiente, pero no resuelve ese defecto observado.
 - Pasan los nueve casos de arranque con HostFs en
   `build/PS2/usb-host-checks/20261005-165704-330/report.json` y la transición
   casa → Kokiri → casa con el controlador USB emulado, sin HostFs, en

@@ -88,6 +88,64 @@ int ps2_ground_run_smoke(void) {
         if (referenceCount!=actualCount || memcmp(reference,points,actualCount*sizeof(*points))) failures++;
         f3dex2_test_capture(false);
     }
+#ifdef PS2_FLOOR_DIAGNOSTIC
+    /* The laboratory must change exactly the selected material, and a pad
+     * request must not change cached vertex setup midway through a frame. */
+    int labFailures=0;
+    g_rspState.geometryMode=0;
+    rdp_setothermode(1u<<20,0xc8112078u,&g_rdpState);
+    rdp_setenvcolor(0,128,&g_rdpState);
+    ps2_floor_request_mode(PS2_FLOOR_NORMAL);
+    ps2_floor_begin_frame();
+    f3dex2_test_capture(true);
+    u32 packets=g_rdpState.stats.texturePackets;
+    f3dex2_tri1(0x05000204,0,&g_rspState,&g_rdpState);
+    unsigned normalCount;
+    const GSPRIMSTQPOINT* points=f3dex2_test_points(&normalCount);
+    memcpy(reference,points,normalCount*sizeof(*points));
+    if (normalCount!=6 || g_rdpState.stats.texturePackets-packets!=2) labFailures++;
+    ps2_floor_request_mode(PS2_FLOOR_BASE_ONLY);
+    ps2_floor_request_mode(99); /* Invalid requests must not erase the valid one. */
+    if (ps2_floor_mode()!=PS2_FLOOR_NORMAL) labFailures++;
+    ps2_floor_begin_frame();
+    if (ps2_floor_mode()!=PS2_FLOOR_BASE_ONLY) labFailures++;
+    f3dex2_test_capture(true);
+    packets=g_rdpState.stats.texturePackets;
+    f3dex2_tri1(0x05000204,0,&g_rspState,&g_rdpState);
+    unsigned count;
+    points=f3dex2_test_points(&count);
+    if (count!=3 || g_rdpState.stats.texturePackets-packets!=1 ||
+        memcmp(reference,points,3*sizeof(*points))) labFailures++;
+    ps2_floor_request_mode(PS2_FLOOR_PERSPECTIVE);
+    ps2_floor_begin_frame();
+    f3dex2_test_capture(true);
+    f3dex2_batch_begin(&g_rspState,&g_rdpState);
+    f3dex2_tri1(0x05000204,0,&g_rspState,&g_rdpState);
+    f3dex2_batch_end(&g_rdpState);
+    points=f3dex2_test_points(&count);
+    if (count!=6) labFailures++;
+    for (unsigned i=0; i<count; i++) {
+        if (points[i].rgbaq.color.q!=0.5f ||
+            points[i].stq.st.s!=reference[i].stq.st.s*0.5f ||
+            points[i].stq.st.t!=reference[i].stq.st.t*0.5f ||
+            points[i].xyz2.xyz2!=reference[i].xyz2.xyz2) labFailures++;
+    }
+    PS2TextureVertexSetup setup;
+    GSPRIMSTQPOINT direct, prepared;
+    ps2_texture_prepare_vertices(&setup,&g_rdpState.tile[0],&g_rspState,&g_rdpState);
+    ps2_texture_build_vertex(&g_rdpState.tile[0],&g_rspState,&g_rdpState,&g_rspState.vtx[0],0xffffffff,123,&direct);
+    ps2_texture_build_vertex_prepared(&setup,&g_rspState.vtx[0],0xffffffff,123,&prepared);
+    if (memcmp(&direct,&prepared,sizeof(direct)) || direct.rgbaq.color.q!=0.5f) labFailures++;
+    rdp_setcombine(0,0,&g_rdpState);
+    ps2_texture_prepare_vertices(&setup,&g_rdpState.tile[0],&g_rspState,&g_rdpState);
+    ps2_texture_build_vertex(&g_rdpState.tile[0],&g_rspState,&g_rdpState,&g_rspState.vtx[0],0xffffffff,123,&direct);
+    if (ps2_combiner_texture_lerp(&g_rdpState) || setup.perspective || direct.rgbaq.color.q!=1.0f) labFailures++;
+    ps2_floor_request_mode(PS2_FLOOR_NORMAL);
+    ps2_floor_begin_frame();
+    f3dex2_test_capture(false);
+    failures+=labFailures;
+    printf("[PS2 FLOOR LAB TEST] frame latch, layer isolation, both vertex paths and unaffected materials failures=%d\n",labFailures);
+#endif
     g_rspState=savedRsp; g_rdpState=savedRdp;
     ps2_gs_state_reset(); rdp_apply_othermode(&g_rdpState);
     printf("[PS2 GROUND RUN TEST] points, layer order, packets, fog, perspective, alpha, decals, clipping and state fences failures=%d\n",failures);

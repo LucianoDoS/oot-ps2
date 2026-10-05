@@ -326,6 +326,20 @@ endif
 # A separate test ELF exercises real Play_Init/Update/Destroy without changing
 # the game objects or using a saved player's progression.
 ifeq ($(PLATFORM),PS2)
+ifeq ($(PS2_FLOOR_DIAGNOSTIC),1)
+ifneq ($(PS2_USB_BOOT):$(PS2_RUNTIME_DIAGNOSTIC),1:1)
+$(error PS2_FLOOR_DIAGNOSTIC requires native USB and the runtime logger)
+endif
+ifneq ($(filter 1,$(PS2_USB_TRANSITION_SMOKE) $(PS2_SCENE_SMOKE) $(PS2_SKULLTULA_SMOKE) $(PS2_ROOM_SMOKE)),)
+$(error PS2_FLOOR_DIAGNOSTIC cannot replace the input of an automated scene test)
+endif
+FLOOR_GFX_OBJS := $(addprefix $(BUILD_DIR)/src/platform/ps2/gfx/,f3dex2_ps2.o ps2_texture.o rdp_to_gs.o)
+OBJS := $(filter-out $(FLOOR_GFX_OBJS),$(OBJS))
+FLOOR_OBJS := $(FLOOR_GFX_OBJS:.o=_floor.o) $(BUILD_DIR)/tools/ps2_floor_diagnostic.o
+OBJS += $(FLOOR_OBJS)
+DEPS += $(FLOOR_OBJS:.o=.d)
+ROM_LDFLAGS += -Wl,--wrap=GameState_ReqPadData
+endif
 ifeq ($(PS2_USB_TRANSITION_SMOKE),1)
 OBJS += $(BUILD_DIR)/tools/ps2_usb_transition_smoke.o
 DEPS += $(BUILD_DIR)/tools/ps2_usb_transition_smoke.d
@@ -426,6 +440,14 @@ $(BUILD_DIR)/src/platform/ps2/ps2_main_diag224.o: src/platform/ps2/ps2_main.c
 $(BUILD_DIR)/tools/ps2_runtime_game.o: tools/ps2_runtime_game.c
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) $(CFLAGS) -DPS2_RUNTIME_DIAGNOSTIC=1 $(INCLUDES) $(DEPFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/src/platform/ps2/%_floor.o: src/platform/ps2/%.c
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CFLAGS) -DPS2_FLOOR_DIAGNOSTIC=1 -Iinclude -Isrc $(PLATFORM_INCLUDES) $(DEPFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/tools/ps2_floor_diagnostic.o: tools/ps2_floor_diagnostic.c
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CFLAGS) -DPS2_RUNTIME_DIAGNOSTIC=1 -DPS2_FLOOR_DIAGNOSTIC=1 $(INCLUDES) $(DEPFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/src/platform/ps2/libultra_stub/osRom_usb.o: src/platform/ps2/libultra_stub/osRom.c
 	@mkdir -p $(dir $@)
