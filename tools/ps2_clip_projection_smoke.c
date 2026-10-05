@@ -62,7 +62,7 @@ static void random_vertex(RSPVertex* v, u32* random) {
     memset(v, 0xa5, sizeof(*v));
     v->ox = random_word(random); v->oy = random_word(random); v->oz = random_word(random);
     v->flag = random_word(random);
-    v->tc_s = random_word(random); v->tc_t = random_word(random);
+    v->tc_s = (s16)random_word(random); v->tc_t = (s16)random_word(random);
     v->cr = random_word(random) >> 24; v->cg = random_word(random) >> 24;
     v->cb = random_word(random) >> 24; v->ca = random_word(random) >> 24;
     v->cx = ((int)(random_word(random) % 4097) - 2048) / 256.0f;
@@ -71,6 +71,56 @@ static void random_vertex(RSPVertex* v, u32* random) {
     v->cw = ((int)(random_word(random) % 2305) - 256) / 256.0f;
     v->sx = 17; v->sy = -23; v->sz = 0.75f;
     v->clipFlags = random_word(random); v->valid = true;
+}
+
+/* Perspective interpolation over the original projected triangle gives an
+ * independent oracle for every new corner, including multi-plane clipping.
+ * Move the camera without changing the original signed 10.5 asset UVs. */
+static unsigned texture_clip_camera_checks(void) {
+    unsigned failures = 0, corners = 0;
+    float worst = 0;
+    for (unsigned camera = 0; camera < 256; camera++) {
+        unsigned frame = camera & 127;
+        float pan = ((int)frame - 64) / 128.0f;
+        RSPVertex input[3] = {
+            {.cx=-2.75f+pan,.cy=-1.75f-pan,.cw=1,.tc_s=-701,.tc_t=-15003},
+            {.cx=0.75f+pan,.cy=-0.375f-pan,.cw=1,.tc_s=16001,.tc_t=4291},
+            {.cx=0.625f+pan,.cy=2.5f-pan,.cw=1,.tc_s=-13607,.tc_t=9001}
+        }, output[12];
+        if (camera >= 128) {
+            input[0].cw=0.75f; input[1].cw=1.5f; input[2].cw=2.5f;
+            for (unsigned i=0;i<3;i++) {
+                input[i].cx += pan*(input[i].cw-1);
+                input[i].cy -= pan*(input[i].cw-1);
+            }
+        }
+        int count = ps2_clip_triangle(input, input+1, input+2, output);
+        double x[3],y[3],s[3],t[3],q[3];
+        for (unsigned i=0;i<3;i++) {
+            q[i]=1.0/(double)input[i].cw;
+            x[i]=input[i].cx*q[i]; y[i]=input[i].cy*q[i];
+            s[i]=input[i].tc_s*q[i]; t[i]=input[i].tc_t*q[i];
+        }
+        double bx = x[1]-x[0], by = y[1]-y[0];
+        double cx = x[2]-x[0], cy = y[2]-y[0];
+        double area = bx*cy-by*cx;
+        if (count < 3) { failures++; continue; }
+        for (int i=0;i<count;i++) {
+            double px = output[i].cx/(double)output[i].cw-x[0];
+            double py = output[i].cy/(double)output[i].cw-y[0];
+            double b = (px*cy-py*cx)/area, c = (bx*py-by*px)/area;
+            double interpQ=q[0]+b*(q[1]-q[0])+c*(q[2]-q[0]);
+            double expectedS=(s[0]+b*(s[1]-s[0])+c*(s[2]-s[0]))/interpQ;
+            double expectedT=(t[0]+b*(t[1]-t[0])+c*(t[2]-t[0]))/interpQ;
+            float error = fmaxf(fabsf(output[i].tc_s-expectedS),fabsf(output[i].tc_t-expectedT));
+            if (error > worst) worst=error;
+            if (error > 0.012f) failures++;
+            corners++;
+        }
+    }
+    printf("[PS2 CLIP TEXTURE CAMERA TEST] %s cameras=256 corners=%u maxRawUvError=%f failures=%u\n",
+        failures ? "FAIL" : "PASS", corners,worst,failures);
+    return failures;
 }
 
 static unsigned compare_clip(const RSPVertex* vertices, unsigned fixture) {
@@ -100,7 +150,7 @@ static u32 clip_benchmark(const RSPVertex fixtures[][3], bool original) {
             int count = original ? reference_clip(&fixtures[i][0], &fixtures[i][1], &fixtures[i][2], output) :
                 ps2_clip_triangle(&fixtures[i][0], &fixtures[i][1], &fixtures[i][2], output);
             checksum += count;
-            if (count) checksum += output[0].cr + output[count - 1].tc_s;
+            if (count) checksum += (u32)((s32)output[0].cr + (s32)output[count - 1].tc_s);
         }
     }
     return checksum;
@@ -325,7 +375,7 @@ static unsigned projection_benchmark(void) {
 #endif
 
 int ps2_clip_projection_smoke(void) {
-    unsigned failures = 0, checks = 0;
+    unsigned failures = texture_clip_camera_checks(), checks = 0;
     u32 random = 0x618bd730u;
     static RSPVertex fixtures[64][3];
     RSPVertex vertices[3];

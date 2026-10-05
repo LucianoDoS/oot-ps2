@@ -25,20 +25,25 @@ el nuevo BOOT.LOG físico en `build/PS2/hardware-boot/scph90010-first-gameplay`.
 
 ## Pausas, suelo y audio en la consola
 
-Estado: pendiente de comprobar con el registro durante la partida. Las cargas
-se recuperan solas después de esperar; el suelo tiembla tanto quieto como en
-movimiento, y el audio se distorsiona con FPS bajos. No está demostrada una
+Estado: pendiente de validar la corrección del recorte en hardware. Las cargas
+se recuperan solas después de esperar. El usuario precisa en su última prueba
+que el suelo hace olas al mover la cámara y no las observa con la cámara quieta;
+el audio se distorsiona con FPS bajos. No está demostrada una
 causa única. DIAG.ELF añade DIAG.LOG con cargas, tiempos de USB, vídeo y cola de
 audio. La caché USB se amplía y separa las lecturas de muestras de las cargas;
 se añade lectura anticipada acotada y se evita el seek consecutivo redundante.
 La reserva de audio USB aumenta a 60 ms. DIAG224.ELF permite comparar un render
 de 640x224 con líneas duplicadas, manteniendo la señal NTSC entrelazada del
-convertidor. Los ELF normales conservan 640x448. Falta la comparación física;
-no se da por corregido el temblor. Uso y límites en `PS2_HARDWARE.md`.
+convertidor. Los ELF normales conservan 640x448. La comparación física a 224
+líneas sigue mostrando las mismas olas. Se corrige una pérdida independiente
+de precisión al truncar las UV interpoladas en cada plano del recorte. Pasan
+256 cámaras y las pruebas del suelo, pero todavía no se da por corregido el
+defecto observado en la PS2. Uso y límites en `PS2_HARDWARE.md`.
 
 ## Pantalla negra después del logo con DIAG224
 
-Estado: reproducido por el usuario en SCPH-90010. El primer DIAG224 llega al
+Estado: arranque corregido y confirmado en la última comparación física.
+El primer DIAG224 llegaba al
 primer fotograma del logo, pero DIAG.LOG sólo conserva su cabecera de 346 bytes;
 no hay muestras periódicas. Se conservan ambos registros en
 `build/PS2/hardware-runtime/scph90010-diag224-20261005-140823`.
@@ -48,9 +53,8 @@ Se elimina la espera usleep sin comprobación del logger: ahora un semáforo lo
 despierta desde el hilo de vblank. Se guarda el arranque del logger inmediatamente,
 se registra su entrada y se detiene el registro si falla la espera. Una ausencia
 de avance del Timer 0 permite muestras con tiempo aproximado de retrace, marcadas
-con clockFallback=1. La siguiente prueba física debe usar DIAG.ELF con el vídeo
-normal de 448 líneas; la prueba del suelo con DIAG224 queda aplazada hasta confirmar
-que el registro y la partida funcionan en hardware.
+con clockFallback=1. Primero se comprobó DIAG.ELF con el vídeo normal de 448
+líneas; después se confirmó también el arranque de DIAG224 y su carga de Kokiri.
 
 El segundo intento físico, DIAG.ELF con 448 líneas, también queda negro. Su
 BOOT.LOG termina en `REGISTRO: iniciando hilo por vblank`; DIAG.LOG conserva
@@ -72,7 +76,7 @@ La prueba nativa del controlador USB en PCSX2 ya pasa en
 
 ## Pantalla negra al salir de la casa con DIAG.ELF
 
-Estado: corregido en la prueba automática; pendiente de confirmar físicamente.
+Estado: corregido en la prueba automática y confirmado físicamente por el usuario.
 El último registro físico conserva muestras hasta 205 segundos: después de
 salir de la casa, los fotogramas se detienen y continúan el audio y los volcados,
 sin lecturas ni errores USB. Evidencia privada con hashes comprobados en
@@ -86,7 +90,10 @@ conserva la identidad de los callbacks y puede continuar a la siguiente escena.
 La prueba casa → Kokiri → casa completa 120 actualizaciones en cada escena,
 sin errores USB ni pérdidas del registro, en
 `build/PS2/usb-stack-checks/20261005-155909-872/report.json`.
-No certifica aún la salida en la SCPH-90010 ni corrige el temblor del suelo.
+El usuario confirma ahora la salida y el juego hasta conseguir la espada en
+la SCPH-90010. Los registros se conservan en
+`build/PS2/hardware-runtime/scph90010-first-sword-20261005-162143`.
+Esta corrección del diagnóstico no corrige por sí sola las olas del suelo.
 
 ## Cadencia del logo Nintendo 64
 

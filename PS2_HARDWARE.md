@@ -7,14 +7,19 @@ una consola real. Los resultados de PCSX2 no certifican todos los casos en hardw
 Primera prueba del usuario: en una SCPH-90010, conectada mediante un
 convertidor AV a HDMI, BOOTTEST muestra `DATOS OK`. El primer juego quedaba negro;
 tras corregir la invalidación global de caché, inicia y permite jugar.
-Quedan pausas de carga que se recuperan, temblor del suelo incluso quieto y
-distorsión del audio cuando caen los FPS. El guardado físico sigue pendiente.
+Quedan pausas de carga que se recuperan y distorsión del audio cuando caen los
+FPS. En la última comprobación, el usuario precisa que el suelo parece hacer
+olas al mover la cámara; con la cámara quieta no las observa. El guardado físico
+sigue pendiente.
 
 La última revisión del registro ya permite cargar la partida en hardware.
 Se corrigió además un fallo propio de DIAG.ELF que terminaba la partida al
 salir de la casa: el registro alteraba la identidad de una función de
 inicialización. La prueba automática casa → Kokiri → casa pasa con el
-controlador USB nativo de PCSX2; falta confirmar esa salida en la consola.
+controlador USB nativo de PCSX2. El usuario confirma la salida en la consola
+y continúa hasta conseguir la espada. Los registros de esa sesión se conservan
+en `build/PS2/hardware-runtime/scph90010-first-sword-20261005-162143`, sin errores
+USB ni pérdidas de registros.
 
 1. Copia la carpeta `OOTPS2` completa a la raíz del USB.
 2. En wLaunchELF abre `mass:/OOTPS2/BOOTTEST.ELF`.
@@ -132,10 +137,11 @@ para probar con el mismo convertidor AV a HDMI. Tiene menos detalle vertical;
 es una comparación para identificar el origen del temblor, no una corrección
 confirmada de las texturas. OOTPS2.ELF y DIAG.ELF conservan el render a 640x448.
 
-El usuario observó una pantalla negra después del logo con el primer DIAG224.
-Su registro sólo conservó la cabecera, sin muestras. La siguiente comprobación
-debe usar DIAG.ELF a 448 líneas con el registro revisado. Deja la comparación
-DIAG224 pendiente hasta confirmar que la sesión normal funciona en la consola.
+El primer DIAG224 quedaba negro después del logo por los fallos ya corregidos
+del diagnóstico. El usuario ya compara la versión revisada y las olas siguen
+igual. Su registro confirma render 640x224, salida de 448 líneas y carga del
+bosque Kokiri, sin errores USB ni pérdidas. Evidencia privada en
+`build/PS2/hardware-runtime/scph90010-224-waves-20261005-163739`.
 
 Prueba el mismo suelo con Link y la cámara quietos y después caminando.
 Compara con lo observado en la versión normal. Indica si el temblor desaparece,
@@ -145,6 +151,18 @@ sea correcta. DIAG.LOG incluye las dimensiones del render y de la salida de víd
 
 DIAG224.ELF también reemplaza DIAG.LOG al iniciar. Conserva ese archivo en el
 PC antes de arrancar DIAG.ELF si quieres guardar los resultados de ambas sesiones.
+
+La siguiente revisión conserva fracciones en las coordenadas de textura de
+los vértices recortados. Antes las truncaba a un entero en cada plano del
+recorte, cambiando el mapeado con la cámara. Una prueba independiente de
+interpolación perspectiva pasa 256 cámaras y 1323 esquinas, junto a las pruebas
+de las dos capas del suelo. Esto demuestra la corrección del cálculo; todavía
+falta comprobar cuánto cambia las olas observadas en la consola.
+
+Para comparar el juego sin el coste de escribir DIAG.LOG, ejecuta OOTPS2.ELF.
+DIAG.ELF se usa cuando hay que recoger tiempos o un bloqueo. Sus escrituras
+pueden introducir pausas adicionales: en las dos sesiones físicas anteriores
+un volcado tardó hasta 184 y 221 ms, respectivamente.
 
 ## Análisis del registro
 

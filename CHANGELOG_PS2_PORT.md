@@ -4,6 +4,39 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Prueba física hasta la espada y precisión del recorte — 2026-10-05
+
+- El usuario confirma que DIAG.ELF revisado inicia, carga la partida, sale de
+  la casa y permite jugar hasta conseguir la espada en la SCPH-90010.
+  BOOT.LOG y DIAG.LOG se conservan con hashes comprobados en
+  `build/PS2/hardware-runtime/scph90010-first-sword-20261005-162143`.
+  Las 300 muestras no registran errores USB, pérdidas ni reloj aproximado.
+  Hay caídas de FPS y pausas de carga; un volcado del logger tarda hasta 184 ms.
+- La descripción del suelo se precisa: parece hacer olas al mover la cámara,
+  y no las observa con la cámara quieta. DIAG224 revisado también carga Kokiri,
+  pero el usuario confirma que las olas siguen igual. Sus 65 muestras se
+  conservan en `build/PS2/hardware-runtime/scph90010-224-waves-20261005-163739`,
+  sin errores USB ni pérdidas. El modo de 224 líneas no se adopta como solución.
+- Se encuentra una pérdida de precisión independiente en el recorte homogéneo:
+  RSPVertex guardaba las UV interpoladas como s16, truncándolas de nuevo en cada
+  plano. Ahora mantiene los valores en float, incluyendo las fracciones; los
+  enteros 10.5 originales se cargan sin pérdida y la generación de reflejos
+  conserva su cuantización anterior. No añade subdivisiones ni pasadas gráficas.
+- La prueba nueva usa interpolación perspectiva sobre el triángulo original
+  como referencia independiente. La versión anterior falla en 584 esquinas de
+  128 cámaras, con error máximo de 1.874319 unidades UV crudas. La revisión
+  ampliada pasa 256 cámaras y 1323 esquinas, con error máximo 0.004191.
+  Pasan además 20432 casos de recorte, 27648 puntos y las pruebas de las dos
+  capas del suelo, transparencia y perspectiva. Informe privado:
+  `build/PS2/clip-camera-after-20261005-164931/report.json`.
+  Falta comparar este cambio con las olas observadas en la consola física.
+- Pasan los nueve casos de arranque con HostFs en
+  `build/PS2/usb-host-checks/20261005-165704-330/report.json` y la transición
+  casa → Kokiri → casa con el controlador USB emulado, sin HostFs, en
+  `build/PS2/usb-stack-checks/20261005-165817-988/report.json`.
+  El ELF del jugador de PCSX2, su memory card y los datos convertidos conservan
+  sus hashes. Se preparan los tres ELF USB con la corrección de precisión.
+
 ## Salida de la casa con el diagnóstico USB — 2026-10-05
 
 - El usuario confirma intro, selector y carga de la partida en la SCPH-90010;

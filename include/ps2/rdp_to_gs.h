@@ -152,7 +152,10 @@ typedef struct {
     /* Object-space coordinates (from G_VTX) */
     s16  ox, oy, oz;
     u16  flag;
-    s16  tc_s, tc_t;   /* texture coordinates (10.5 fixed) */
+    /* Asset UVs are signed 10.5 integers, loaded exactly into float. Keep
+     * fractional raw units at generated clip corners: truncating each plane
+     * changes the texture mapping as a triangle crosses the camera edges. */
+    float tc_s, tc_t;
     u8   cr, cg, cb, ca; /* vertex color / normal */
 
     /* Clip-space coordinates (after MVP transform) */

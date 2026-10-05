@@ -11,12 +11,17 @@ juego ya se compila para el EE; no ejecuta las instrucciones de los overlays N64
 Esto amplía la carga al resto del mapa, pero todavía falta validar la
 progresión completa, los combates, las cinemáticas y la fidelidad visual.
 
-En la SCPH-90010 el usuario confirma intro, menú y carga de la partida desde
-USB. El último fallo de DIAG.ELF al salir de casa se reproduce y corrige:
+En la SCPH-90010 el usuario confirma intro, menú, carga de la partida, salida
+de la casa y juego hasta conseguir la espada desde USB. El fallo anterior de
+DIAG.ELF al salir de casa se reproduce y corrige:
 el registro cambiaba la identidad de la función que selecciona la siguiente
 escena. La regresión casa → Kokiri → casa ya pasa con el controlador USB
-nativo de PCSX2. Falta confirmar esa salida en la consola, el guardado físico,
-el temblor del suelo y el audio durante caídas de rendimiento.
+nativo de PCSX2 y el usuario confirma la salida en la consola. Quedan el
+guardado físico, las olas del suelo al mover la cámara y el audio durante
+caídas de rendimiento. La comparación física a 224 líneas mantiene las olas.
+Se corrige una pérdida de precisión de las coordenadas de textura durante el
+recorte de triángulos; pasa la prueba de cámara, pero falta comparar ese cambio
+en hardware antes de dar el suelo por corregido.
 
 El usuario confirma la partida inicial, el bosque Kokiri, casas y tienda,
 la entrada exterior al Árbol Deku y el movimiento en su sala principal.
