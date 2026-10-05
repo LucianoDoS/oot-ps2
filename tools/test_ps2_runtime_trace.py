@@ -17,7 +17,7 @@ DRIVER = r'''
 #include <string.h>
 #include <unistd.h>
 #include <stdint.h>
-static int interrupts=1, failWrite, wakeCount, wakeSignals, failSema;
+static int interrupts=1, failWrite, wakeCount, wakeSignals, failSema, snapshots;
 static uint64_t now;
 static int short_write(int fd, const void* bytes, unsigned size) {
     if (failWrite) return -1;
@@ -33,6 +33,7 @@ void ps2_boot_trace_stage(const char* message) { (void)message; }
 void ps2_boot_trace_result(const char* name, int result) { (void)name; (void)result; }
 Ps2TraceTicks osGetTime(void) { return now; }
 void ps2_rom_cache_stats(unsigned* hits, unsigned* reads) { *hits=12; *reads=5; }
+void ps2_runtime_stall_snapshot(void) { snapshots++; }
 int DIntr(void) { int old=interrupts; interrupts=0; return old; }
 void EIntr(void) { interrupts=1; }
 int CreateThread(ee_thread_t* thread) { return thread->initial_priority == 51 ? 1 : -1; }
@@ -76,6 +77,11 @@ int main(int argc, char** argv) {
     trace_tick(); /* A stuck Timer 0 must not prevent the next sample. */
     flush_records();
     if (!strstr(read_log(),"retraces=120 clockMs=0 clockFallback=1")) return 11;
+    if (snapshots != 1) return 19; /* Two intervals without a completed frame. */
+    now += 46875000; trace_tick();
+    if (snapshots != 1) return 20; /* No per-second snapshot flood. */
+    ps2_runtime_frame(0,0,0); now += 46875000; trace_tick();
+    if (sIdleSamples) return 21; /* Frame progress resets the stall detector. */
     interrupts=0; ps2_runtime_event("already disabled"); if (interrupts) return 5;
     interrupts=1;
     for (int i=0;i<200;i++) ps2_runtime_event("overflow id=%u",i);

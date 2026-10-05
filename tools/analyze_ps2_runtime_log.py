@@ -7,7 +7,7 @@ import re
 import statistics
 
 def analyze(text):
-    samples, reads, rooms, flushes, audio = [], [], [], [], []
+    samples, reads, rooms, flushes, audio, usb = [], [], [], [], [], []
     for line in text.splitlines():
         row = {key: int(value) for key, value in re.findall(r'(\w+)=([0-9]+)(?=\s|$)', line)}
         if ' SAMPLE ' in line and all(key in row for key in ('intervalMs', 'frames', 'fps10')):
@@ -20,6 +20,8 @@ def analyze(text):
             flushes.append(row)
         elif ' AUDIO ' in line:
             audio.append(row)
+        elif ' USB ' in line:
+            usb.append(row)
     fps = [row['fps10'] / 10 for row in samples]
     return {
         'invalid_header': not text.startswith('OOT PS2 runtime log v'),
@@ -36,6 +38,10 @@ def analyze(text):
         'slow_or_failed_reads': reads, 'room_and_scene_loads': rooms,
         'audio_zero_queue_intervals': [row for row in audio if row.get('zeroPolls', 0)],
         'last_audio': audio[-1] if audio else None,
+        'usb_errors': sum(row.get('errors', 0) for row in usb),
+        'progress_snapshots': [line.rstrip() for line in text.splitlines() if any(
+            marker in line for marker in (' STALL_SNAPSHOT ', ' GAME_PROGRESS ', ' PLAY_PROGRESS ',
+                ' GFX_WORKER ', ' THREAD ', '[PS2 GFX WAIT]'))],
         'logger_flush_max_ms': max((row.get('durationMs', 0) for row in flushes), default=None),
         'lost_records': max((row.get('lost', 0) for row in samples), default=0),
         'file_limit_reached': 'LOG_LIMIT' in text,

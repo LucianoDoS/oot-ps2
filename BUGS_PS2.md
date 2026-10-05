@@ -64,10 +64,29 @@ el juego continúa. BOOT.LOG v2 y DIAG.LOG v3 escriben sectores de 512 bytes des
 buffers alineados y mantienen alineado el archivo; los reintentos de una escritura
 parcial también conservan la alineación del buffer. BOOTTEST elimina el relleno
 para mostrar las últimas diez etapas. Se añaden hitos separados del primer lote.
-Falta confirmar que esta revisión elimine el bloqueo en la SCPH-90010.
+El usuario confirma que esta revisión permite pasar la intro, abrir el menú
+y entrar a su partida en la SCPH-90010.
 La prueba nativa del controlador USB en PCSX2 ya pasa en
 `build/PS2/usb-stack-checks/20261005-151055-633/report.json`: ambos registros
 íntegros, datos sin cambios, cargas de escena y fotogramas posteriores al logo.
+
+## Pantalla negra al salir de la casa con DIAG.ELF
+
+Estado: corregido en la prueba automática; pendiente de confirmar físicamente.
+El último registro físico conserva muestras hasta 205 segundos: después de
+salir de la casa, los fotogramas se detienen y continúan el audio y los volcados,
+sin lecturas ni errores USB. Evidencia privada con hashes comprobados en
+`build/PS2/hardware-runtime/scph90010-house-exit-20261005-153103`.
+
+La prueba del controlador USB reproduce que Graph termina tras destruir la
+casa. El wrapper de Play_Init alteraba su identidad en la comparación externa
+de Graph_GetNextGameState, mientras que la transición interna de Play_Update
+asignaba Play_Init original. El diagnóstico ahora envuelve GameState_Init;
+conserva la identidad de los callbacks y puede continuar a la siguiente escena.
+La prueba casa → Kokiri → casa completa 120 actualizaciones en cada escena,
+sin errores USB ni pérdidas del registro, en
+`build/PS2/usb-stack-checks/20261005-155909-872/report.json`.
+No certifica aún la salida en la SCPH-90010 ni corrige el temblor del suelo.
 
 ## Cadencia del logo Nintendo 64
 

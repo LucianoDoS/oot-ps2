@@ -295,9 +295,10 @@ OBJS := $(filter-out $(BUILD_DIR)/src/platform/ps2/audio/ps2_audio_driver.o,$(OB
 USB_TRACE_OBJS += $(BUILD_DIR)/src/platform/ps2/audio/ps2_audio_driver_usb.o
 ifeq ($(PS2_RUNTIME_DIAGNOSTIC),1)
 USB_TRACE_OBJS := $(filter-out $(BUILD_DIR)/src/platform/ps2/ps2_main_usb.o $(BUILD_DIR)/src/platform/ps2/ps2_boot_usb.o $(BUILD_DIR)/src/platform/ps2/libultra_stub/osRom_usb.o $(BUILD_DIR)/src/platform/ps2/libultra_stub/osMisc_usb.o $(BUILD_DIR)/src/platform/ps2/audio/ps2_audio_driver_usb.o,$(USB_TRACE_OBJS))
-OBJS := $(filter-out $(BUILD_DIR)/src/platform/ps2/libultra_stub/osTask.o,$(OBJS))
+OBJS := $(filter-out $(BUILD_DIR)/src/platform/ps2/libultra_stub/osTask.o $(BUILD_DIR)/src/platform/ps2/libultra_stub/osThread.o,$(OBJS))
+USB_TRACE_OBJS += $(BUILD_DIR)/src/platform/ps2/libultra_stub/osThread_diag.o
 USB_TRACE_OBJS += $(BUILD_DIR)/src/platform/ps2/ps2_main_diag.o $(BUILD_DIR)/src/platform/ps2/ps2_boot_diag.o $(BUILD_DIR)/src/platform/ps2/libultra_stub/osRom_diag.o $(BUILD_DIR)/src/platform/ps2/libultra_stub/osMisc_diag.o $(BUILD_DIR)/src/platform/ps2/libultra_stub/osTask_diag.o $(BUILD_DIR)/src/platform/ps2/audio/ps2_audio_driver_diag.o $(BUILD_DIR)/src/platform/ps2/ps2_runtime_trace_diag.o $(BUILD_DIR)/tools/ps2_runtime_game.o
-ROM_LDFLAGS_EXTRA := -Wl,--wrap=printf,--wrap=Play_Init,--wrap=Room_SetupFirstRoom,--wrap=Room_RequestNewRoom,--wrap=Room_ProcessRoomRequest
+ROM_LDFLAGS_EXTRA := -Wl,--wrap=printf,--wrap=GameState_Init,--wrap=Room_SetupFirstRoom,--wrap=Room_RequestNewRoom,--wrap=Room_ProcessRoomRequest,--wrap=GameState_Update,--wrap=GameState_Destroy
 ifeq ($(PS2_USB_VIDEO_224),1)
 USB_TRACE_OBJS := $(filter-out $(BUILD_DIR)/src/platform/ps2/ps2_main_diag.o,$(USB_TRACE_OBJS))
 USB_TRACE_OBJS += $(BUILD_DIR)/src/platform/ps2/ps2_main_diag224.o
@@ -325,6 +326,11 @@ endif
 # A separate test ELF exercises real Play_Init/Update/Destroy without changing
 # the game objects or using a saved player's progression.
 ifeq ($(PLATFORM),PS2)
+ifeq ($(PS2_USB_TRANSITION_SMOKE),1)
+OBJS += $(BUILD_DIR)/tools/ps2_usb_transition_smoke.o
+DEPS += $(BUILD_DIR)/tools/ps2_usb_transition_smoke.d
+ROM_LDFLAGS += -Wl,--wrap=ConsoleLogo_Init,--wrap=GameState_ReqPadData
+endif
 ifeq ($(PS2_SCENE_SMOKE),1)
 OBJS += $(BUILD_DIR)/tools/ps2_scene_smoke.o
 OBJS += $(BUILD_DIR)/tools/ps2_actor_overlay_smoke.o

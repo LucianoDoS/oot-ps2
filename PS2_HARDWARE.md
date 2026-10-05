@@ -10,6 +10,12 @@ tras corregir la invalidación global de caché, inicia y permite jugar.
 Quedan pausas de carga que se recuperan, temblor del suelo incluso quieto y
 distorsión del audio cuando caen los FPS. El guardado físico sigue pendiente.
 
+La última revisión del registro ya permite cargar la partida en hardware.
+Se corrigió además un fallo propio de DIAG.ELF que terminaba la partida al
+salir de la casa: el registro alteraba la identidad de una función de
+inicialización. La prueba automática casa → Kokiri → casa pasa con el
+controlador USB nativo de PCSX2; falta confirmar esa salida en la consola.
+
 1. Copia la carpeta `OOTPS2` completa a la raíz del USB.
 2. En wLaunchELF abre `mass:/OOTPS2/BOOTTEST.ELF`.
 3. Espera el resultado. Debe aparecer `DATOS OK`, `MEMORIA OK` y el estado de la memory card
@@ -72,6 +78,13 @@ traducción/GS/presentación, ciclos de síntesis, bytes y esperas de lectura,
 aciertos de caché y observaciones de la cola de audio. `fps10=180` equivale a
 18 FPS. `zeroPolls` no es un contador exacto de faltas de audio en el IOP.
 
+Si pasan dos muestras sin fotogramas terminados, registra STALL_SNAPSHOT:
+fase de inicialización/actualización/destrucción, escena y transición,
+cola gráfica, comando actual, estado y espera de los hilos EE y registros
+del GS/DMA. Después repite la captura en los intervalos 5, 10, 15… sin avance.
+Puede aparecer durante una carga larga normal; por sí sola no demuestra
+una excepción. El registro no cambia los callbacks de las escenas.
+
 Los productores registran en RAM; un semáforo despierta el hilo del registro
 desde el vblank, sin usar usleep ni escribir archivos desde el vblank. Se guarda
 el estado inicial inmediatamente y después se escriben y cierran bloques
@@ -103,6 +116,13 @@ La imagen y los resultados quedan en `build/PS2/usb-stack-checks`.
 Requiere el entorno Python local indicado por `-Python`, con `pyfatfs` y
 `setuptools<81`, además de la BIOS/configuración de prueba existente.
 La emulación de ese controlador no certifica la temporización del USB real.
+
+Para la regresión de transiciones se compila por separado
+`bash tools/build_ps2_usb_transition_smoke.sh` y se ejecuta
+`tools/run_ps2_usb_stack_check.ps1 -Transition -Seconds 55`.
+Carga una partida sintética, completa 120 actualizaciones en casa, bosque
+Kokiri y casa, y utiliza las transiciones normales. No prueba el contacto
+con la puerta ni el progreso de una partida real y no forma parte del USB.
 
 ## Comparación del temblor del suelo
 

@@ -80,6 +80,18 @@ static int s_gfxThread = -1, s_gfxWake = -1, s_gfxFree = -1;
 static u8 s_gfxStack[32 * 1024] __attribute__((aligned(64)));
 extern u64 osGetTime(void);
 
+#ifdef PS2_RUNTIME_DIAGNOSTIC
+void ps2_runtime_gfx_snapshot(void) {
+    ee_thread_status_t status;
+    memset(&status, 0, sizeof(status));
+    int result = s_gfxThread >= 0 ? ReferThreadStatus(s_gfxThread, &status) : -1;
+    ps2_runtime_event("GFX_WORKER thread=%d result=%d status=%x priority=%d waitType=%u waitId=%u wakeSema=%d freeSema=%d dpStatus=%x gsCsr=%08x gifChcr=%08x gifQwc=%u",
+        s_gfxThread, result, status.status, status.current_priority, status.waitType, status.waitId,
+        s_gfxWake, s_gfxFree, s_dpStatus, *(volatile u32*)0x12001000,
+        *(volatile u32*)0x1000a000, *(volatile u32*)0x1000a020);
+}
+#endif
+
 static void graphics_worker(void* arg) {
     (void)arg;
     for (;;) {

@@ -18,6 +18,7 @@ extern Ps2TraceTicks osGetTime(void);
 extern void ps2_rom_cache_stats(unsigned*, unsigned*);
 extern volatile unsigned gPS2DspCyclesTotal;
 extern void* _gp;
+extern void ps2_runtime_stall_snapshot(void) __attribute__((weak));
 static char sRecords[RECORDS][RECORD_BYTES], sPath[256];
 static char sBatch[RECORD_BYTES * 32];
 static char sSector[SECTOR_BYTES] __attribute__((aligned(64)));
@@ -28,6 +29,7 @@ static unsigned sRetraces, sSampleRetraces, sFlushRetraces;
 static Ps2TraceTicks sOrigin, sLastSample, sLastFlush;
 static unsigned sDspPrevious;
 static int sStartupFlush;
+static unsigned sIdleSamples;
 typedef struct {
     unsigned frames, reads, bytes, seeks, errors, polls, empty, queueMin, queueMax;
     unsigned late, dropped, audioRate;
@@ -168,6 +170,11 @@ static void trace_tick(void) {
     ps2_runtime_event("AUDIO queueBytesMin=%u queueBytesMax=%u polls=%u zeroPolls=%u outputHz=%u lateTotal=%u droppedTotal=%u",
         stats.polls ? stats.queueMin : 0, stats.queueMax, stats.polls, stats.empty,
         stats.audioRate, stats.late, stats.dropped);
+    sIdleSamples = stats.frames ? 0 : sIdleSamples + 1;
+    if (ps2_runtime_stall_snapshot && (sIdleSamples == 2 || (sIdleSamples > 2 && sIdleSamples % 5 == 0))) {
+        ps2_runtime_event("STALL_SNAPSHOT idleSamples=%u", sIdleSamples);
+        ps2_runtime_stall_snapshot();
+    }
     sDspPrevious = dsp; sLastSample = now; sSampleRetraces = retraces;
     if (now - sLastFlush >= 5 * TICKS_PER_SECOND || retraces - sFlushRetraces >= 300) {
         flush_records(); sLastFlush = osGetTime(); sFlushRetraces = retraces;

@@ -4,6 +4,42 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Salida de la casa con el diagnóstico USB — 2026-10-05
+
+- El usuario confirma intro, selector y carga de la partida en la SCPH-90010;
+  DIAG.ELF queda negro al salir de la casa de Link. Se conservan BOOT.LOG y
+  DIAG.LOG, con hashes verificados, en
+  `build/PS2/hardware-runtime/scph90010-house-exit-20261005-153103`.
+  El registro y el audio siguen activos durante más de un minuto sin nuevos
+  fotogramas, lecturas ni errores del USB. No era sólo una carga lenta.
+- Una prueba automática con el controlador USB nativo reproduce el fin del
+  hilo Graph tras destruir la casa. El wrapper de Play_Init cambiaba la
+  dirección que compara Graph_GetNextGameState; Play_Update, definido en el
+  mismo objeto que Play_Init, conservaba la dirección original. Al salir,
+  Graph no encontraba el siguiente estado y terminaba. Evidencia previa en
+  `build/PS2/usb-stack-checks/20261005-154512-304`.
+- El diagnóstico ahora registra GameState_Init y conserva todas las
+  direcciones originales de inicialización. Añade hitos de transición,
+  actualización y destrucción, y una captura acotada de los hilos EE y de
+  la espera gráfica cuando no se presentan fotogramas durante dos muestras.
+  No escribe archivos desde los hilos del juego ni desde interrupciones.
+- La prueba corregida completa 120 actualizaciones en cada parada de
+  casa → bosque Kokiri → casa, usando fundidos, destrucción y cargas normales.
+  Pasa sin HostFs, con tarjetas desactivadas, registros íntegros, sin pérdidas
+  ni errores USB y datos con el mismo SHA256. Informe privado:
+  `build/PS2/usb-stack-checks/20261005-155909-872/report.json`.
+  Falta confirmar esta salida en la consola física.
+- La prueba independiente se compila con
+  `tools/build_ps2_usb_transition_smoke.sh` y se ejecuta con
+  `tools/run_ps2_usb_stack_check.ps1 -Transition -Seconds 55`.
+  Usa un guardado sintético y no se incluye en el paquete del jugador.
+- Pasan también las nueve comprobaciones de arranque y logs mediante HostFs
+  en `build/PS2/usb-host-checks/20261005-160634-489/report.json`, y el test
+  del logger conserva los límites de escritura y comprueba que las capturas
+  de espera se activan, se limitan y se reinician cuando vuelve un fotograma.
+  OOTPS2.ELF conserva el SHA256 anterior; la corrección se aplica a los dos
+  ELF del registro. Los datos convertidos no cambian.
+
 ## Escrituras del diagnóstico y prueba del controlador USB — 2026-10-05
 
 - El segundo intento físico también queda negro, esta vez con DIAG.ELF y

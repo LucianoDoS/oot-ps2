@@ -2,10 +2,12 @@ param(
     [string]$Emulator = 'C:\Program Files\PCSX2\pcsx2-qt.exe',
     [string]$Elf = 'build\PS2-ntsc12\oot_ps2_usb_runtime.elf',
     [int]$Seconds = 45,
-    [string]$Python = '/home/lucia/oot-ps2-tools/usb-test-venv/bin/python'
+    [string]$Python = '/home/lucia/oot-ps2-tools/usb-test-venv/bin/python',
+    [switch]$Transition
 )
 $ErrorActionPreference = 'Stop'
 $project = Split-Path $PSScriptRoot -Parent
+if ($Transition) { $Elf = 'build\PS2-ntsc12\oot_ps2_usb_transition_test.elf' }
 $root = Join-Path $project ('build\PS2\usb-stack-checks\'+(Get-Date -Format 'yyyyMMdd-HHmmss-fff'))
 $config = Join-Path $root 'emulator\PCSX2\inis'
 $bios = Join-Path $root 'emulator\PCSX2\bios'
@@ -65,7 +67,13 @@ foreach ($stage in 'LOGGER_START','LOGGER_ENTER','SAMPLE seq=','PLAY_INIT_READY'
 }
 if ($emuText -match 'USBHDFSD: Error|usb_bulk_manage_status.*error|TLB Miss|Address ?Error|\[PS2 FAULT\]') { $errors += 'Emulator reported a USB or EE fault' }
 if ($runtimeText -match 'lost=[1-9]|lostRecords=[1-9]|ERROR logger|ERROR writing|clockFallback=1') { $errors += 'Runtime logging failed or lost data' }
-@{status=$(if ($errors.Count) {'FAIL'} else {'PASS'}); errors=$errors; hostFs=$false; physicalUSBValidated=$false; realPS2Validated=$false} |
+if ($Transition) {
+    foreach ($phase in 0,1,2) {
+        if ($emuText -notmatch "\[PS2 USB TRANSITION\] PASS phase=$phase .*frames=120") { $errors += "Missing transition phase $phase" }
+    }
+    if (!$emuText.Contains('[PS2 USB TRANSITION RESULT] PASS house-forest-house')) { $errors += 'House/forest round trip did not complete' }
+}
+@{status=$(if ($errors.Count) {'FAIL'} else {'PASS'}); errors=$errors; elfSha256=(Get-FileHash $testElf).Hash; transitions=[bool]$Transition; hostFs=$false; physicalUSBValidated=$false; realPS2Validated=$false} |
     ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $root 'report.json') -Encoding utf8
 Write-Output "Report: $root"
 if ($errors.Count) { throw ($errors -join '; ') }

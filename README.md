@@ -2,7 +2,7 @@
 
 Port de **The Legend of Zelda: Ocarina of Time** a PlayStation 2, basado en la descompilación [zeldaret/oot](https://github.com/zeldaret/oot).
 
-## Estado comprobado — 4 de octubre de 2026
+## Estado comprobado — 5 de octubre de 2026
 
 **Port en desarrollo, con todos los recursos descritos del juego convertidos.**
 La versión actual de PCSX2 usa el perfil `full`: 101 escenas, 388 salas y
@@ -10,6 +10,13 @@ La versión actual de PCSX2 usa el perfil `full`: 101 escenas, 388 salas y
 juego ya se compila para el EE; no ejecuta las instrucciones de los overlays N64.
 Esto amplía la carga al resto del mapa, pero todavía falta validar la
 progresión completa, los combates, las cinemáticas y la fidelidad visual.
+
+En la SCPH-90010 el usuario confirma intro, menú y carga de la partida desde
+USB. El último fallo de DIAG.ELF al salir de casa se reproduce y corrige:
+el registro cambiaba la identidad de la función que selecciona la siguiente
+escena. La regresión casa → Kokiri → casa ya pasa con el controlador USB
+nativo de PCSX2. Falta confirmar esa salida en la consola, el guardado físico,
+el temblor del suelo y el audio durante caídas de rendimiento.
 
 El usuario confirma la partida inicial, el bosque Kokiri, casas y tienda,
 la entrada exterior al Árbol Deku y el movimiento en su sala principal.

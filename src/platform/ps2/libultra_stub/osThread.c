@@ -87,6 +87,22 @@ typedef struct {
 
 static PS2ThreadEntry s_threads[PS2_OS_MAX_THREADS];
 
+#ifdef PS2_RUNTIME_DIAGNOSTIC
+#include "ps2_runtime_trace.h"
+void ps2_runtime_thread_snapshot(void) {
+    for (int i = 0; i < PS2_OS_MAX_THREADS; i++) {
+        PS2ThreadEntry* entry = &s_threads[i];
+        if (!entry->key || entry->ee_id < 0) continue;
+        ee_thread_status_t status;
+        memset(&status, 0, sizeof(status));
+        int result = ReferThreadStatus(entry->ee_id, &status);
+        ps2_runtime_event("THREAD osId=%d eeId=%d result=%d status=%x priority=%d waitType=%u waitId=%u entry=%p",
+            (int)entry->key->id, entry->ee_id, result, status.status,
+            status.current_priority, status.waitType, status.waitId, status.func);
+    }
+}
+#endif
+
 // Reconstruct libultra's inspection chain from the native thread registry.
 // EE CPU exceptions still use the SDK handler; only flags explicitly recorded
 // in an OSThread are exposed as libultra faults.

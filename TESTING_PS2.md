@@ -54,6 +54,20 @@ conserven su SHA256. Requiere el entorno Python indicado por `-Python`, con
 `pyfatfs` y `setuptools<81`. Uso y límites físicos en `PS2_HARDWARE.md`.
 No sustituyen una prueba en consola ni formatean el USB del usuario.
 
+Para comprobar la salida de la casa y el regreso con el diagnóstico USB:
+
+```powershell
+wsl -d Ubuntu -- bash tools/build_ps2_usb_transition_smoke.sh
+./tools/run_ps2_usb_stack_check.ps1 -Transition -Seconds 55
+```
+
+La prueba usa un ELF separado y una partida sintética, sin tarjetas ni mando.
+Completa 120 actualizaciones en casa → bosque Kokiri → casa y pide los
+fundidos y cambios de escena originales. El informe exige las tres paradas,
+la finalización del recorrido, registros íntegros y SHA256 de datos conservado.
+Detecta que el hilo del juego termine indebidamente al cambiar de estado.
+No recorre físicamente la puerta ni valida el guardado del jugador.
+
 Para recorrer todas las salas referenciadas y revisar sus capturas:
 
 ```powershell
