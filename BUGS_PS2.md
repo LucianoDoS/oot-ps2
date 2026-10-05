@@ -2,9 +2,8 @@
 
 ## Pantalla negra al arrancar en PS2 real
 
-Estado: pendiente de localizar. El usuario confirma `DATOS OK` en BOOTTEST,
-pero OOTPS2.ELF queda negro en una SCPH-90010 con convertidor AV a HDMI.
-No hay evidencia aún para atribuirlo al vídeo, al mando, al audio o a otra etapa.
+Estado: arranque corregido y confirmado por el usuario. El primer
+OOTPS2.ELF quedaba negro en una SCPH-90010 con convertidor AV a HDMI.
 La variante USB incluye mensajes antes de iniciar el GS y un BOOT.LOG junto
 a los datos; BOOTTEST muestra el final del registro tras reiniciar.
 
@@ -20,9 +19,29 @@ escrituras pendientes de pilas, colas y payloads producidos por CPU. Ahora
 sincroniza las líneas del rango mediante SyncDCache. Una prueba con modelo
 CPU/RAM detecta la pérdida de vecinos de la implementación anterior y acepta
 la nueva. BOOTTEST prueba además vecinos, alias físico y estado de interrupciones.
-En PCSX2 pasan la prueba y el logo hasta el primer fotograma; sigue pendiente
-confirmar si esta corrección resuelve el bloqueo en la consola. Se añaden
-etapas dentro de GameState_Init y ConsoleLogo_Init para acotarlo si persiste.
+En PCSX2 pasan la prueba y el logo hasta el primer fotograma. El usuario
+confirma que la versión corregida inicia y permite entrar a jugar. Se conserva
+el nuevo BOOT.LOG físico en `build/PS2/hardware-boot/scph90010-first-gameplay`.
+
+## Pausas, suelo y audio en la consola
+
+Estado: pendiente de comprobar con el registro durante la partida. Las cargas
+se recuperan solas después de esperar; el suelo tiembla tanto quieto como en
+movimiento, y el audio se distorsiona con FPS bajos. No está demostrada una
+causa única. DIAG.ELF añade DIAG.LOG con cargas, tiempos de USB, vídeo y cola de
+audio. La caché USB se amplía y separa las lecturas de muestras de las cargas;
+se añade lectura anticipada acotada y se evita el seek consecutivo redundante.
+La reserva de audio USB aumenta a 60 ms. DIAG224.ELF permite comparar un render
+de 640x224 con líneas duplicadas, manteniendo la señal NTSC entrelazada del
+convertidor. Los ELF normales conservan 640x448. Falta la comparación física;
+no se da por corregido el temblor. Uso y límites en `PS2_HARDWARE.md`.
+
+## Cadencia del logo Nintendo 64
+
+Estado: pendiente. El estado del logo configura R_UPDATE_RATE=1, con objetivo
+de 60 FPS, pero las muestras del nuevo diagnóstico en PCSX2 indican unos
+30 fotogramas presentados por segundo. Hay que revisar la cadencia efectiva
+del planificador y distinguirla de la frecuencia de retrace de la salida NTSC.
 
 ## Campo de Entrenamiento Gerudo, sala 2
 
@@ -64,7 +83,8 @@ correctas. Esto cambia sólo el criterio de la prueba, no el juego ni la escena.
 
 Los recorridos inicializan salas con una edad elegida por escena y prueban
 funciones de estado. No resuelven cada puzle, combate, diálogo, transición
-natural, cambio de edad ni final. En PS2 real sólo está confirmada la
-comprobación inicial de datos; el juego aún no arranca. El Árbol Deku y el audio
+natural, cambio de edad ni final. En PS2 real están confirmados la
+comprobación inicial de datos y el arranque a la partida; quedan los fallos
+de carga, vídeo/audio y la comprobación del guardado físico. El Árbol Deku y el audio
 en PCSX2 se mantienen como casos confirmados por el
 usuario; el rendimiento adicional sigue aplazado.

@@ -291,6 +291,18 @@ OBJS := $(filter-out $(BUILD_DIR)/src/platform/ps2/ps2_main.o $(BUILD_DIR)/src/p
 USB_TRACE_OBJS := $(BUILD_DIR)/src/platform/ps2/ps2_main_usb.o $(BUILD_DIR)/src/platform/ps2/ps2_boot_usb.o $(BUILD_DIR)/src/platform/ps2/libultra_stub/osRom_usb.o $(BUILD_DIR)/src/platform/ps2/libultra_stub/osMisc_usb.o $(BUILD_DIR)/src/platform/ps2/ps2_boot_trace.o
 OBJS := $(filter-out $(BUILD_DIR)/src/code/game.o $(BUILD_DIR)/src/overlays/gamestates/ovl_title/z_title.o,$(OBJS))
 USB_TRACE_OBJS += $(BUILD_DIR)/src/code/game_usb.o $(BUILD_DIR)/src/overlays/gamestates/ovl_title/z_title_usb.o
+OBJS := $(filter-out $(BUILD_DIR)/src/platform/ps2/audio/ps2_audio_driver.o,$(OBJS))
+USB_TRACE_OBJS += $(BUILD_DIR)/src/platform/ps2/audio/ps2_audio_driver_usb.o
+ifeq ($(PS2_RUNTIME_DIAGNOSTIC),1)
+USB_TRACE_OBJS := $(filter-out $(BUILD_DIR)/src/platform/ps2/ps2_main_usb.o $(BUILD_DIR)/src/platform/ps2/ps2_boot_usb.o $(BUILD_DIR)/src/platform/ps2/libultra_stub/osRom_usb.o $(BUILD_DIR)/src/platform/ps2/libultra_stub/osMisc_usb.o $(BUILD_DIR)/src/platform/ps2/audio/ps2_audio_driver_usb.o,$(USB_TRACE_OBJS))
+OBJS := $(filter-out $(BUILD_DIR)/src/platform/ps2/libultra_stub/osTask.o,$(OBJS))
+USB_TRACE_OBJS += $(BUILD_DIR)/src/platform/ps2/ps2_main_diag.o $(BUILD_DIR)/src/platform/ps2/ps2_boot_diag.o $(BUILD_DIR)/src/platform/ps2/libultra_stub/osRom_diag.o $(BUILD_DIR)/src/platform/ps2/libultra_stub/osMisc_diag.o $(BUILD_DIR)/src/platform/ps2/libultra_stub/osTask_diag.o $(BUILD_DIR)/src/platform/ps2/audio/ps2_audio_driver_diag.o $(BUILD_DIR)/src/platform/ps2/ps2_runtime_trace_diag.o $(BUILD_DIR)/tools/ps2_runtime_game.o
+ROM_LDFLAGS_EXTRA := -Wl,--wrap=printf,--wrap=Play_Init,--wrap=Room_SetupFirstRoom,--wrap=Room_RequestNewRoom,--wrap=Room_ProcessRoomRequest
+ifeq ($(PS2_USB_VIDEO_224),1)
+USB_TRACE_OBJS := $(filter-out $(BUILD_DIR)/src/platform/ps2/ps2_main_diag.o,$(USB_TRACE_OBJS))
+USB_TRACE_OBJS += $(BUILD_DIR)/src/platform/ps2/ps2_main_diag224.o
+endif
+endif
 OBJS += $(USB_TRACE_OBJS)
 DEPS += $(USB_TRACE_OBJS:.o=.d)
 ifeq ($(PS2_USB_HOST_TEST),1)
@@ -301,7 +313,7 @@ OBJS += $(BUILD_DIR)/generated/ps2_usb_boot.o $(BUILD_DIR)/generated/usbd_irx.o 
 DEPS += $(BUILD_DIR)/generated/ps2_usb_boot.d
 endif
 endif
-ROM_LDFLAGS := -Wl,-T,$(BUILD_DIR)/generated/actor_overlays.ld
+ROM_LDFLAGS := -Wl,-T,$(BUILD_DIR)/generated/actor_overlays.ld $(ROM_LDFLAGS_EXTRA)
 ifneq ($(OOT_UPSTREAM),)
 OBJS += $(BUILD_DIR)/generated/rom_metadata.o
 OBJS += $(BUILD_DIR)/generated/save_icon_data.o
@@ -392,6 +404,22 @@ $(BUILD_DIR)/src/platform/ps2/%.o: src/platform/ps2/%.c
 $(BUILD_DIR)/src/platform/ps2/ps2_main_usb.o: src/platform/ps2/ps2_main.c
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) $(CFLAGS) -DPS2_USB_BOOT=1 -Iinclude -Isrc $(PLATFORM_INCLUDES) $(DEPFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/src/platform/ps2/audio/ps2_audio_driver_usb.o: src/platform/ps2/audio/ps2_audio_driver.c
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CFLAGS) -DPS2_USB_BOOT=1 -Iinclude -Isrc $(PLATFORM_INCLUDES) $(DEPFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/src/platform/ps2/%_diag.o: src/platform/ps2/%.c
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CFLAGS) -DPS2_USB_BOOT=1 -DPS2_RUNTIME_DIAGNOSTIC=1 -Iinclude -Isrc $(PLATFORM_INCLUDES) $(DEPFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/src/platform/ps2/ps2_main_diag224.o: src/platform/ps2/ps2_main.c
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CFLAGS) -DPS2_USB_BOOT=1 -DPS2_RUNTIME_DIAGNOSTIC=1 -DPS2_USB_VIDEO_224=1 -Iinclude -Isrc $(PLATFORM_INCLUDES) $(DEPFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/tools/ps2_runtime_game.o: tools/ps2_runtime_game.c
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CFLAGS) -DPS2_RUNTIME_DIAGNOSTIC=1 $(INCLUDES) $(DEPFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/src/platform/ps2/libultra_stub/osRom_usb.o: src/platform/ps2/libultra_stub/osRom.c
 	@mkdir -p $(dir $@)

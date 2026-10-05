@@ -10,10 +10,11 @@ $driveRoot = $DriveLetter.ToUpperInvariant()+':\'
 $destination = Join-Path $driveRoot 'OOTPS2'
 $package = Get-Content -LiteralPath (Join-Path $source 'package.json') -Raw | ConvertFrom-Json
 foreach ($entry in $package.files.PSObject.Properties) {
-    if ($entry.Name -notin 'OOTPS2.ELF','BOOTTEST.ELF','OOT.Z64') { throw 'Unexpected package payload.' }
+    if ($entry.Name -notin 'OOTPS2.ELF','DIAG.ELF','DIAG224.ELF','BOOTTEST.ELF','OOT.Z64') { throw 'Unexpected package payload.' }
     if ((Get-FileHash -LiteralPath (Join-Path $source $entry.Name)).Hash.ToLowerInvariant() -ne $entry.Value) { throw 'Package payload hash mismatch.' }
 }
-$files = @(Get-ChildItem -LiteralPath $source -File)
+$ownedNames = @('OOTPS2.ELF','DIAG.ELF','DIAG224.ELF','BOOTTEST.ELF','OOT.Z64','package.json','HASHES.sha256','LEEME.txt','BUGS.txt')
+$files = @($ownedNames | ForEach-Object { Get-Item -LiteralPath (Join-Path $source $_) })
 if (($files | Measure-Object Length -Sum).Sum -gt $volume.SizeRemaining) { throw 'USB does not have enough free space.' }
 [IO.Directory]::CreateDirectory($destination) | Out-Null
 $backup = Join-Path $driveRoot ('OOTPS2-backup-'+(Get-Date -Format 'yyyyMMdd-HHmmss'))
@@ -21,13 +22,14 @@ $verified = @()
 foreach ($file in $files) {
     $target = Join-Path $destination $file.Name
     $expected = (Get-FileHash -LiteralPath $file.FullName).Hash
-    if ((Test-Path -LiteralPath $target) -and (Get-FileHash -LiteralPath $target).Hash -ne $expected) {
+    $existingHash = if (Test-Path -LiteralPath $target) { (Get-FileHash -LiteralPath $target).Hash } else { $null }
+    if ($existingHash -and $existingHash -ne $expected) {
         [IO.Directory]::CreateDirectory($backup) | Out-Null
         Copy-Item -LiteralPath $target -Destination (Join-Path $backup $file.Name)
     }
-    Copy-Item -LiteralPath $file.FullName -Destination $target
+    if ($existingHash -ne $expected) { Copy-Item -LiteralPath $file.FullName -Destination $target }
     if ((Get-FileHash -LiteralPath $target).Hash -ne $expected) { throw "USB verification failed: $($file.Name)" }
-    $verified += @{name=$file.Name;sha256=$expected;bytes=$file.Length}
+    $verified += @{name=$file.Name;sha256=$expected;bytes=$file.Length;unchanged=($existingHash -eq $expected)}
 }
 @{status='PASS';drive=$driveRoot;label=$volume.FileSystemLabel;filesystem=$volume.FileSystem;
   destination=$destination;realPS2Validated=$false;files=$verified;

@@ -19,6 +19,7 @@
 #include <stdio.h>
 
 #include "ps2_os_internal.h"
+#include "ps2_runtime_trace.h"
 #ifdef PS2_USB_BOOT
 #include "ps2_boot_trace.h"
 #endif
@@ -82,13 +83,18 @@ void osSyncPrintf(const char* fmt, ...) {
     va_list args;
     va_start(args, fmt);
 #ifdef PS2_USB_BOOT
-    if (strncmp(fmt, "[PS2 STATE]", 11) == 0 || strncmp(fmt, "[PS2 FRAME]", 11) == 0) {
+    if (strncmp(fmt, "[PS2 STATE]", 11) == 0 || strncmp(fmt, "[PS2 FRAME]", 11) == 0
+#ifdef PS2_RUNTIME_DIAGNOSTIC
+        || strncmp(fmt, "[PS2 ", 5) == 0
+#endif
+        ) {
         char message[160];
         va_list copy;
         va_copy(copy, args);
         vsnprintf(message, sizeof(message), fmt, copy);
         va_end(copy);
         ps2_boot_trace_game_message(message);
+        ps2_runtime_event("%s", message);
     }
 #endif
     vprintf(fmt, args);

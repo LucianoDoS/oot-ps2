@@ -1,13 +1,14 @@
 # Primera prueba en PS2 real
 
 Paquete privado para arrancar desde un USB FAT32 mediante Free McBoot y
-wLaunchELF. Aún necesita comprobarse en una consola real. Los resultados de
-PCSX2 no certifican el comportamiento en hardware.
+wLaunchELF. El usuario ya confirma el arranque y la entrada a la partida en
+una consola real. Los resultados de PCSX2 no certifican todos los casos en hardware.
 
 Primera prueba del usuario: en una SCPH-90010, conectada mediante un
-convertidor AV a HDMI, BOOTTEST muestra `DATOS OK`. OOTPS2.ELF queda negro.
-La lectura inicial del USB está confirmada; la causa del bloqueo y el
-funcionamiento del juego en esa consola siguen pendientes.
+convertidor AV a HDMI, BOOTTEST muestra `DATOS OK`. El primer juego quedaba negro;
+tras corregir la invalidación global de caché, inicia y permite jugar.
+Quedan pausas de carga que se recuperan, temblor del suelo incluso quieto y
+distorsión del audio cuando caen los FPS. El guardado físico sigue pendiente.
 
 1. Copia la carpeta `OOTPS2` completa a la raíz del USB.
 2. En wLaunchELF abre `mass:/OOTPS2/BOOTTEST.ELF`.
@@ -53,8 +54,71 @@ el archivo, muestra esa condición mientras aún está activa la pantalla de tex
 La primera pantalla negra se localiza antes de completar la inicialización
 del logo Nintendo 64. Esta versión corrige la invalidación global de caché y
 registra la reserva, carga del segmento, matrices, vista y buffer SRAM del logo.
-Todavía necesita la comprobación en hardware. Su ritmo sigue configurado con
-`R_UPDATE_RATE = 1`, una actualización por retrace NTSC, para el logo a 60 FPS.
+El usuario confirma que ahora arranca. El logo tiene configurado
+`R_UPDATE_RATE = 1` como objetivo de 60 FPS, pero el nuevo registro en PCSX2
+todavía mide unos 30 fotogramas presentados por segundo en esa pantalla.
+Queda pendiente revisar la cadencia efectiva; la configuración no certifica 60 FPS.
+
+## Registro de una partida y optimizaciones USB
+
+Para registrar una sesión abre `mass:/OOTPS2/DIAG.ELF` en lugar de OOTPS2.ELF.
+Ejecuta el mismo juego con tu mando y guardado normal; crea `DIAG.LOG` junto a
+los datos. BOOTTEST sigue siendo sólo la comprobación inicial.
+
+DIAG.LOG registra etapas y errores del EE, cambios de estado, solicitudes y
+finalización de salas, lecturas lentas o fallidas, y muestras de rendimiento
+aproximadamente cada segundo. Incluye fotogramas presentados, tiempos de
+traducción/GS/presentación, ciclos de síntesis, bytes y esperas de lectura,
+aciertos de caché y observaciones de la cola de audio. `fps10=180` equivale a
+18 FPS. `zeroPolls` no es un contador exacto de faltas de audio en el IOP.
+
+Los productores registran en RAM; un hilo periódico escribe y cierra bloques
+cada cinco segundos. El archivo se limita a 2 MiB; al llenarse registra
+`LOG_LIMIT` y continúa el juego sin registrar más. Un error de escritura tampoco
+detiene la partida. No guarda cada instrucción, triángulo o muestra de sonido.
+Una excepción que detenga todos los hilos puede impedir el último volcado.
+El logger puede introducir una pausa: `FLUSH durationMs` mide su propia escritura.
+
+Prueba unos 20 segundos quieto, otros caminando, y entra/sal de una casa.
+Tras ver un fallo, espera al menos diez segundos antes de apagar o reiniciar
+para que se cierre el siguiente bloque. Guarda tu progreso desde el juego si
+quieres conservarlo. Vuelve a conectar el USB al PC y conserva DIAG.LOG y
+BOOT.LOG antes de iniciar otra sesión: DIAG.ELF reemplaza su registro al arrancar.
+El ELF normal no crea ni sobrescribe DIAG.LOG.
+
+## Comparación del temblor del suelo
+
+`mass:/OOTPS2/DIAG224.ELF` ejecuta el mismo diagnóstico, pero dibuja a
+640x224 y duplica las líneas hasta 448. Conserva la señal NTSC entrelazada
+para probar con el mismo convertidor AV a HDMI. Tiene menos detalle vertical;
+es una comparación para identificar el origen del temblor, no una corrección
+confirmada de las texturas. OOTPS2.ELF y DIAG.ELF conservan el render a 640x448.
+
+Prueba el mismo suelo con Link y la cámara quietos y después caminando.
+Compara con lo observado en la versión normal. Indica si el temblor desaparece,
+disminuye o sigue igual y si cambia la imagen. Esta prueba permite contrastar
+el parpadeo entre líneas; no certifica que la conversión de texturas o profundidad
+sea correcta. DIAG.LOG incluye las dimensiones del render y de la salida de vídeo.
+
+DIAG224.ELF también reemplaza DIAG.LOG al iniciar. Conserva ese archivo en el
+PC antes de arrancar DIAG.ELF si quieres guardar los resultados de ambas sesiones.
+
+## Análisis del registro
+
+Análisis desde el PC:
+```powershell
+python tools/analyze_ps2_runtime_log.py D:\OOTPS2\DIAG.LOG --output build/PS2/hardware-runtime/report.json
+```
+
+Los tres ELF del juego USB incluyen una caché de muestras de 256 KiB y otra de cargas de
+64 KiB. Las peticiones de carga de 8 KiB pueden reutilizar lecturas de 16 KiB;
+las cargas grandes no expulsan los sectores de audio. Se omiten seeks cuando
+la siguiente lectura empieza donde acabó la anterior. La lectura anticipada
+está limitada y respeta el final del archivo; las primeras cargas aún pueden tardar.
+El audio conserva 60 ms de reserva en la variante USB, frente a 20 ms anteriores,
+sin cambiar la frecuencia de síntesis ni repetir muestras. Estos cambios
+necesitan compararse en la consola; no corrigen por sí solos todo el lag ni
+el temblor del suelo. El ELF habitual de PCSX2 conserva su configuración.
 
 `MEMORIA OK` comprueba conservación de buffers vecinos y pila, publicación
 de bytes de CPU a RAM, lectura de bytes nuevos desde el alias físico y el

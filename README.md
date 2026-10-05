@@ -68,7 +68,14 @@ La primera versión para USB incorpora los controladores necesarios después
 del reset del IOP, selecciona los datos junto al ELF y muestra un error si
 faltan o no corresponden. Incluye un diagnóstico de lectura. La prueba real
 se hará con Free McBoot y wLaunchELF; instrucciones y límites en
-[PS2_HARDWARE.md](PS2_HARDWARE.md). Todavía no se ha ejecutado en una PS2 física.
+[PS2_HARDWARE.md](PS2_HARDWARE.md). El usuario ya confirma el arranque y una
+partida en su SCPH-90010 tras corregir la caché del EE. Quedan pausas que se
+recuperan, temblor del suelo y audio distorsionado con caídas de FPS. El
+paquete incluye DIAG.ELF, que guarda tiempos y eventos en DIAG.LOG durante la
+partida, y cachés específicas para reducir lecturas repetidas del USB.
+DIAG224.ELF permite comparar el temblor del suelo con líneas duplicadas y
+menor detalle vertical, conservando la señal NTSC entrelazada. La comparación
+en la consola real sigue pendiente.
 El registro detallado está en [CHANGELOG_PS2_PORT.md](CHANGELOG_PS2_PORT.md).
 
 El juego completo ya enlaza: 724 objetos generan `build/PS2-ntsc12/oot_ps2.elf`.

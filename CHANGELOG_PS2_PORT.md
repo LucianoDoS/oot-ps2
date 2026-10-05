@@ -4,6 +4,52 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Registro USB, cargas y comparación del suelo — 2026-10-05
+
+- El usuario confirma que el juego inicia y permite jugar en su SCPH-90010
+  después de la corrección de caché. Se conserva el BOOT.LOG físico en
+  `build/PS2/hardware-boot/scph90010-first-gameplay`. Las pausas de carga se
+  recuperan, el suelo tiembla incluso quieto y el audio falla con FPS bajos.
+- DIAG.ELF registra en DIAG.LOG estados, cargas de salas, lecturas lentas o
+  fallidas, FPS presentados, tiempos gráficos, síntesis y cola de audio.
+  Los hilos del juego sólo añaden registros en RAM; otro hilo escribe y
+  cierra bloques cada cinco segundos. Se limita a 2 MiB y registra su propio
+  coste de escritura y las pérdidas de registros. Un error de escritura o
+  llegar al límite detiene el registro, sin detener el juego.
+- Los ELF USB amplían la caché de sectores de audio a 256 KiB y añaden una
+  caché independiente de 64 KiB para lecturas anticipadas de 16 KiB. Evitan
+  seeks redundantes y respetan EOF. Los buffers se alinean a 64 bytes para
+  separar datos y metadatos durante DMA. La prueba de 64 KiB de cargas en
+  trozos de 8 KiB necesita cuatro lecturas físicas, ninguna al repetir y
+  conserva los sectores de audio. El audio USB reserva 60 ms en el IOP,
+  frente a los 20 ms anteriores. Su mejora física queda pendiente.
+- DIAG224.ELF compara un render 640x224 con líneas duplicadas, manteniendo
+  la salida NTSC entrelazada de 448 líneas para el convertidor AV a HDMI.
+  OOTPS2.ELF y DIAG.ELF conservan 640x448. Reduce detalle vertical; falta
+  comprobar si cambia el temblor en hardware. No se da el suelo por corregido.
+- Pasan el modelo de caché, las pruebas del logger (incluidos fallos,
+  escrituras parciales, desbordamiento e interrupciones) y la suite nativa
+  con las políticas USB de ROM/audio. El registro de esta última está en
+  `build/PS2/usb-cache-smoke/runtime.log`. Pasan ocho casos de arranque en
+  `build/PS2/usb-host-checks/20261005-005339-046/report.json`, incluidos ambos
+  diagnósticos hasta la carga de una escena. DIAG224 confirma render 224,
+  salida 448 y MagV=1; el normal confirma render/salida 448 y MagV=0.
+  No se pierden registros; los volcados en PCSX2 tardan como máximo 1 ms.
+- Se añade `tools/analyze_ps2_runtime_log.py` para resumir las sesiones sin
+  jugar todo el juego. Los tiempos USB de PCSX2 no representan los del USB
+  físico. El nuevo registro revela unos 30 FPS reales en el logo N64 pese
+  a su configuración R_UPDATE_RATE=1; su objetivo de 60 FPS sigue pendiente.
+- El paquete incluye los tres ELF del juego, BOOTTEST y sus datos/documentos.
+  La copia evita reescribir los datos idénticos, respalda archivos sustituidos
+  y conserva los logs adicionales del usuario. No modifica el ELF habitual
+  de PCSX2 ni la tarjeta del jugador.
+- Se copian y verifican nueve archivos en `D:\OOTPS2`, con respaldo en
+  `D:\OOTPS2-backup-20261005-005608`. El BOOT.LOG físico conserva su hash.
+  Los segmentos estáticos terminan en `0x011afa70` para OOTPS2 y
+  `0x011c1eb0` para los diagnósticos, dentro de los 32 MiB del EE. Juego SHA256
+  `4d8f97f2ee171d4c6f9699bd637964f7e700521551ccb0f41fa7dedd01baa8d1`.
+  Informe de copia: `build/PS2/usb-copy-report.json`.
+
 ## Diagnóstico del arranque en consola — 2026-10-04
 
 - El segundo intento en la consola termina en `[PS2 STATE] Init 0x486b60`.

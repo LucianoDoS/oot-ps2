@@ -57,6 +57,8 @@
 #include <stdlib.h>
 
 #include "ps2_types.h"
+#include "ps2_audio_config.h"
+#include "ps2_runtime_trace.h"
 
 /* ─────────────────────────────────────────────────────────── *
  *  Audio configuration
@@ -302,12 +304,13 @@ u32 osAiGetLength(void) {
     if (!s_audioReady) return 0;
     int queued = audsrv_queued();
     s_iopQueued = queued > 0 ? (u32)queued : 0;
+    ps2_runtime_audio(s_iopQueued, s_outputRate, s_pcmLate, s_pcmDropped);
     /* AI reports the current N64 DMA, whereas audsrv includes its IOP
      * playback reservoir. Exposing the entire reservoir makes the game's
      * adaptive synthesizer choose its minimum block until it underruns.
-     * Keep 20 ms on the IOP and report only audio above that reserve. */
+     * Keep the platform reservoir and report only audio above it. */
     unsigned nativeBytes = ((u64)s_iopQueued * s_audfmt.freq / s_outputRate) & ~3u;
-    unsigned reserve = (unsigned)s_audfmt.freq * 4 / 50;
+    unsigned reserve = ((unsigned)s_audfmt.freq * 4 * PS2_AUDIO_RESERVE_MS / 1000) & ~3u;
     return nativeBytes > reserve ? nativeBytes - reserve : 0;
 }
 
@@ -321,7 +324,11 @@ int PS2Audio_SubmitBuffer(void* buffer, unsigned int size) {
         if (frames > sizeof(s_outputBuffer) / 4) return -1;
         outputSize = frames * 4;
     }
-    if (audsrv_available() < (int)outputSize) { s_pcmDropped++; return -1; }
+    if (audsrv_available() < (int)outputSize) {
+        s_pcmDropped++;
+        ps2_runtime_event("AUDIO_DROP outputBytes=%u droppedTotal=%u", outputSize, s_pcmDropped);
+        return -1;
+    }
     s_nativeOutput = true;
     const s16* output = buffer;
     if (s_outputRate != (unsigned)s_audfmt.freq) {

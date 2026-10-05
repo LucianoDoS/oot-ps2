@@ -48,6 +48,7 @@
 #include <stdio.h>
 
 #include "ps2_init.h"
+#include "ps2_runtime_trace.h"
 #include "ps2/ps2_actor_overlays.h"
 #include "ps2_types.h"
 #include "rdp_to_gs.h"
@@ -189,6 +190,12 @@ void ps2_init_gs(void) {
     g_gsGlobal->Field     = PS2_FIELD;
     g_gsGlobal->Width     = PS2_SCREEN_W;
     g_gsGlobal->Height    = PS2_SCREEN_H;
+#ifdef PS2_USB_VIDEO_224
+    /* Keep NTSC interlaced output, but duplicate each rendered line.
+     * This comparison mode removes single-line interlace twitter without
+     * requiring a 240p/480p signal from the user's AV converter. */
+    g_gsGlobal->Height = 224;
+#endif
     /* OoT's native framebuffer is RGB5551. CT24 occupies 32-bit GS words;
      * CT16 frees over 1 MiB for textures while retaining 24-bit Z precision. */
     /* CT16S keeps RGB5551 storage without gsKit's CT16 -> Z16 override. */
@@ -209,8 +216,15 @@ void ps2_init_gs(void) {
 #ifdef PS2_USB_BOOT
     ps2_boot_trace_screen_off();
 #endif
+#ifdef PS2_USB_VIDEO_224
+    BOOT_STAGE("VIDEO: NTSC interlazado, render 640x224, lineas duplicadas");
+#else
     BOOT_STAGE("VIDEO: gsKit_init_screen NTSC 640x448 interlazado");
+#endif
     gsKit_init_screen(g_gsGlobal);
+    printf("[PS2 VIDEO] render=%dx%d displayHeight=%d interlace=%d field=%d magV=%d\n",
+        g_gsGlobal->Width, g_gsGlobal->Height, g_gsGlobal->DH, g_gsGlobal->Interlace,
+        g_gsGlobal->Field, g_gsGlobal->MagV);
     BOOT_STAGE("VIDEO: pantalla inicializada");
     printf("[PS2 GS FORMAT] color=%02x depth=%02x textureStart=%08x\n",
            g_gsGlobal->PSM, g_gsGlobal->PSMZ, g_gsGlobal->CurrentPointer);
@@ -228,7 +242,7 @@ void ps2_init_gs(void) {
     rdp_to_gs_init(g_gsGlobal);
     BOOT_STAGE("VIDEO: listo");
 
-    printf("[OoT-PS2] GS listo: %dx%d NTSC\n", PS2_SCREEN_W, PS2_SCREEN_H);
+    printf("[OoT-PS2] GS listo: %dx%d NTSC\n", g_gsGlobal->Width, g_gsGlobal->Height);
 }
 
 /* ───────────────────────────────────────────────────────────────── *
@@ -264,6 +278,7 @@ void ps2_init_all(void) {
 #ifdef PS2_USB_BOOT
     if (!ps2_usb_prepare(s_usbLaunchPath)) ps2_usb_fail_screen();
     ps2_boot_trace_file_ready(ps2_usb_data_path());
+    ps2_runtime_trace_init(ps2_usb_data_path());
 #endif
 
     /* 4. Gráficos */

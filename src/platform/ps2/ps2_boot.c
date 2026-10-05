@@ -57,6 +57,7 @@
 
 #include "ps2_types.h"
 #include "ps2_init.h"
+#include "ps2_runtime_trace.h"
 #ifdef PS2_USB_BOOT
 #include "ps2_boot_trace.h"
 #define BOOT_STAGE(message) ps2_boot_trace_stage(message)
@@ -195,6 +196,7 @@ void ps2_boot_game(void) {
     ps2_mesgqueue_init();
     ps2_event_init();
     ps2_timer_init();
+    ps2_runtime_trace_start();
     ps2_vi_init();
 
     /* Heap del juego.

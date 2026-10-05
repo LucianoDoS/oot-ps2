@@ -24,10 +24,10 @@
  *
  * ── LIMITACIÓN CONOCIDA ───────────────────────────────────────────────
  *
- * Leer del CD en cada DMA es LENTO comparado con el cartucho. Si notas
- * tirones al cambiar de sala, la mejora natural es una caché de
- * bloques en RAM (el EE tiene 32 MB y la ROM son 32 MB, así que con
- * cachear las zonas calientes basta). Se deja indicado abajo.
+ * El archivo convertido completo no cabe junto al juego en los 32 MiB
+ * del EE. Se cachean sectores pequeños; la variante USB usa además
+ * lectura anticipada de 16 KiB sin expulsar las muestras de sonido.
+ * Las cargas iniciales siguen necesitando E/S síncrona.
  */
 
 #include <kernel.h>
@@ -37,6 +37,8 @@
 #include <stdio.h>
 
 #include "ps2_os_internal.h"
+#include "ps2_rom_cache.h"
+#include "ps2_runtime_trace.h"
 #ifdef PS2_USB_BOOT
 #include "ps2_usb_boot.h"
 #include "ps2_boot_trace.h"
@@ -96,15 +98,22 @@ static int  s_romFd   = -1;
 static bool s_romOpen = false;
 static u32 s_romSize;
 static int s_romMutex = -1;
-/* Small sample DMAs repeatedly read overlapping parts of immutable ROM.
- * Keep 64 KiB of sectors; large scene loads bypass it to retain hot audio. */
-#define ROM_CACHE_BLOCK 4096u
-#define ROM_CACHE_SLOTS 16
+static u32 s_romPosition;
+static bool s_positionKnown;
+#define ROM_CACHE_BLOCK PS2_ROM_CACHE_BLOCK
+#define ROM_CACHE_SLOTS PS2_ROM_CACHE_SLOTS
 static struct {
     u32 offset, bytes, used;
-    u8 data[ROM_CACHE_BLOCK];
+    u8 data[ROM_CACHE_BLOCK] __attribute__((aligned(64)));
 } s_romCache[ROM_CACHE_SLOTS] __attribute__((aligned(64)));
 static u32 s_romClock, s_romHits, s_romReads;
+#ifdef PS2_ROM_BULK_BLOCK
+static struct {
+    u32 offset, bytes, used;
+    u8 data[PS2_ROM_BULK_BLOCK] __attribute__((aligned(64)));
+} s_bulkCache[PS2_ROM_BULK_SLOTS] __attribute__((aligned(64)));
+static u32 s_bulkClock;
+#endif
 
 void ps2_rom_cache_stats(u32* hits, u32* reads) {
     if (hits) *hits = s_romHits;
@@ -160,6 +169,8 @@ static bool rom_open(void) {
             s_romFd   = fd;
             s_romOpen = true;
             s_romSize = (u32)size;
+            s_romPosition = 0;
+            s_positionKnown = true;
             printf("[osRom] ROM abierta: %s (%d bytes)\n",
                    kRomPaths[i], size);
 #ifdef PS2_USB_BOOT
@@ -207,19 +218,70 @@ OSPiHandle* osDriveRomInit(void) {
  *  que normalizamos.
  * ───────────────────────────────────────────────────────────────── */
 static s32 rom_file_read(u32 offset, void* dram, u32 size) {
-    if (lseek(s_romFd, (int)offset, SEEK_SET) < 0) return -1;
+#ifdef PS2_RUNTIME_DIAGNOSTIC
+    extern u64 osGetTime(void);
+    u64 begin = osGetTime();
+    int sought = !s_positionKnown || s_romPosition != offset;
+#endif
+    s32 result = -1;
+    if ((!s_positionKnown || s_romPosition != offset) &&
+        lseek(s_romFd, (int)offset, SEEK_SET) != (int)offset) goto done;
+    s_positionKnown = false;
     s_romReads++;
     for (u32 completed = 0; completed < size;) {
         int got = read(s_romFd, (u8*)dram + completed, (int)(size - completed));
-        if (got <= 0) return -1;
+        if (got <= 0 || (u32)got > size - completed) goto done;
         completed += (u32)got;
+    }
+    s_romPosition = offset + size;
+    s_positionKnown = true;
+    result = 0;
+done:
+    if (result < 0) s_positionKnown = false;
+    ps2_runtime_rom_read(offset, size, osGetTime() - begin, result, sought);
+    return result;
+}
+
+#ifdef PS2_ROM_BULK_BLOCK
+/* DmaMgr normally requests 8 KiB chunks. Read two at a time, but never
+ * prefetch past EOF or replace the independent 4 KiB audio cache. */
+static s32 bulk_read(u32 offset, void* dram, u32 size) {
+    for (u32 completed = 0; completed < size;) {
+        u32 at = offset + completed;
+        u32 block = at & ~(PS2_ROM_BULK_BLOCK - 1);
+        int slot = -1, oldest = 0;
+        for (int i = 0; i < PS2_ROM_BULK_SLOTS; i++) {
+            if (s_bulkCache[i].bytes && s_bulkCache[i].offset == block) { slot = i; break; }
+            if (s_bulkCache[i].used < s_bulkCache[oldest].used) oldest = i;
+        }
+        if (slot >= 0) s_romHits++;
+        else {
+            slot = oldest;
+            s_bulkCache[slot].bytes = 0;
+            u32 bytes = s_romSize - block;
+            if (bytes > PS2_ROM_BULK_BLOCK) bytes = PS2_ROM_BULK_BLOCK;
+            if (rom_file_read(block, s_bulkCache[slot].data, bytes) < 0) return -1;
+            s_bulkCache[slot].offset = block;
+            s_bulkCache[slot].bytes = bytes;
+        }
+        s_bulkCache[slot].used = ++s_bulkClock;
+        u32 within = at - block, count = s_bulkCache[slot].bytes - within;
+        if (count > size - completed) count = size - completed;
+        memcpy((u8*)dram + completed, s_bulkCache[slot].data + within, count);
+        completed += count;
     }
     return 0;
 }
+#endif
 
 static s32 rom_read(u32 devAddr, void* dram, u32 size) {
     if (!dram || size == 0) return -1;
+#ifdef PS2_RUNTIME_DIAGNOSTIC
+    extern u64 osGetTime(void);
+    u64 waiting = osGetTime();
+#endif
     if (rom_lock() < 0) return -1;
+    ps2_runtime_rom_wait(osGetTime() - waiting);
     s32 result = -1;
     if (!s_romOpen && !rom_open()) goto done;
 
@@ -227,6 +289,22 @@ static s32 rom_read(u32 devAddr, void* dram, u32 size) {
     if (offset >= 0x10000000u) offset -= 0x10000000u;
     if (offset > s_romSize || size > s_romSize - offset) goto done;
 
+#ifdef PS2_ROM_BULK_BLOCK
+    /* Also reuse a prefetched final, short chunk of a room load. */
+    for (int i = 0; i < PS2_ROM_BULK_SLOTS; i++) {
+        if (s_bulkCache[i].bytes && offset >= s_bulkCache[i].offset &&
+            offset - s_bulkCache[i].offset < s_bulkCache[i].bytes &&
+            size <= s_bulkCache[i].bytes - (offset - s_bulkCache[i].offset)) {
+            memcpy(dram, s_bulkCache[i].data + offset - s_bulkCache[i].offset, size);
+            s_bulkCache[i].used = ++s_bulkClock;
+            s_romHits++;
+            goto copied;
+        }
+    }
+    if (size >= ROM_CACHE_BLOCK && size <= PS2_ROM_BULK_BLOCK) {
+        if (bulk_read(offset, dram, size) < 0) goto done;
+    } else
+#endif
     if (size >= ROM_CACHE_BLOCK) {
         if (rom_file_read(offset, dram, size) < 0) goto done;
     } else {
@@ -256,9 +334,12 @@ static s32 rom_read(u32 devAddr, void* dram, u32 size) {
         }
     }
 
+#ifdef PS2_ROM_BULK_BLOCK
+copied:
+#endif
     /* La GIF y el resto de DMAs leen de RAM física: hay que volcar la
      * caché o verán los datos viejos. */
-    SyncDCache(dram, (u8*)dram + size);
+    SyncDCache(dram, (u8*)dram + size - 1);
     result = 0;
 done:
     SignalSema(s_romMutex);
@@ -338,8 +419,13 @@ void ps2_rom_shutdown(void) {
         s_romFd   = -1;
         s_romOpen = false;
         s_romSize = 0;
+        s_positionKnown = false;
         memset(s_romCache, 0, sizeof(s_romCache));
         s_romClock = s_romHits = s_romReads = 0;
+#ifdef PS2_ROM_BULK_BLOCK
+        memset(s_bulkCache, 0, sizeof(s_bulkCache));
+        s_bulkClock = 0;
+#endif
     }
     SignalSema(s_romMutex);
 }

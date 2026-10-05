@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "ps2_types.h"
+#include "ps2_audio_config.h"
 extern void PS2Audio_Init(void);
 extern s32 osAiSetFrequency(u32);
 extern u32 osAiGetLength(void);
@@ -30,12 +31,13 @@ int ps2_audio_driver_smoke(void) {
     PS2Audio_Init();
     if (osAiSetFrequency(32000) != 32000 || formatFrequency != 48000) failures++;
     queued = 0; if (osAiGetLength()) failures++;
-    queued = 3840; if (osAiGetLength()) failures++;
-    queued = 4608; if (osAiGetLength() != 512) failures++;
+    int reservoir = PS2_AUDIO_RESERVE_MS == 60 ? 11520 : 3840;
+    queued = reservoir; if (osAiGetLength()) failures++;
+    queued = reservoir + 768; if (osAiGetLength() != 512) failures++;
     queued = -1; if (osAiGetLength()) failures++;
     if (osAiSetFrequency(48000) != 48000) failures++;
-    queued = 3840; if (osAiGetLength()) failures++;
-    queued = 4864; if (osAiGetLength() != 1024) failures++;
+    queued = reservoir; if (osAiGetLength()) failures++;
+    queued = reservoir + 1024; if (osAiGetLength() != 1024) failures++;
     static s16 pcm[1024];
     available = sizeof(pcm) - 4;
     if (PS2Audio_SubmitBuffer(pcm, sizeof(pcm)) != -1 || plays) failures++;

@@ -10,6 +10,9 @@ flags=(-D_EE -DPLATFORM_PS2=1 -DPS2_RENDERER_SMOKE_CAPTURE=1 -G0 -O2 -std=gnu11 
        -fno-strict-aliasing '-DPS2_ROM_TEST_PATH="host:ps2-rom-smoke.bin"' -Iinclude/ps2 -I"$PS2SDK/ee/include"
        -I"$PS2SDK/common/include" -I"$PS2SDK/ports/include" -I"$GSKIT/include")
 objects=()
+if [[ "${PS2_SMOKE_USB_CACHE:-0}" == 1 ]]; then
+    flags+=(-DPS2_ROM_USB_CACHE=1 -DPS2_USB_AUDIO_RESERVE=1)
+fi
 for src in tools/ps2_jewel_smoke.c tools/ps2_pcm_ring_smoke.c tools/ps2_audio_driver_smoke.c src/platform/ps2/audio/ps2_audio_driver.c tools/ps2_jpeg_smoke.c tools/ps2_smoke.c tools/ps2_os_smoke.c tools/ps2_rom_threads_smoke.c tools/ps2_renderer_smoke.c tools/ps2_lighting_smoke.c tools/ps2_combiner_channel_smoke.c tools/ps2_ground_run_smoke.c tools/ps2_texture_vertex_smoke.c tools/ps2_clip_projection_smoke.c tools/ps2_texture_window_smoke.c tools/ps2_offscreen_smoke.c tools/ps2_frame_capture_smoke.c tools/ps2_flame_smoke.c tools/ps2_token_flame_smoke.c tools/ps2_audio_smoke.c tools/ps2_rsp_kernel_smoke.c tools/ps2_sram_smoke.c src/platform/ps2/io/ps2_sram.c src/platform/ps2/gfx/*.c \
     src/platform/ps2/audio/ps2_rsp_audio.c src/platform/ps2/audio/rsp_hle/*.c \
     src/platform/ps2/libultra_stub/osMessage.c src/platform/ps2/libultra_stub/osTimer.c \
@@ -33,4 +36,4 @@ done
     -L"$PS2SDK/ee/lib" -L"$PS2SDK/ports/lib" -L"$GSKIT/lib" -lgskit -ldmakit -ldebug -ljpeg -lm \
     -Wl,-Map=build/PS2/oot_ps2_smoke.map
 "$PS2DEV/ee/bin/mips64r5900el-ps2-elf-readelf" -h build/PS2/oot_ps2_smoke.elf
-python3 -c 'from pathlib import Path; Path("build/PS2/ps2-rom-smoke.bin").write_bytes(bytes(range(256)) * 513)'
+python3 -c 'from pathlib import Path; Path("build/PS2/ps2-rom-smoke.bin").write_bytes(bytes((i ^ (i >> 12) ^ (i >> 17)) & 255 for i in range(256 * 2049)))'

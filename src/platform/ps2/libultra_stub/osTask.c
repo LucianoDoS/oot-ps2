@@ -34,6 +34,7 @@
 
 #include "ps2_types.h"
 #include "ps2_os_internal.h"
+#include "ps2_runtime_trace.h"
 #include "rdp_to_gs.h"
 
 /* ───────────────────────────────────────────────────────────────── *
@@ -97,6 +98,7 @@ static void graphics_worker(void* arg) {
         ps2_os_fire_event(PS2_OS_EVENT_DP);
         rdp_to_gs_present();
         u64 flipped = osGetTime();
+        ps2_runtime_frame(translated - begin, submitted - translated, flipped - submitted);
         static unsigned frames;
         static u64 translationTicks, submitTicks, flipTicks, worstTicks;
         translationTicks += translated - begin;

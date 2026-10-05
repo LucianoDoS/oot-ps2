@@ -43,6 +43,8 @@ def main():
     image_hash = hashlib.sha256(image.read_bytes()).hexdigest()
     assert image_hash == manifest['output_sha256'] == expected['image_sha256']
     files = {'OOTPS2.ELF': a.build_dir / 'oot_ps2_usb.elf',
+             'DIAG.ELF': a.build_dir / 'oot_ps2_usb_runtime.elf',
+             'DIAG224.ELF': a.build_dir / 'oot_ps2_usb_runtime224.elf',
              'BOOTTEST.ELF': a.build_dir / 'oot_ps2_usb_diagnostic.elf', 'OOT.Z64': image}
     memory = {name: inspect_elf(path) for name, path in files.items() if name.endswith('.ELF')}
     a.output.mkdir(parents=True, exist_ok=True)
@@ -58,6 +60,7 @@ def main():
     shutil.copyfile('BUGS_PS2.md', a.output / 'BUGS.txt')
     print(f'USB package: {a.output.resolve()}')
     print(f'Game static memory end: 0x{memory["OOTPS2.ELF"]["static_end"]:08x}')
+    print(f'Diagnostic static memory end: 0x{memory["DIAG.ELF"]["static_end"]:08x}')
 
 
 if __name__ == '__main__':
