@@ -18,13 +18,15 @@ de equipamiento, la apertura y transparencia del inventario, el aura animada
 del título y el brillo recortado de la ficha de Skulltula dorada.
 La Skulltula sobre un desnivel tiene un ajuste de retirada específico del
 port para evitar que cancele la subida junto al borde. Las pruebas verifican
-su altura mínima, el regreso al techo y el contacto; falta confirmar esta
-última corrección en la partida.
-El guardado prepara ahora su título y una Trifuerza dorada 3D para el navegador
-de la memory card. Se genera desde el modelo extraído localmente; sus archivos
-no se incluyen en Git. Pasan escritura, lectura completa, reparación y recarga
-tras cerrar el emulador, conservando SRAM. Falta revisar su presentación en el
-navegador de la BIOS y en una PS2 física.
+su altura mínima, el regreso al techo y el contacto; el usuario confirma que
+el problema de la araña ya está corregido en la partida.
+El guardado muestra su título y una Trifuerza dorada 3D animada en el navegador
+de la memory card. El usuario confirma la posición y el giro de la versión de
+ocho poses en la BIOS de PCSX2, y acepta también el ajuste final de velocidad
+del giro a 0.35 e iluminación, con fondo de degradado dorado.
+Se genera desde el modelo extraído localmente; sus archivos no se incluyen
+en Git. Pasan escritura, lectura completa, reparación y recarga tras cerrar
+el emulador, conservando SRAM. Falta comprobarlo en una PS2 física.
 El rendimiento llega a 20 FPS en muchas vistas; quedan caídas al caminar
 según la cámara. A petición del usuario, la optimización adicional se aplaza
 para priorizar el port del resto del juego. El logo inicial de Nintendo 64

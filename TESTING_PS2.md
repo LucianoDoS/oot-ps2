@@ -40,8 +40,8 @@ una ejecución usando los ELF existentes y registra sus hashes.
 
 | Caso | Comprobación automática | Pendiente manual |
 | --- | --- | --- |
-| Skulltulas del Árbol Deku | Siete posiciones originales: bajar, posarse, contacto OC con el cilindro de Link, empuje y regreso al techo. Retirada sobre un desnivel a alturas 799/820. Poses contrastadas con la extracción original. | Confirmar la retirada y el contacto en la sala 10 de la partida. |
-| Memory card | Lectura de todos los bytes de `icon.sys` y `triforce.icn`, persistencia, reparación y datos del guardado. | Nombre, escala e iluminación en el navegador de la BIOS; repetición en PS2 física. |
+| Skulltulas del Árbol Deku | Siete posiciones originales: bajar, posarse, contacto OC con el cilindro de Link, empuje y regreso al techo. Retirada sobre un desnivel a alturas 799/820. Poses contrastadas con la extracción original. | El usuario confirma corregida la araña de la sala 10; falta recorrer las demás salas y probar en PS2 física. |
+| Memory card | Lectura de todos los bytes de `icon.sys` y `triforce.icn`, persistencia, reparación y datos del guardado. Instalador compara los dos archivos de SRAM completos antes y después. | Nombre, posición, giro de ocho poses y ajuste final de velocidad/iluminación confirmados en la BIOS de PCSX2; repetir en PS2 física. |
 | Materiales | Texels, máscaras de alfa, scroll, caché y captura del framebuffer con entradas controladas. | Casos nuevos con combinaciones de materiales aún no cubiertas. |
 | Progresión | Carga/destrucción de entradas y restauración de estados de actores. | Objetos clave, puertas, combates, puzles, cambios de edad, final y recarga de una partida avanzada. |
 
@@ -53,6 +53,7 @@ siguiente paso descendente enterraría su cuerpo en la superficie más alta dond
 está apoyado Link. Es un ajuste de comportamiento exclusivo de PS2, no una
 corrección de datos del modelo ni del suelo. Conserva el descenso normal a nivel
 del suelo, daños y cilindros de contacto; no crea una barrera invisible.
+El usuario confirma que esta corrección ya resuelve el problema observado.
 
 Los informes separan lo comprobado de la progresión completa y la consola física,
 que siguen pendientes. Para preparar la primera prueba en PS2 faltan también
@@ -75,3 +76,29 @@ el [conversor ps2iconsys](https://github.com/ticky/ps2iconsys) y el
 animación y textura; puede generar una vista previa con Pillow. Esa imagen no
 es una captura del navegador de la BIOS. Los iconos, vértices y archivos C
 generados quedan en `build/`, fuera de Git.
+
+La presentación actual centra el modelo en Y=-1.5, usa un degradado dorado y
+anima ocho poses alrededor del eje vertical. El ciclo cubre 160 fotogramas de
+animación, con velocidad 0.35. El modelo ocupa 56208 bytes. El lector comprueba
+que las curvas sumen uno entre claves, que el bucle sea continuo y que el giro
+conserve la altura. Una variante de 16 poses pasó las comprobaciones de bytes
+y lectura de tarjeta, pero la BIOS la presentó como datos dañados. La variante
+de ocho poses fue aceptada y confirmada por el usuario. Esto no establece un
+límite universal de la BIOS ni sustituye la prueba en una consola real.
+
+Para actualizar sólo la presentación de un guardado existente:
+
+```powershell
+wsl -d Ubuntu -- bash tools/build_ps2_save_icon_install.sh
+```
+
+El ejecutable resultante, `build/PS2/oot_ps2_save_icon_install.elf`, requiere
+una tarjeta PS2 ya formateada y una partida en `OOT_PS2`. No formatea ni escribe
+SRAM: instala el modelo y `icon.sys`, verifica ambos y compara todos los bytes
+de `save.dat` y `save.bak` con sus lecturas anteriores, incluyendo su ausencia.
+Antes de usarlo en la tarjeta de la partida, cerrar el emulador y copiar la
+imagen de tarjeta como respaldo. Probar primero sobre una copia con una
+configuración de PCSX2 aislada. El mensaje `PS2 ICON INSTALL: PASS` sólo acredita
+la instalación y conservación de los archivos; la visualización se comprueba
+después abriendo la BIOS. El instalador no modifica otros directorios de la
+tarjeta; un directorio antiguo de diagnóstico es independiente del guardado.

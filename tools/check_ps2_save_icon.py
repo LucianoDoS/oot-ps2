@@ -28,22 +28,52 @@ def check(folder):
     assert metadata[452:] == bytes(512), "Nonzero reserved metadata"
     data = (folder / "triforce.icn").read_bytes()
     magic, shapes, flags, reserved, count = struct.unpack_from("<5I", data)
-    assert (magic, shapes, flags, reserved) == (0x10000, 1, 7, 0x3F800000)
+    assert (magic, flags, reserved) == (0x10000, 7, 0x3F800000)
+    assert 1 <= shapes <= 64
     assert count > 0 and count % 3 == 0 and count <= 10000
-    assert len(data) == 20 + count * 24 + 36 + 32768, "Wrong model length"
+    stride = shapes * 8 + 16
+    assert len(data) >= 20 + count * stride + 20 + 32768, "Wrong model length"
     vertices, normals, colors = [], [], []
-    for offset in range(20, 20 + count * 24, 24):
-        x, y, z, zero, nx, ny, nz, nzero, u, v, r, g, b, a = struct.unpack_from("<3hH3hH2h4B", data, offset)
-        vertices.append((x / 4096, y / 4096, z / 4096))
+    poses = [[] for _ in range(shapes)]
+    for offset in range(20, 20 + count * stride, stride):
+        for shape in range(shapes):
+            x, y, z, zero = struct.unpack_from("<3hH", data, offset + shape * 8)
+            assert zero == 0
+            poses[shape].append((x / 4096, y / 4096, z / 4096))
+        nx, ny, nz, nzero, u, v, r, g, b, a = struct.unpack_from("<3hH2h4B", data, offset + shapes * 8)
+        vertices.append(poses[0][-1])
         normals.append((nx / 4096, ny / 4096, nz / 4096))
         colors.append((r, g, b, a))
-        assert zero == nzero == 0 and (u, v) == (0, 0)
+        assert nzero == 0 and (u, v) == (0, 0)
         assert abs(sum(n * n for n in normals[-1]) - 1) < 0.001, "Nonunit normal"
         assert r > g > b and a == 255, "Gold opaque material expected"
-    offset = 20 + count * 24
-    assert struct.unpack_from("<IIfII", data, offset) == (1, 31, 1.0, 0, 1)
-    assert struct.unpack_from("<II2f", data, offset + 20) == (0, 1, 0.0, 1.0)
-    assert data[offset + 36:] == b"\xff\x7f" * 16384
+    offset = 20 + count * stride
+    tag, length, speed, start, curves = struct.unpack_from("<IIfII", data, offset)
+    assert tag == 1 and length > 1 and speed > 0 and math.isfinite(speed) and start < length
+    assert curves == shapes
+    offset += 20
+    weights = {}
+    for _ in range(curves):
+        shape, keys = struct.unpack_from("<II", data, offset)
+        offset += 8
+        assert shape < shapes and shape not in weights and keys > 0
+        curve = [struct.unpack_from("<2f", data, offset + i * 8) for i in range(keys)]
+        offset += keys * 8
+        assert all(math.isfinite(t) and math.isfinite(w) and 0 <= t < length and 0 <= w <= 1 for t, w in curve)
+        assert all(a[0] < b[0] for a, b in zip(curve, curve[1:]))
+        weights[shape] = curve
+    assert data[offset:] == b"\xff\x7f" * 16384, "Wrong texture offset/length"
+    def weight(curve, frame):
+        if frame <= curve[0][0]: return curve[0][1]
+        for (t0, w0), (t1, w1) in zip(curve, curve[1:]):
+            if frame <= t1: return w0 + (w1 - w0) * (frame - t0) / (t1 - t0)
+        return curve[-1][1]
+    for half_frame in range((length - 1) * 2 + 1):
+        assert abs(sum(weight(curve, half_frame / 2) for curve in weights.values()) - 1) < 0.0001, "Morph weights collapse/expand the model"
+    assert all(curve[0][1] == curve[-1][1] for curve in weights.values()), "Animation loop discontinuity"
+    if shapes > 1:
+        assert poses[0] != poses[max(1, shapes // 4)] and poses[0] != poses[shapes // 2], "Static animation"
+        assert all([v[1] for v in pose] == [v[1] for v in poses[0]] for pose in poses), "Rotation changes height"
     for i in range(0, count, 3):
         ab = [vertices[i + 1][a] - vertices[i][a] for a in range(3)]
         ac = [vertices[i + 2][a] - vertices[i][a] for a in range(3)]
@@ -51,22 +81,27 @@ def check(folder):
         assert sum(c * n for c, n in zip(cross, normals[i])) > 0, "Winding/normal mismatch"
     bounds = [(min(p[a] for p in vertices), max(p[a] for p in vertices)) for a in range(3)]
     assert 0.2 < bounds[2][1] - bounds[2][0] < 1 and abs(bounds[1][1] - bounds[1][0] - 3) < 0.001
+    backgrounds = [list(struct.unpack_from("<4I", metadata, 16 + i * 16)) for i in range(4)]
     report = {"result": "PASS", "title": normalized, "triangles": count // 3,
-              "bytes": len(data), "bounds": bounds, "bios_display_validated": False}
+              "bytes": len(data), "bounds": bounds, "backgrounds": backgrounds,
+              "animation_shapes": shapes, "animation_frames": length, "animation_speed": speed,
+              "bios_display_validated": False}
     return report, vertices, normals, colors
 
 
 def preview(path, vertices, normals, colors):
     from PIL import Image, ImageDraw
     size, scale = 512, 130
-    background = (22, 38, 68)
+    background = (90, 61, 12)
     image = Image.new("RGB", (size, size), background)
     draw = ImageDraw.Draw(image)
     angle = math.radians(24)
+    # This is an auto-centered mesh preview, independent of the OSD camera.
+    center = [(min(p[a] for p in vertices) + max(p[a] for p in vertices)) / 2 for a in range(3)]
     def rotate(v):
         return (v[0] * math.cos(angle) + v[2] * math.sin(angle), v[1],
                 -v[0] * math.sin(angle) + v[2] * math.cos(angle))
-    transformed = list(map(rotate, vertices))
+    transformed = [rotate(tuple(v[a] - center[a] for a in range(3))) for v in vertices]
     faces = list(range(0, len(vertices), 3))
     faces.sort(key=lambda i: sum(p[2] for p in transformed[i:i + 3]), reverse=True)
     for i in faces:

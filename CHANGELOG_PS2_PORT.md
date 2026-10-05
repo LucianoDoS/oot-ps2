@@ -4,6 +4,48 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Posición, fondo y animación del icono — 2026-10-04
+
+- El usuario confirma corregida la araña sobre el desnivel. En el navegador
+  de la BIOS confirma el título y la Trifuerza, pero el modelo está demasiado
+  bajo. Se prueba primero Y=-3; queda demasiado alto en la lista de guardados.
+  Se establece Y=-1.5 como posición intermedia para la lista y el panel de
+  copiar/eliminar. El fondo cambia a un degradado dorado.
+- Se añaden poses alrededor del eje vertical y curvas de mezcla que suman
+  uno. La variante de 16 poses (75024 bytes) pasa la decodificación y lectura
+  completa con libmc, pero la BIOS la muestra como datos dañados. Se reduce
+  a ocho poses (56208 bytes), que el usuario confirma correctamente visibles
+  y girando. La causa de la incompatibilidad de la variante mayor no queda
+  aislada; no se atribuye a un límite específico de tamaño o de poses.
+- Tras esa confirmación, se reduce la velocidad de 1.0 a 0.35 y la intensidad
+  de las luces y del ambiente para distinguir mejor el relieve y los biseles.
+  Se conserva la geometría local de 96 triángulos y el hueco central.
+- Se añade un instalador EE que sólo actualiza `icon.sys` y `triforce.icn`
+  sobre una tarjeta ya formateada con una partida existente. No escribe SRAM
+  ni formatea: compara ambos archivos completos, `save.dat` y `save.bak`,
+  antes y después de la instalación. Primero se prueba sobre una copia de
+  la tarjeta habitual con una configuración aislada. El PASS confirma los
+  archivos del navegador y que los dos guardados permanecen idénticos.
+- El lector independiente verifica las ocho poses, curvas, mezcla entre
+  claves, continuidad del ciclo, altura constante, título, iluminación,
+  textura y límites. El reporte registra la velocidad y conserva
+  `bios_display_validated=false`: esa herramienta no observa la BIOS.
+- Pasan las pruebas con el ajuste final: lectura de todos los bytes, dos
+  escrituras alternas, recuperación de copia dañada, reparación del modelo
+  truncado y de metadatos ausentes, conservación de SRAM ante error y recarga
+  tras cerrar PCSX2. Registros nuevos:
+  `build/PS2/pcsx2-icon-slow-card-write.log` y
+  `build/PS2/pcsx2-icon-slow-card-cold.log`.
+- La instalación sobre la tarjeta habitual pasa y confirma ambos archivos
+  completos de la partida idénticos, incluidos sus encabezados. Registro:
+  `build/PS2/pcsx2-icon-slow-install-player.log`. Se conservan los respaldos
+  `oot-port-before-icon-rotation.ps2` y `oot_ps2-before-icon-rotation.elf`.
+  El ELF normal se actualiza tras completar el enlace con 724 objetos;
+  SHA-256 `13AC8E1E6E51AEAEB12C05FA69558C79008B8B526996D140BC04DC269D1BCEAA`.
+  El usuario confirma también que la última velocidad e iluminación están bien.
+  La prueba en PS2 física sigue pendiente. El directorio antiguo de diagnóstico
+  `OOT_PS2_TEST` se detecta por separado y no se modifica en la tarjeta habitual.
+
 ## Icono de memory card y pruebas automáticas — 2026-10-04
 
 - El usuario pide el nombre del juego y una Trifuerza 3D para el navegador

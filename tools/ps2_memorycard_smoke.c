@@ -15,7 +15,7 @@ extern void ps2_save_init(void);
 extern int ps2_save_read(void*, u32);
 extern int ps2_save_write(const void*, u32);
 static u8 expected[0x8000], recovered[0x8000];
-static u8 iconBuffer[0x10000] __attribute__((aligned(64)));
+static u8 iconBuffer[0x20000] __attribute__((aligned(64)));
 
 static int wait_result(int submitted) {
     int result;

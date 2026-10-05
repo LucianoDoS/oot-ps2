@@ -51,10 +51,14 @@ def make_icon(triangles):
     high = [max(v[a] for v in points) for a in range(3)]
     center = [(lo + hi) / 2 for lo, hi in zip(low, high)]
     scale = 3.0 / (high[1] - low[1])
-    result = bytearray(struct.pack("<5I", 0x10000, 1, 7, 0x3F800000, len(points)))
+    shapes, step_frames = 8, 20
+    period = shapes * step_frames
+    result = bytearray(struct.pack("<5I", 0x10000, shapes, 7, 0x3F800000, len(points)))
     for triangle in triangles:
         # OSD coordinates use Y down and Z towards the screen: rotate about X.
-        positions = [((v[0] - center[0]) * scale, -(v[1] - center[1]) * scale,
+        # The browser's icon camera places Y=0 near the bottom of the panel.
+        # An intermediate height fits both the card list and the action panel.
+        positions = [((v[0] - center[0]) * scale, -(v[1] - center[1]) * scale - 1.5,
                       -(v[2] - center[2]) * scale) for v in triangle]
         ab = [positions[1][a] - positions[0][a] for a in range(3)]
         ac = [positions[2][a] - positions[0][a] for a in range(3)]
@@ -65,10 +69,27 @@ def make_icon(triangles):
             raise ValueError("Degenerate triangle")
         packed_normal = [round(n / length * 4096) for n in normal]
         for position in positions:
-            result += struct.pack("<3hH3hH2h4B", *(round(p * 4096) for p in position), 0,
-                                  *packed_normal, 0, 0, 0, 255, 202, 48, 255)
-    result += struct.pack("<IIfII", 1, 31, 1.0, 0, 1)
-    result += struct.pack("<II2f", 0, 1, 0.0, 1.0)
+            for shape in range(shapes):
+                angle = shape * 2 * math.pi / shapes
+                x, y, z = position
+                rotated = (x * math.cos(angle) + z * math.sin(angle), y,
+                           -x * math.sin(angle) + z * math.cos(angle))
+                result += struct.pack("<3hH", *(round(p * 4096) for p in rotated), 0)
+            result += struct.pack("<3hH2h4B", *packed_normal, 0, 0, 0, 255, 202, 48, 255)
+    result += struct.pack("<IIfII", 1, period + 1, 0.35, 0, shapes)
+    # One weight curve per absolute morph pose. Adjacent weights sum to one;
+    # the final interval blends back to pose zero without moving the center.
+    for shape in range(shapes):
+        keys = {0: float(shape == 0), period: float(shape == 0)}
+        if shape == 0:
+            keys[step_frames] = keys[period - step_frames] = 0.0
+        else:
+            keys[(shape - 1) * step_frames] = 0.0
+            keys[shape * step_frames] = 1.0
+            keys[(shape + 1) * step_frames] = 0.0
+        result += struct.pack("<II", shape, len(keys))
+        for frame, weight in sorted(keys.items()):
+            result += struct.pack("<2f", frame, weight)
     result += struct.pack("<H", 0x7FFF) * (128 * 128)
     return bytes(result)
 
@@ -81,11 +102,12 @@ def make_icon_sys():
     title = first + second + b"\0\0"
     if len(title) > 68:
         raise ValueError("Save title exceeds mcIcon title field")
-    backgrounds = [24, 40, 80, 128, 40, 64, 104, 128,
-                   8, 16, 32, 128, 16, 24, 48, 128]
+    # Gold gradient; keep the upper-right corner dark behind the yellow title.
+    backgrounds = [176, 132, 20, 0, 96, 60, 4, 0,
+                   232, 188, 56, 0, 128, 80, 8, 0]
     directions = [-0.5, -0.7, -1, 0, 0.5, 0.2, -1, 0, 0, -0.5, 1, 0]
-    lights = [0.65, 0.65, 0.65, 0, 0.35, 0.35, 0.35, 0, 0.3, 0.3, 0.3, 0]
-    ambient = [0.35, 0.35, 0.35, 0]
+    lights = [0.40, 0.40, 0.40, 0, 0.18, 0.18, 0.18, 0, 0.12, 0.12, 0.12, 0]
+    ambient = [0.22, 0.22, 0.22, 0]
     return struct.pack("<4s2xH4xI16I28f68s64s64s64s512x", b"PS2D", len(first), 0x60,
                        *backgrounds, *directions, *lights, *ambient, title,
                        b"triforce.icn", b"triforce.icn", b"triforce.icn")
@@ -114,6 +136,9 @@ def main():
         "/* Private generated game asset. Do not redistribute. */\n" +
         c_array("ps2_save_icon_sys", metadata) + c_array("ps2_save_icon_model", icon))
     report = {"title": ["Legend of Zelda", "Ocarina of Time"], "triangles": len(triangles),
+              "browser_center_y": -1.5, "background": "gold gradient",
+              "animation": {"shapes": 8, "period_frames": 160, "speed": 0.35,
+                            "motion": "full yaw turn"},
               "icon_sys_bytes": len(metadata), "icon_bytes": len(icon),
               "icon_sha256": hashlib.sha256(icon).hexdigest(), "source": str(folder)}
     (args.output / "save_icon_report.json").write_text(json.dumps(report, indent=2) + "\n")
