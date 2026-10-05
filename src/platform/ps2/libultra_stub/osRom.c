@@ -37,6 +37,9 @@
 #include <stdio.h>
 
 #include "ps2_os_internal.h"
+#ifdef PS2_USB_BOOT
+#include "ps2_usb_boot.h"
+#endif
 
 typedef void* OSMesg;
 struct OSMesgQueue;
@@ -110,8 +113,10 @@ void ps2_rom_cache_stats(u32* hits, u32* reads) {
 static OSPiHandle s_cartHandle;
 OSPiHandle* __osPiTable = &s_cartHandle;
 
-static const char* const kRomPaths[] = {
-#ifdef PS2_ROM_TEST_PATH
+static const char* kRomPaths[] = {
+#ifdef PS2_USB_BOOT
+    NULL, /* Filled with the path already validated at boot. */
+#elif defined(PS2_ROM_TEST_PATH)
     PS2_ROM_TEST_PATH,
 #else
     "host:oot.z64",
@@ -138,6 +143,9 @@ static int rom_lock(void) {
  * ───────────────────────────────────────────────────────────────── */
 static bool rom_open(void) {
     if (s_romOpen) return true;
+#ifdef PS2_USB_BOOT
+    kRomPaths[0] = ps2_usb_data_path();
+#endif
 
     for (int i = 0; kRomPaths[i] != NULL; i++) {
         int fd = open(kRomPaths[i], O_RDONLY);

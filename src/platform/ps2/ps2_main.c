@@ -51,6 +51,10 @@
 #include "ps2/ps2_actor_overlays.h"
 #include "ps2_types.h"
 #include "rdp_to_gs.h"
+#ifdef PS2_USB_BOOT
+#include "ps2_usb_boot.h"
+static const char* s_usbLaunchPath;
+#endif
 
 /* ───────────────────────────────────────────────────────────────── *
  *  Contexto global del GS
@@ -212,6 +216,10 @@ void ps2_init_all(void) {
     /* 3. Memory card (necesita MCMAN/MCSERV ya cargados) */
     mcInit(MC_TYPE_MC);
 
+#ifdef PS2_USB_BOOT
+    if (!ps2_usb_prepare(s_usbLaunchPath)) ps2_usb_fail_screen();
+#endif
+
     /* 4. Gráficos */
     ps2_init_gs();
 
@@ -237,8 +245,12 @@ void ps2_shutdown(void) {
  *  main()
  * ───────────────────────────────────────────────────────────────── */
 int main(int argc, char* argv[]) {
+#ifdef PS2_USB_BOOT
+    s_usbLaunchPath = argc > 0 ? argv[0] : NULL;
+#else
     (void)argc;
     (void)argv;
+#endif
 
     SifInitRpc(0);
     setvbuf(stdout, NULL, _IONBF, 0);

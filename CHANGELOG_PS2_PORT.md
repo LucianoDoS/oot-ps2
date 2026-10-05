@@ -4,6 +4,61 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Recorrido de salas y preparación USB — 2026-10-04
+
+- El usuario da por resuelto el Árbol Deku y pide ampliar las pruebas y
+  preparar después una prueba en PS2 real mediante USB, Free McBoot y
+  wLaunchELF. Autoriza copiar el paquete terminado a la unidad D:.
+- Se añade un ELF de pruebas independiente: selecciona las 388 salas de
+  las listas originales convertidas, con una edad por escena. Carga y
+  ejecuta al menos 45 fotogramas, comprueba actores y objetos, ejercita
+  recepción de equipo/rupias y banderas de interruptores/cofres, y restaura
+  inmediatamente el estado de prueba. Ambas tarjetas y el mando quedan
+  desactivados. No sustituye progresión, puzles, combates ni puertas reales.
+- Captura el GS en PPM 320x240, verifica longitud/hash y genera PNGs,
+  hojas de contacto y una galería buscable. Las imágenes oscuras se marcan
+  para revisar la cámara; no se certifica automáticamente fidelidad visual.
+  Los informes parciales conservan FAIL y pueden reunirse con procedencia.
+  El validador rechaza resultado ausente, excepción posterior al PASS,
+  evento faltante y sala incorrecta.
+- Un anclaje sintético activa un portal en el Templo del Fuego. Se bloquean
+  peticiones de otras salas sólo en el ELF de pruebas. `DemoKankyo` oculta
+  deliberadamente el fondo de `hiral_demo`; se reconoce esa condición con
+  el buffer cargado, sin modificar la escena. La prueba aislada pasa.
+- Se intentan las 388 salas: 387 completan carga, eventos y captura en las
+  101 escenas. `men_room_2`, caso 201, produce una excepción en las rocas
+  móviles. Se reproduce en una ejecución en frío; la segunda ruta está en
+  un bloque todavía no descrito del conversor. Sigue pendiente y se anota
+  en `BUGS_PS2.md`. La galería reunida queda en
+  `build/PS2/room-gallery-20261004/index.html`, con estado FAIL.
+- El arranque actual reinicia el IOP, perdiendo los controladores de USB
+  del lanzador. La nueva variante USB incorpora USBD y USBHDFSD, los carga
+  después del reset y busca los datos junto al ELF. Comprueba el tamaño
+  y doce bloques con CRC32; muestra un error y detiene el arranque si
+  faltan o no corresponden. No acepta una ROM original como datos del port.
+- Se añade BOOTTEST, que comprueba datos y consulta la tarjeta del puerto 1
+  sin escribirla ni formatearla. El paquete incorpora ELF, datos convertidos,
+  SHA256, informe de direcciones estáticas del ELF e instrucciones. El juego
+  termina sus segmentos estáticos en 0x01168570, dentro de los 32 MiB del EE;
+  esto no certifica todas las reservas dinámicas en hardware.
+- Pasan las comprobaciones locales de datos válidos, tamaño incorrecto,
+  bloque alterado, arranque del juego por la ruta verificada y carga real
+  de los dos módulos en el IOP de PCSX2 con error acotado por archivo USB
+  ausente. La carga se comprueba en el diagnóstico y en el juego con sus
+  módulos de sonido, tarjeta y mandos ya preparados. Primer informe:
+  `build/PS2/usb-host-checks/20261004-223424-326/report.json`.
+  La repetición final pasa los seis casos, incluido el ELF USB del juego:
+  `build/PS2/usb-host-checks/20261004-225212-578/report.json`.
+  Ninguna prueba valida un dispositivo USB físico ni una PS2 real.
+- El paquete privado queda en `build/PS2/usb-ready/OOTPS2`. El ELF de juego
+  tiene SHA256 `cd03ea959336f5d9ac9951823ed1afd35739302d7c450f4c4b27758e9d3c438b`;
+  los datos conservan `034fcb6d0a95154d8f96b5b8e11711d5781e2e6950b3cc99b28c3de9a641a78f`.
+  Se conserva el ELF habitual de PCSX2 y el guardado del jugador. La prueba
+  en consola, el rendimiento adicional y la publicación en GitHub siguen
+  pendientes; el paquete con recursos del juego queda fuera de Git.
+- Se copian siete archivos a `D:\OOTPS2` en el USB FAT32 LUCBYN y se comparan
+  sus SHA256 con los del paquete. Informe `build/PS2/usb-copy-report.json`.
+
 ## Posición, fondo y animación del icono — 2026-10-04
 
 - El usuario confirma corregida la araña sobre el desnivel. En el navegador

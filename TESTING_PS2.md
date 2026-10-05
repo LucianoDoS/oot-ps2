@@ -38,6 +38,54 @@ una ejecución usando los ELF existentes y registra sus hashes.
 
 ## Casos concretos
 
+Para recorrer todas las salas referenciadas y revisar sus capturas:
+
+```powershell
+./tools/run_ps2_room_smoke.ps1
+```
+
+Este diagnóstico separado selecciona las 388 salas a partir de las listas de
+salas de la imagen convertida. Usa una edad elegida por escena, guardados de
+prueba y posiciones sintéticas obtenidas de puntos de aparición, puertas o
+actores. Mantiene a Link quieto para que no abandone la sala seleccionada.
+El ejecutable de prueba bloquea peticiones automáticas de otra sala provocadas
+por esas posiciones sintéticas y registra cuántas; no modifica el ELF normal.
+Carga, actualiza y dibuja cada sala durante al menos 45 fotogramas; comprueba
+las listas de actores y bancos de objetos cargados. Ejecuta las funciones
+reales de recepción de espada/escudo/rupias y las banderas de interruptores y
+cofres, restaurando inmediatamente todo el estado que modificó.
+
+Genera `build/PS2/room-regression/<fecha>/report.json`, `rooms.json` y una
+galería `index.html`, con búsqueda por sala, PNGs y hojas de contacto.
+Las capturas proceden del framebuffer del GS durante el render, no de la
+ventana de PCSX2. El validador exige un resultado y una imagen completa por
+caso; detecta excepciones, cierres, casos faltantes y ausencia de progreso.
+La tarjeta del jugador queda excluida: ambos puertos están desactivados.
+
+`-Start 12 -Count 2` permite aislar una selección; `-SkipBuild` sólo acepta
+el ejecutable y fixtures que correspondan a los parámetros pedidos. Los
+reportes y capturas quedan en un directorio nuevo por ejecución. Las imágenes
+casi negras se señalan para revisar: pueden deberse a la cámara sintética,
+iluminación o un fallo gráfico. No se consideran automáticamente errores del
+port ni prueba de fidelidad visual. Las banderas no simulan abrir cada cofre,
+cruzar todas las puertas, resolver puzles ni vencer a los jefes.
+
+Si falla una sala, la ejecución conserva el estado FAIL y genera una galería
+parcial con las capturas anteriores comprobadas. Puede continuarse desde el
+caso siguiente mediante `-Start` y reunir los informes con
+`tools/merge_ps2_room_reports.py`. La reunión conserva la procedencia y los
+casos sin completar; no convierte un fallo en PASS. `DemoKankyo` oculta la
+geometría de `hiral_demo` en el juego original; el diagnóstico admite ese
+caso si conserva el buffer cargado y pasan las demás comprobaciones.
+Los bloqueos conocidos se anotan en
+[BUGS_PS2.md](BUGS_PS2.md).
+
+Resultado inicial del 4 de octubre: 388 casos intentados en ejecuciones
+separadas, 387 salas completas de las 101 escenas y un bloqueo reproducible
+en `men_room_2` (caso 201). La galería reunida conserva FAIL y ese caso pendiente.
+El falso fallo de `hiral_demo_room_0` queda resuelto en una ejecución aislada
+tras reconocer la geometría ocultada por `DemoKankyo`.
+
 | Caso | Comprobación automática | Pendiente manual |
 | --- | --- | --- |
 | Skulltulas del Árbol Deku | Siete posiciones originales: bajar, posarse, contacto OC con el cilindro de Link, empuje y regreso al techo. Retirada sobre un desnivel a alturas 799/820. Poses contrastadas con la extracción original. | El usuario confirma corregida la araña de la sala 10; falta recorrer las demás salas y probar en PS2 física. |
@@ -56,8 +104,33 @@ del suelo, daños y cilindros de contacto; no crea una barrera invisible.
 El usuario confirma que esta corrección ya resuelve el problema observado.
 
 Los informes separan lo comprobado de la progresión completa y la consola física,
-que siguen pendientes. Para preparar la primera prueba en PS2 faltan también
-validar carga fuera de `host:`, memoria disponible y recuperación de errores.
+que siguen pendientes. El paquete USB comprueba datos y rangos estáticos de
+memoria; la carga USB y la memoria durante el juego siguen pendientes en
+consola. Véase [PS2_HARDWARE.md](PS2_HARDWARE.md).
+
+## Paquete USB y comprobaciones de arranque
+
+```powershell
+wsl -d Ubuntu -- bash tools/build_ps2_usb.sh --host-test
+./tools/run_ps2_usb_checks.ps1
+python tools/package_ps2_usb.py
+./tools/copy_ps2_usb.ps1 -DriveLetter D
+```
+
+La salida privada queda en `build/PS2/usb-ready/OOTPS2`. La variante USB usa
+objetos de entrada y lectura separados; no reemplaza el ELF habitual de PCSX2.
+El diagnóstico consulta la tarjeta y los datos sin escribir guardados. Las
+pruebas locales usan una configuración nueva con ambos puertos desactivados:
+datos válidos, tamaño incorrecto, bloque alterado y arranque del juego por la
+ruta comprobada. La variante de prueba usa `host:` y lo dice en su registro;
+no valida la lectura de un dispositivo USB físico. Otras dos comprobaciones
+cargan los módulos USB reales en el IOP de PCSX2 y exigen el error acotado por
+ausencia del archivo: en BOOTTEST y en el juego con los módulos de mandos,
+tarjeta y sonido ya cargados. Comprueban el inicio de los controladores, sin dispositivo.
+La copia comprueba que la unidad elegida sea extraíble FAT32 y verifica todos
+los archivos mediante SHA256. Sólo copia la carpeta OOTPS2; conserva otros
+archivos y respalda archivos del paquete anteriores si van a cambiar. No
+formatea el USB.
 
 ## Icono 3D
 

@@ -54,6 +54,21 @@ También pasan las pruebas de restauración de los 426 overlays de actores:
 el port conserva su código nativo y restablece los datos de una carga nueva,
 evitando que sobrevivan cámaras y otros estados de una escena anterior.
 Estas pruebas no sustituyen una partida completa.
+El usuario da por resuelto el Árbol Deku. La batería se amplía ahora con un
+ejecutable separado que selecciona las 388 salas, comprueba actores, objetos
+y funciones de eventos, y guarda capturas del GS en una galería local. Usa
+guardados de prueba y ambas tarjetas desactivadas; no verifica por sí sola
+todos los puzles, combates o transiciones de la historia. Uso y límites:
+[TESTING_PS2.md](TESTING_PS2.md).
+En la primera ejecución completa, dividida para continuar después de fallos,
+387 de las 388 salas completan carga, actualización, eventos y captura. Se
+reproduce un bloqueo en la sala 2 del Campo de Entrenamiento Gerudo, incluso
+arrancando sólo esa sala. Queda registrado en [BUGS_PS2.md](BUGS_PS2.md).
+La primera versión para USB incorpora los controladores necesarios después
+del reset del IOP, selecciona los datos junto al ELF y muestra un error si
+faltan o no corresponden. Incluye un diagnóstico de lectura. La prueba real
+se hará con Free McBoot y wLaunchELF; instrucciones y límites en
+[PS2_HARDWARE.md](PS2_HARDWARE.md). Todavía no se ha ejecutado en una PS2 física.
 El registro detallado está en [CHANGELOG_PS2_PORT.md](CHANGELOG_PS2_PORT.md).
 
 El juego completo ya enlaza: 724 objetos generan `build/PS2-ntsc12/oot_ps2.elf`.

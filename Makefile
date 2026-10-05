@@ -285,6 +285,18 @@ DEPS := $(OBJS:.o=.d)
 ifeq ($(PLATFORM),PS2)
 OBJS += $(BUILD_DIR)/generated/audsrv_irx.o
 OBJS += $(BUILD_DIR)/generated/freesd_irx.o
+ifeq ($(PS2_USB_BOOT),1)
+OBJS := $(filter-out $(BUILD_DIR)/src/platform/ps2/ps2_main.o $(BUILD_DIR)/src/platform/ps2/libultra_stub/osRom.o,$(OBJS))
+OBJS += $(BUILD_DIR)/src/platform/ps2/ps2_main_usb.o $(BUILD_DIR)/src/platform/ps2/libultra_stub/osRom_usb.o
+DEPS += $(BUILD_DIR)/src/platform/ps2/ps2_main_usb.d $(BUILD_DIR)/src/platform/ps2/libultra_stub/osRom_usb.d
+ifeq ($(PS2_USB_HOST_TEST),1)
+OBJS += $(BUILD_DIR)/generated/ps2_usb_boot_host.o
+DEPS += $(BUILD_DIR)/generated/ps2_usb_boot_host.d
+else
+OBJS += $(BUILD_DIR)/generated/ps2_usb_boot.o $(BUILD_DIR)/generated/usbd_irx.o $(BUILD_DIR)/generated/usbhdfsd_irx.o
+DEPS += $(BUILD_DIR)/generated/ps2_usb_boot.d
+endif
+endif
 ROM_LDFLAGS := -Wl,-T,$(BUILD_DIR)/generated/actor_overlays.ld
 ifneq ($(OOT_UPSTREAM),)
 OBJS += $(BUILD_DIR)/generated/rom_metadata.o
@@ -308,6 +320,11 @@ ifeq ($(PS2_SKULLTULA_SMOKE),1)
 OBJS += $(BUILD_DIR)/tools/ps2_skulltula_smoke.o
 DEPS += $(BUILD_DIR)/tools/ps2_skulltula_smoke.d
 ROM_LDFLAGS += -Wl,--wrap=ConsoleLogo_Init,--wrap=GameState_Update,--wrap=GameState_ReqPadData
+endif
+ifeq ($(PS2_ROOM_SMOKE),1)
+OBJS += $(BUILD_DIR)/tools/ps2_room_smoke.o $(BUILD_DIR)/tools/ps2_room_capture.o
+DEPS += $(BUILD_DIR)/tools/ps2_room_smoke.d $(BUILD_DIR)/tools/ps2_room_capture.d
+ROM_LDFLAGS += -Wl,--wrap=ConsoleLogo_Init,--wrap=GameState_Update,--wrap=GameState_Destroy,--wrap=GameState_ReqPadData,--wrap=Room_SetupFirstRoom,--wrap=Room_RequestNewRoom,--wrap=ps2_capture_frame
 endif
 ifeq ($(PS2_SKULLTULA_TRACE),1)
 OBJS += $(BUILD_DIR)/tools/ps2_skulltula_trace.o
@@ -349,6 +366,10 @@ $(BUILD_DIR)/generated/actor_overlays.ld $(BUILD_DIR)/generated/actor_overlays.i
 $(BUILD_DIR)/src/platform/ps2/ps2_actor_overlays.o: $(BUILD_DIR)/generated/actor_overlays.inc
 $(BUILD_DIR)/src/platform/ps2/ps2_actor_overlays.o: PLATFORM_INCLUDES += -I$(BUILD_DIR)/generated
 $(BUILD_DIR)/tools/ps2_skulltula_smoke.o: $(BUILD_DIR)/generated/skulltula_pose_cases.h
+$(BUILD_DIR)/tools/ps2_room_smoke.o: $(BUILD_DIR)/generated/room_smoke_cases.h
+$(BUILD_DIR)/tools/ps2_room_capture.o: tools/ps2_room_capture.c
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CFLAGS) -Iinclude -Isrc $(PLATFORM_INCLUDES) $(DEPFLAGS) -c $< -o $@
 $(BUILD_DIR)/tools/ps2_actor_overlay_smoke.o: tools/ps2_actor_overlay_smoke.c $(BUILD_DIR)/generated/actor_overlays.inc
 	@echo "[CC PS2 TEST] $<"
 	$(Q)$(CC) $(CFLAGS) -Iinclude -Isrc -I$(BUILD_DIR)/generated $(PLATFORM_INCLUDES) $(DEPFLAGS) -c $< -o $@
@@ -363,6 +384,34 @@ $(BUILD_DIR)/src/platform/ps2/%.o: src/platform/ps2/%.c
 	@echo "[CC PS2] $<"
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) $(CFLAGS) -Iinclude -Isrc $(PLATFORM_INCLUDES) $(DEPFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/src/platform/ps2/ps2_main_usb.o: src/platform/ps2/ps2_main.c
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CFLAGS) -DPS2_USB_BOOT=1 -Iinclude -Isrc $(PLATFORM_INCLUDES) $(DEPFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/src/platform/ps2/libultra_stub/osRom_usb.o: src/platform/ps2/libultra_stub/osRom.c
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CFLAGS) -DPS2_USB_BOOT=1 -Iinclude -Isrc $(PLATFORM_INCLUDES) $(DEPFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/generated/ps2_usb_boot.o: src/platform/ps2/ps2_usb_boot.c $(BUILD_DIR)/generated/usb_data_expected.h
+	$(Q)$(CC) $(CFLAGS) -Iinclude/ps2 -I$(BUILD_DIR)/generated $(PLATFORM_INCLUDES) $(DEPFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/generated/ps2_usb_boot_host.o: src/platform/ps2/ps2_usb_boot.c $(BUILD_DIR)/generated/usb_data_expected.h
+	$(Q)$(CC) $(CFLAGS) -DPS2_USB_HOST_TEST=1 -Iinclude/ps2 -I$(BUILD_DIR)/generated $(PLATFORM_INCLUDES) $(DEPFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/generated/usbd_irx.c: $(PS2SDK)/iop/irx/usbd.irx
+	@mkdir -p $(dir $@)
+	$(Q)$(PS2SDK)/bin/bin2c $< $@ usbd_irx
+
+$(BUILD_DIR)/generated/usbhdfsd_irx.c: $(PS2SDK)/iop/irx/usbhdfsd.irx
+	@mkdir -p $(dir $@)
+	$(Q)$(PS2SDK)/bin/bin2c $< $@ usbhdfsd_irx
+
+$(BUILD_DIR)/generated/usbd_irx.o: $(BUILD_DIR)/generated/usbd_irx.c
+	$(Q)$(CC) $(CFLAGS) $(PLATFORM_INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/generated/usbhdfsd_irx.o: $(BUILD_DIR)/generated/usbhdfsd_irx.c
+	$(Q)$(CC) $(CFLAGS) $(PLATFORM_INCLUDES) -c $< -o $@
 
 $(BUILD_DIR)/iop/audsrv.irx: $(wildcard src/platform/ps2/iop/audsrv/src/*) src/platform/ps2/iop/audsrv/Makefile
 	@mkdir -p $(BUILD_DIR)/iop
