@@ -165,11 +165,15 @@ la textura. El log confirma los modos en Kokiri y perspectiva activa, sin
 errores USB ni pérdidas. Se conserva en
 `build/PS2/hardware-runtime/floor-lab-result-20261005-175141`.
 
-FLOOR v2 permite alternar con la cruceta entre segunda pasada revisada
-(arriba), una capa (izquierda) y la pasada anterior (derecha), sin reiniciar.
-La revisión mantiene la prueba de profundidad pero no vuelve a escribirla
-desde la segunda capa, con un margen mínimo en Z. Registra el modo y muestras
-UV/W/STQ/XYZ de ambas capas. Instrucciones en
+La comparación física de FLOOR v2 tampoco mejora las olas al cambiar la
+profundidad de la segunda pasada. Registro conservado en
+`build/PS2/hardware-runtime/floor-v2-result-20261005-181656`.
+FLOOR v3 permite alternar con la cruceta entre UV centradas de la segunda capa
+(arriba), una capa (izquierda) y las UV anteriores (derecha), sin reiniciar.
+Recupera la profundidad original; desplaza cada triángulo por repeticiones
+completas para reducir el tamaño de STQ y evitar el límite de texeles del GS.
+Registra el modo, máximos UV por fotograma muestreado y muestras UV/W/STQ/XYZ,
+incluidas dimensiones y desplazamientos de la segunda capa. Instrucciones en
 `PS2_FLOOR_DIAGNOSTIC.md` y `SUELO.txt` del paquete adicional. El ELF habitual
 se conserva; esta comparación todavía no es una corrección física confirmada.
 

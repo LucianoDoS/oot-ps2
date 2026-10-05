@@ -15,7 +15,7 @@ def main():
     args = parser.parse_args()
     source = args.build_dir / 'oot_ps2_usb_floor.elf'
     memory = inspect_elf(source)
-    assert b'FLOOR_LAB v2' in source.read_bytes(), 'Expected the revised floor comparison ELF'
+    assert b'FLOOR_LAB v3' in source.read_bytes(), 'Expected the UV floor comparison ELF'
     expected = json.loads((args.build_dir / 'generated/usb_data_expected.json').read_text())
     data_sha = hashlib.sha256((args.build_dir / 'oot-full-next.z64').read_bytes()).hexdigest()
     assert data_sha == expected['image_sha256'], 'USB data/header mismatch'
@@ -26,7 +26,7 @@ def main():
         shutil.copyfile(path, args.output / name)
         hashes[name] = hashlib.sha256((args.output / name).read_bytes()).hexdigest()
         assert hashes[name] == hashlib.sha256(path.read_bytes()).hexdigest()
-    report = dict(status='PACKAGED', diagnosticVersion=2, realPS2Validated=False, dataSha256=data_sha,
+    report = dict(status='PACKAGED', diagnosticVersion=3, realPS2Validated=False, dataSha256=data_sha,
                   elfMemory=memory, files=hashes)
     (args.output / 'floor-package.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
     (args.output / 'FLOOR.sha256').write_text(''.join(f'{sha}  {name}\n' for name, sha in hashes.items()), encoding='ascii')

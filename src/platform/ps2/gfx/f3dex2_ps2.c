@@ -330,10 +330,19 @@ static bool s_runGround;
 static volatile unsigned s_floorRequested;
 static unsigned s_floorMode, s_floorFrame;
 static bool s_floorSampled;
+static unsigned s_floorTriangles, s_floorRebased, s_floorOutsideBefore, s_floorOutsideAfter;
+static float s_floorMaxBefore, s_floorMaxAfter, s_floorMaxSpan;
 void ps2_floor_request_mode(unsigned mode) {
     if (mode <= PS2_FLOOR_LEGACY) s_floorRequested = mode;
 }
 void ps2_floor_begin_frame(void) {
+    if (s_floorFrame && s_floorFrame % 60 == 0 && s_floorTriangles) {
+        printf("[PS2 FLOOR UV] frame=%u mode=%u triangles=%u rebased=%u beforeMax=%.6g afterMax=%.6g beforeOutside=%u afterOutside=%u maxSpan=%.6g\n",
+            s_floorFrame, s_floorMode, s_floorTriangles, s_floorRebased,
+            s_floorMaxBefore, s_floorMaxAfter, s_floorOutsideBefore, s_floorOutsideAfter, s_floorMaxSpan);
+    }
+    s_floorTriangles=s_floorRebased=s_floorOutsideBefore=s_floorOutsideAfter=0;
+    s_floorMaxBefore=s_floorMaxAfter=s_floorMaxSpan=0;
     s_floorMode = s_floorRequested;
     s_floorFrame++;
     s_floorSampled = false;
@@ -596,21 +605,6 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
             if (!second->gsTextureLoaded) ps2_texture_upload(second, rdp);
             if (second->gsTextureLoaded) {
                 u32 depths[3] = {z0,z1,z2};
-#ifdef PS2_FLOOR_DIAGNOSTIC
-                /* Compare a read-only overlay with the exact legacy pass.
-                 * Retain GEQUAL: disabling Z test would expose hidden ground.
-                 * Only depth-writing, depth-tested receivers need this margin. */
-                bool receiverWrites=rdp->zWriteEnabled;
-                bool protectReceiver=ps2_floor_mode()==PS2_FLOOR_NORMAL &&
-                    receiverWrites && (rdp->otherMode.lo & 0x10);
-                if (protectReceiver) {
-                    u32 maximum=(gs->PSMZ==GS_PSMZ_16 || gs->PSMZ==GS_PSMZ_16S)?0xffffu:0xffffffu;
-                    u32 margin=maximum==0xffffu?1:2;
-                    for (unsigned i=0;i<3;i++)
-                        depths[i]=depths[i]>maximum-margin?maximum:depths[i]+margin;
-                    ps2_zbuffer_set_writes(rdp,false);
-                }
-#endif
                 u32 alpha = ((rdp->envColor & 255) * 128 + 127) / 255;
                 ps2_texture_apply_tile(second, rdp);
                 for (int i = 0; i < 3; i++) {
@@ -618,6 +612,18 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
                     prepare_texture_point(second,rsp,rdp,vertices[i],color,depths[i],fog,
                                           pointSlots[i],true,&points[i]);
                 }
+#ifdef PS2_FLOOR_DIAGNOSTIC
+                /* Work on draw copies, never the shared vertex cache. A whole
+                 * triangle moves by the same integer number of wrap periods. */
+                PS2TextureWrapResult wrap=ps2_texture_rebase_triangle(second,rsp,rdp,
+                    floorVertices,points,ps2_floor_mode()==PS2_FLOOR_NORMAL);
+                s_floorTriangles++;
+                s_floorRebased += !!(wrap.offsetS || wrap.offsetT);
+                s_floorOutsideBefore += wrap.outsideBefore; s_floorOutsideAfter += wrap.outsideAfter;
+                if (wrap.maxBefore>s_floorMaxBefore) s_floorMaxBefore=wrap.maxBefore;
+                if (wrap.maxAfter>s_floorMaxAfter) s_floorMaxAfter=wrap.maxAfter;
+                if (wrap.maxSpan>s_floorMaxSpan) s_floorMaxSpan=wrap.maxSpan;
+#endif
 #ifdef PS2_RENDERER_SMOKE_CAPTURE
                 capture_points(points);
 #endif
@@ -627,15 +633,17 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
                 rdp->stats.texturePackets++;
 #ifdef PS2_FLOOR_DIAGNOSTIC
                 if (traceFloor) {
-                    printf("[PS2 FLOOR LAYER] mode=%u writes=%u compare=%u shift=%u,%u depth=%u,%u,%u\n",
+                    printf("[PS2 FLOOR LAYER] mode=%u writes=%u compare=%u shift=%u,%u depth=%u,%u,%u size=%ux%u wrap=%u,%u mask=%u,%u offset=%.6g,%.6g\n",
                         ps2_floor_mode(),rdp->zWriteEnabled,!!(rdp->otherMode.lo&0x10),
                         (unsigned)second->shifts,(unsigned)second->shiftt,
-                        (unsigned)depths[0],(unsigned)depths[1],(unsigned)depths[2]);
+                        (unsigned)depths[0],(unsigned)depths[1],(unsigned)depths[2],
+                        (unsigned)second->gsTexture.Width,(unsigned)second->gsTexture.Height,
+                        (unsigned)second->cms,(unsigned)second->cmt,(unsigned)second->masks,(unsigned)second->maskt,
+                        wrap.offsetS,wrap.offsetT);
                     for (unsigned i=0;i<3;i++) printf("[PS2 FLOOR OVERLAY] i=%u stq=%.9g,%.9g,%.9g xyz=%u,%u,%u\n",
                         i,points[i].stq.st.s,points[i].stq.st.t,points[i].rgbaq.color.q,
                         (unsigned)points[i].xyz2.xyz.x,(unsigned)points[i].xyz2.xyz.y,(unsigned)points[i].xyz2.xyz.z);
                 }
-                if (protectReceiver) ps2_zbuffer_set_writes(rdp,receiverWrites);
 #endif
                 gs->PrimFogEnable = previousFog;
                 ps2_gs_set_alpha(rdp, rdp->gs_alpha);

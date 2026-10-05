@@ -8,7 +8,7 @@ if ($volume.DriveType -ne 'Removable' -or $volume.FileSystem -ne 'FAT32') {
 }
 $destination = Join-Path ($DriveLetter.ToUpperInvariant()+':\') 'OOTPS2'
 $package = Get-Content -LiteralPath (Join-Path $source 'floor-package.json') -Raw | ConvertFrom-Json
-if ($package.status -ne 'PACKAGED' -or $package.diagnosticVersion -ne 2 -or
+if ($package.status -ne 'PACKAGED' -or $package.diagnosticVersion -ne 3 -or
     @($package.files.PSObject.Properties).Count -ne 2) { throw 'Invalid floor package.' }
 foreach ($entry in $package.files.PSObject.Properties) {
     if ($entry.Name -notin 'FLOOR.ELF','SUELO.txt') { throw 'Unexpected floor payload.' }
@@ -34,7 +34,7 @@ foreach ($name in 'BOOT.LOG','DIAG.LOG') {
         $logs += @{name=$name;sha256=$sha;bytes=(Get-Item -LiteralPath $oldLog).Length}
     }
 }
-@{logs=$logs;observation='User reports waves unchanged after the fractional clipping revision; logs may belong to earlier ELF sessions.'} |
+@{logs=$logs;observation='User reports FLOOR v2 read-only and legacy modes unchanged; logs may belong to earlier ELF sessions.'} |
     ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $capture 'capture.json') -Encoding utf8
 $verified = @()
 foreach ($file in $files) {

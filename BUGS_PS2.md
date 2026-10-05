@@ -42,10 +42,13 @@ defecto observado en la PS2; el usuario confirma que sigue igual tras ese cambio
 La comparación física de FLOOR v1 conserva las olas con perspectiva forzada;
 omitir la segunda capa las elimina pero pierde parte del suelo. El log confirma
 perspectiva activa y los modos en Kokiri, sin errores USB ni pérdidas. FLOOR v2
-prueba esa segunda pasada con profundidad de sólo lectura y un margen mínimo,
-manteniendo ambas texturas. Arriba selecciona la revisión; derecha recupera
-la pasada anterior. Prueba e instrucciones en `PS2_FLOOR_DIAGNOSTIC.md`;
-todavía no confirma una solución.
+tampoco cambia las olas con profundidad de sólo lectura y un margen mínimo.
+Sus 130 muestras no contienen errores USB ni registros perdidos. Se observa
+una coordenada de la segunda capa de 32 píxeles que supera el rango ±2047
+del GS. FLOOR v3 recupera la profundidad original y centra las UV de la segunda
+capa mediante repeticiones completas por triángulo. Arriba selecciona esa
+prueba; derecha recupera las UV anteriores. Instrucciones y límites en
+`PS2_FLOOR_DIAGNOSTIC.md`; todavía no confirma una solución física.
 Uso y límites generales en `PS2_HARDWARE.md`.
 
 ## Pantalla negra después del logo con DIAG224

@@ -31,6 +31,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#ifdef PS2_FLOOR_DIAGNOSTIC
+#include <math.h>
+#endif
 
 #include "ps2_types.h"
 #include "ps2_segment.h"
@@ -491,6 +494,65 @@ void ps2_texture_build_vertex_prepared(const PS2TextureVertexSetup* setup,
     output->stq = vertex_to_STQ(u * q * setup->invWidth, v * q * setup->invHeight);
     output->xyz2 = vertex_to_XYZ2(setup->gs, vertex->sx, vertex->sy, depth);
 }
+
+#ifdef PS2_FLOOR_DIAGNOSTIC
+static unsigned texture_repeat_period(unsigned mode, unsigned mask, unsigned extent) {
+    if ((mode & 2) || !mask || mask > 10) return 0;
+    unsigned period = 1u << mask;
+    /* Mirroring is expanded into an ordinary repeating GS image. Match the
+     * same effective period as ps2_texture_apply_tile, including its fallback. */
+    if ((mode & 1) && extent == 2 * period) period *= 2;
+    return period;
+}
+
+PS2TextureWrapResult ps2_texture_rebase_triangle(const TileDescriptor* tile,
+    const RSPState* rsp, const RDPState* rdp,
+    const RSPVertex* const vertices[3], GSPRIMSTQPOINT points[3], bool apply) {
+    PS2TextureWrapResult result = {0};
+    PS2TextureVertexSetup setup;
+    ps2_texture_prepare_vertices(&setup, tile, rsp, rdp);
+    const TileDescriptor* coordinates = coordinate_tile(tile, rdp);
+    const unsigned periods[2] = {
+        texture_repeat_period(coordinates->cms, coordinates->masks, tile->gsTexture.Width),
+        texture_repeat_period(coordinates->cmt, coordinates->maskt, tile->gsTexture.Height)};
+    float uv[2][3], offsets[2] = {0};
+    for (unsigned i = 0; i < 3; i++) {
+        uv[0][i] = (vertices[i]->tc_s * setup.texScaleS / 32.0f) * setup.shiftS - setup.offsetS;
+        uv[1][i] = (vertices[i]->tc_t * setup.texScaleT / 32.0f) * setup.shiftT - setup.offsetT;
+    }
+    for (unsigned axis = 0; axis < 2; axis++) {
+        float minimum = uv[axis][0], maximum = minimum;
+        for (unsigned i = 1; i < 3; i++) {
+            if (uv[axis][i] < minimum) minimum = uv[axis][i];
+            if (uv[axis][i] > maximum) maximum = uv[axis][i];
+        }
+        float span = maximum - minimum;
+        if (span > result.maxSpan) result.maxSpan = span;
+        if (apply && periods[axis]) {
+            /* A common translation preserves the perspective interpolant.
+             * Center the interval to also reduce GS floating-point loss well
+             * before the +/-2047 texel clamp. Subtract before multiplying Q. */
+            float center = (minimum + maximum) * 0.5f;
+            offsets[axis] = (int)(center / periods[axis]) * (float)periods[axis];
+        }
+        for (unsigned i = 0; i < 3; i++) {
+            float before = fabsf(uv[axis][i]);
+            float after = fabsf(uv[axis][i] - offsets[axis]);
+            if (before > result.maxBefore) result.maxBefore = before;
+            if (after > result.maxAfter) result.maxAfter = after;
+            result.outsideBefore += before > 2047.0f;
+            result.outsideAfter += after > 2047.0f;
+        }
+    }
+    result.offsetS = offsets[0]; result.offsetT = offsets[1];
+    if (offsets[0] || offsets[1]) for (unsigned i = 0; i < 3; i++) {
+        float q = points[i].rgbaq.color.q;
+        points[i].stq = vertex_to_STQ((uv[0][i] - offsets[0]) * q * setup.invWidth,
+                                     (uv[1][i] - offsets[1]) * q * setup.invHeight);
+    }
+    return result;
+}
+#endif
 
 void ps2_texture_end_frame(RDPState* rdp) {
     /* Recheck source bytes next frame: animated/reused RAM cannot retain an

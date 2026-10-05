@@ -4,6 +4,44 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Coordenadas repetidas del suelo en hardware — 2026-10-05
+
+- El usuario confirma que FLOOR v2 conserva las mismas olas tanto arriba
+  (profundidad de sólo lectura) como a la derecha (pasada anterior). Esa
+  hipótesis no mejora la imagen. Se conservan BOOT.LOG, DIAG.LOG, manifiesto
+  y hashes en `build/PS2/hardware-runtime/floor-v2-result-20261005-181656`.
+  El análisis recoge 130 intervalos, cero errores USB, pérdidas o NUL y un
+  máximo de 175 ms por escritura del logger. No representa un benchmark
+  de FPS de una única escena.
+- Las muestras de la segunda capa de Kokiri alcanzan unas 2058 unidades
+  de texel para sus imágenes de 32 píxeles. El GS limita UV a ±2047 antes
+  del wrap y reduce la mantisa de STQ. Centrar los 25 triángulos muestreados
+  por repeticiones completas reduciría su máximo absoluto a unas 399
+  unidades; todavía no demuestra que explique todas las olas. La dimensión
+  de la segunda capa se infiere de sus recursos en v2: v3 la registra.
+- FLOOR v3 recupera la profundidad original y centra sólo las UV de la
+  segunda capa. Sustrae a todo el triángulo un mismo múltiplo del periodo,
+  antes de formar STQ, preservando perspectiva y escalas. Usa copias de
+  dibujo sin modificar los vértices compartidos, respeta el periodo espejo
+  expandido y no desplaza ejes con clamp. No aplica módulo por vértice ni
+  omite texturas. Los triángulos demasiado anchos siguen identificados como
+  fuera de rango; no se afirma que la traslación pueda reducir su intervalo.
+- Arriba selecciona UV centradas, izquierda conserva el control con una
+  capa y derecha recupera las UV anteriores. El log FLOOR_LAB v3 añade
+  dimensiones, máscaras, desplazamientos y máximos antes/después de todos
+  los triángulos de un fotograma muestreado cada sesenta.
+- Pasan repetición, espejo, clamp, intervalos anchos, equivalencia del
+  interpolante, XYZ/Q invariantes, caminos inmediato/preparado, recorte,
+  niebla y límites de estado. En los casos acotados del test que reproducen
+  el truncado del GS, el error acumulado baja de 0.0197754 a 0.0012207 texeles.
+  El diagnóstico completo presenta 120 fotogramas:
+  `build/PS2/floor-v3-smoke-20261005-182820/report.json`.
+- Pasa el arranque por USB nativo emulado, con HostFs y tarjetas del jugador
+  desactivados: `build/PS2/usb-stack-checks/20261005-182927-438/report.json`.
+  Se comprueba FLOOR_LAB v3 y las coordenadas centradas en DIAG.LOG.
+  El paquete opcional se prepara para D: con hashes verificados; los ELF
+  habituales siguen intactos. Falta comprobar esta revisión en la PS2 real.
+
 ## Comparación física de capas y segunda pasada de sólo lectura — 2026-10-05
 
 - El usuario compara FLOOR v1 en la SCPH-90010: arriba y derecha conservan
