@@ -16,6 +16,15 @@ la entrada exterior al Árbol Deku y el movimiento en su sala principal.
 También confirma el audio, los objetos recibidos sobre las manos, el retrato
 de equipamiento, la apertura y transparencia del inventario, el aura animada
 del título y el brillo recortado de la ficha de Skulltula dorada.
+La Skulltula sobre un desnivel tiene un ajuste de retirada específico del
+port para evitar que cancele la subida junto al borde. Las pruebas verifican
+su altura mínima, el regreso al techo y el contacto; falta confirmar esta
+última corrección en la partida.
+El guardado prepara ahora su título y una Trifuerza dorada 3D para el navegador
+de la memory card. Se genera desde el modelo extraído localmente; sus archivos
+no se incluyen en Git. Pasan escritura, lectura completa, reparación y recarga
+tras cerrar el emulador, conservando SRAM. Falta revisar su presentación en el
+navegador de la BIOS y en una PS2 física.
 El rendimiento llega a 20 FPS en muchas vistas; quedan caídas al caminar
 según la cámara. A petición del usuario, la optimización adicional se aplaza
 para priorizar el port del resto del juego. El logo inicial de Nintendo 64
@@ -45,7 +54,7 @@ evitando que sobrevivan cámaras y otros estados de una escena anterior.
 Estas pruebas no sustituyen una partida completa.
 El registro detallado está en [CHANGELOG_PS2_PORT.md](CHANGELOG_PS2_PORT.md).
 
-El juego completo ya enlaza: 722 objetos generan `build/PS2-ntsc12/oot_ps2.elf`.
+El juego completo ya enlaza: 724 objetos generan `build/PS2-ntsc12/oot_ps2.elf`.
 El conversor local adapta estructuras, vértices, matrices, listas
 gráficas y cinemáticas; las texturas conservan su secuencia de bytes original.
 La conversión completa cubre escenas, salas, dependencias de objetos,
@@ -130,6 +139,24 @@ solo en `OOT_PS2_TEST`; el juego usa `OOT_PS2`. Ejecuta el script una segunda ve
 sin ese parámetro para verificar persistencia tras un reinicio completo.
 Solo el diagnóstico, con el token explícito creado para la tarjeta nueva,
 puede formatearla; el juego exige una tarjeta PS2 ya formateada en el puerto 1.
+
+Para ejecutar las comprobaciones habituales desde PowerShell 7:
+
+```powershell
+./tools/run_ps2_regression.ps1
+```
+
+Compila las pruebas, comprueba gráficos/audio/SRAM, crea una tarjeta de prueba
+nueva, verifica sus guardados e icono tras reiniciar y prueba siete Skulltulas
+con la IA del port y las colisiones reales. También contrasta las poses con
+los datos originales y comprueba la retirada sobre desniveles. Cierra únicamente
+los emuladores de prueba.
+Guarda resultados, hashes y registros separados en
+`build/PS2/regression/<fecha>/report.json`. `-SkipBuild` reutiliza los ejecutables
+existentes; `-IncludeSceneSweep` añade los 191 casos de entradas a escenas.
+Requiere los datos completos locales, la extracción y las configuraciones/BIOS
+de prueba ya preparadas. Los límites y las comprobaciones manuales restantes
+están en [TESTING_PS2.md](TESTING_PS2.md).
 
 El build del juego usa la extracción local US NTSC 1.2. La procedencia de las
 fuentes, versión del SDK y hash de ROM están en [UPSTREAM.md](UPSTREAM.md).

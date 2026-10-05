@@ -8,6 +8,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "ps2_types.h"
+#include "ps2_save_icon.h"
 
 #define SAVE_PORT 0
 #define SAVE_SLOT 0
@@ -54,6 +55,9 @@ void ps2_save_init(void) {
         return;
     }
     s_mcReady = true;
+    int icon = ps2_save_icon_install(SAVE_PORT, SAVE_SLOT, SAVE_DIR);
+    if (icon < 0) printf("[Save] No se pudo preparar el icono; el guardado sigue disponible\n");
+    else if (icon > 0) printf("[Save] Titulo e icono 3D de Trifuerza instalados y verificados\n");
     printf("[Save] Memory card lista (%s)\n", SAVE_DIR);
 }
 /* Read the original 16-byte v1 header as well as the new revision header. */

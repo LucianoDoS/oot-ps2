@@ -288,6 +288,8 @@ OBJS += $(BUILD_DIR)/generated/freesd_irx.o
 ROM_LDFLAGS := -Wl,-T,$(BUILD_DIR)/generated/actor_overlays.ld
 ifneq ($(OOT_UPSTREAM),)
 OBJS += $(BUILD_DIR)/generated/rom_metadata.o
+OBJS += $(BUILD_DIR)/generated/save_icon_data.o
+$(BUILD_DIR)/src/platform/ps2/io/ps2_save_icon.o: CFLAGS += -DPS2_HAS_SAVE_ICON=1
 ROM_LDFLAGS += -Wl,-T,$(BUILD_DIR)/generated/rom_segments.ld
 endif
 endif
@@ -301,6 +303,16 @@ OBJS += $(BUILD_DIR)/tools/ps2_actor_overlay_smoke.o
 DEPS += $(BUILD_DIR)/tools/ps2_scene_smoke.d
 DEPS += $(BUILD_DIR)/tools/ps2_actor_overlay_smoke.d
 ROM_LDFLAGS += -Wl,--wrap=ConsoleLogo_Init,--wrap=GameState_Update,--wrap=GameState_Destroy,--wrap=GameState_ReqPadData
+endif
+ifeq ($(PS2_SKULLTULA_SMOKE),1)
+OBJS += $(BUILD_DIR)/tools/ps2_skulltula_smoke.o
+DEPS += $(BUILD_DIR)/tools/ps2_skulltula_smoke.d
+ROM_LDFLAGS += -Wl,--wrap=ConsoleLogo_Init,--wrap=GameState_Update,--wrap=GameState_ReqPadData
+endif
+ifeq ($(PS2_SKULLTULA_TRACE),1)
+OBJS += $(BUILD_DIR)/tools/ps2_skulltula_trace.o
+DEPS += $(BUILD_DIR)/tools/ps2_skulltula_trace.d
+ROM_LDFLAGS += -Wl,--wrap=Actor_UpdateAll
 endif
 endif
 
@@ -336,6 +348,7 @@ $(BUILD_DIR)/generated/actor_overlays.ld $(BUILD_DIR)/generated/actor_overlays.i
 
 $(BUILD_DIR)/src/platform/ps2/ps2_actor_overlays.o: $(BUILD_DIR)/generated/actor_overlays.inc
 $(BUILD_DIR)/src/platform/ps2/ps2_actor_overlays.o: PLATFORM_INCLUDES += -I$(BUILD_DIR)/generated
+$(BUILD_DIR)/tools/ps2_skulltula_smoke.o: $(BUILD_DIR)/generated/skulltula_pose_cases.h
 $(BUILD_DIR)/tools/ps2_actor_overlay_smoke.o: tools/ps2_actor_overlay_smoke.c $(BUILD_DIR)/generated/actor_overlays.inc
 	@echo "[CC PS2 TEST] $<"
 	$(Q)$(CC) $(CFLAGS) -Iinclude -Isrc -I$(BUILD_DIR)/generated $(PLATFORM_INCLUDES) $(DEPFLAGS) -c $< -o $@
@@ -370,6 +383,15 @@ $(BUILD_DIR)/generated/freesd_irx.o: $(BUILD_DIR)/generated/freesd_irx.c
 	$(Q)$(CC) $(CFLAGS) $(PLATFORM_INCLUDES) -c $< -o $@
 
 ifneq ($(OOT_UPSTREAM),)
+$(BUILD_DIR)/generated/save_icon_data.c: tools/generate_ps2_save_icon.py \
+    $(OOT_UPSTREAM)/extracted/$(OOT_ASSET_VERSION)/assets/objects/object_triforce_spot/gTriforceVtx.inc.c \
+    $(OOT_UPSTREAM)/extracted/$(OOT_ASSET_VERSION)/assets/objects/object_triforce_spot/gTriforceDL.inc.c
+	@python3 tools/generate_ps2_save_icon.py --upstream $(OOT_UPSTREAM) \
+	    --version $(OOT_ASSET_VERSION) --output $(BUILD_DIR)/generated
+
+$(BUILD_DIR)/generated/save_icon_data.o: $(BUILD_DIR)/generated/save_icon_data.c
+	$(Q)$(CC) $(CFLAGS) $(PLATFORM_INCLUDES) -c $< -o $@
+
 $(BUILD_DIR)/generated/rom_metadata.c $(BUILD_DIR)/generated/rom_segments.ld \
 $(BUILD_DIR)/generated/assets/audio/sequence_sizes.h \
 $(BUILD_DIR)/generated/assets/audio/soundfont_sizes.h &: tools/generate_ps2_rom_metadata.py \

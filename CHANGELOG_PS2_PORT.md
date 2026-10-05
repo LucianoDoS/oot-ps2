@@ -4,6 +4,68 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Icono de memory card y pruebas automáticas — 2026-10-04
+
+- El usuario pide el nombre del juego y una Trifuerza 3D para el navegador
+  de la memory card. El build genera `icon.sys` y `triforce.icn` desde
+  `gTriforceVtx`/`gTriforceDL` de la extracción local: 96 triángulos, biseles,
+  volumen y hueco central, con material dorado. El título usa Shift-JIS en
+  dos líneas: «Legend of Zelda» / «Ocarina of Time». El modelo ocupa 39736
+  bytes y los metadatos 964; el ELF normal enlaza 724 objetos. Los datos
+  generados y vértices del juego permanecen en `build/`, fuera de Git.
+- El backend instala el modelo antes de los metadatos, verifica su lectura
+  completa y omite reescrituras si los bytes ya coinciden. Sólo opera sobre
+  esos dos archivos; conserva los nombres, versión, checksums y revisiones
+  de los guardados alternos. Un error del icono no desactiva SRAM.
+- La prueba con libmc usa una tarjeta nueva aislada. Pasan dos escrituras,
+  recarga de la última revisión, recuperación de una copia dañada, lectura
+  de los dos archivos del navegador y persistencia al cerrar/reabrir PCSX2.
+  También pasan reparación de un modelo truncado y de metadatos ausentes,
+  conservación del guardado tras un fallo del icono e instalación sin cambios.
+  El lector independiente comprueba geometría, normales, título, referencias,
+  animación, textura y límites. La vista previa es un render del modelo;
+  falta confirmar su escala e iluminación en la BIOS y en PS2 física.
+- `tools/run_ps2_regression.ps1` reúne gráficos/audio/SRAM, memory card y
+  Skulltulas, con un informe JSON, hashes y registros nuevos por ejecución.
+  Rechaza PASS antiguos, detecta fallos/excepciones/tiempos agotados y cierra
+  sólo los procesos de prueba identificados. Cada ejecución crea su tarjeta
+  propia; la configuración de la partida queda excluida. El parámetro
+  `-IncludeSceneSweep` agrega los 191 casos de entradas a las 101 escenas.
+  No se declara comprobada la progresión completa ni la PS2 real.
+- Sobre la araña de la sala 10: el registro de la partida mantiene suelo
+  Y=720, plataforma Y=820, cilindros originales y masa normal de Link.
+  El recorrido observado pasa fuera de los cilindros de contacto. Siete
+  posiciones originales pasan bajada, aterrizaje, empuje y vuelta al techo.
+  La prueba adicional reproduce la alternancia de bajada/regreso a la
+  altura de la plataforma y confirma contacto frontal con respuesta al
+  golpe (`frontalHit=1`, `pushAndResponse=1`). Ese diagnóstico no se consideró
+  una corrección: el usuario confirma el problema antes y después de cruzar.
+  Se añade un ajuste de IA exclusivo de PS2: ante una superficie más alta
+  donde Link está apoyado, anticipa el siguiente paso descendente, cancela
+  la velocidad hacia abajo y completa el regreso al techo antes de volver
+  a bajar. No cambia el suelo, los daños ni los cilindros y no añade barreras.
+  Las pruebas contrastan 9990 canales de pose con la extracción original,
+  alturas 799/820, contacto frontal y regreso al techo. La comprobación
+  visual en la partida queda pendiente.
+  La prueba EE posterior pasa: mínimos Y=831.094 y Y=856.834, ambos por
+  encima de la superficie más 32 unidades, con cuatro regresos al techo
+  en cada caso; el contacto frontal sigue activando empuje y respuesta.
+  Las siete posiciones a nivel del suelo siguen pasando. Registro:
+  `build/PS2/pcsx2-skulltula-ledge-final.log`.
+  Ejecución del comando completo con compilación:
+  `build/PS2/regression/20261004-184640/report.json`.
+  Registro de partida: `build/PS2/pcsx2-skulltula-live-final.log`.
+- El juego normal con icono arranca en PCSX2: instala y verifica ambos
+  archivos en `OOT_PS2`, carga los 32768 bytes de la revisión 41 y verifica
+  una escritura posterior como revisión 42. La tarjeta anterior se conserva
+  en `oot-port-before-memorycard-icon.ps2`. Su presentación en el navegador
+  aún no está confirmada.
+- La versión normal con el ajuste de retirada vuelve a arrancar y carga la
+  revisión 42 sin reescribir los archivos del icono, que ya coinciden. Se
+  conserva otra copia de la tarjeta en `oot-port-before-skulltula-ledge-fix.ps2`.
+  SHA-256 del ELF abierto:
+  `1CE8CD742CB0D52DBF390BA664A888B4EC088ACF7530848863DC4080CE75E03B`.
+
 ## Fundidos, huevos de Gohma, esmeralda y búho — 2026-10-04
 
 - Los colores empaquetados `RRGGBBAA` de las transiciones se asignaban

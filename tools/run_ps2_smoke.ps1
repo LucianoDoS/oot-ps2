@@ -1,7 +1,8 @@
 param(
     [string]$Emulator = 'C:\Program Files\PCSX2\pcsx2-qt.exe',
     [string]$DataRoot = (Join-Path $PSScriptRoot '..\build\PCSX2-diagnostic'),
-    [ValidateSet('renderer', 'task')][string]$Diagnostic = 'renderer'
+    [ValidateSet('renderer', 'task')][string]$Diagnostic = 'renderer',
+    [string]$LogPath = ''
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
@@ -9,6 +10,7 @@ $elfName = if ($Diagnostic -eq 'task') { 'oot_ps2_task_smoke.elf' } else { 'oot_
 $elf = Join-Path $projectRoot ('build\PS2\' + $elfName)
 $logName = if ($Diagnostic -eq 'task') { 'pcsx2-task-smoke.log' } else { 'pcsx2-smoke.log' }
 $log = Join-Path $projectRoot ('build\PS2\' + $logName)
+if ($LogPath) { $log = [IO.Path]::GetFullPath($LogPath) }
 $pidFile = Join-Path $projectRoot 'build\PS2\pcsx2-diagnostic.pid'
 if (!(Test-Path -LiteralPath $elf)) { throw 'Build the smoke ELF first.' }
 if (!(Test-Path -LiteralPath (Join-Path $DataRoot 'PCSX2\inis\PCSX2.ini'))) {

@@ -45,6 +45,9 @@ typedef struct EnSt {
     /* 0x0410 */ s16 swayAngle;
     /* 0x0412 */ Vec3s jointTable[30];
     /* 0x04C6 */ Vec3s morphTable[30];
-} EnSt; // size = 0x057C
+#if PLATFORM_PS2
+    u8 ps2RetreatToCeiling;
+#endif
+} EnSt; // N64 size = 0x057C; PS2 adds retreat state.
 
 #endif

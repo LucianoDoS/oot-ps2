@@ -17,6 +17,9 @@
 #include "effect.h"
 #include "play_state.h"
 #include "player.h"
+#if PLATFORM_PS2
+#include "regs.h"
+#endif
 
 #include "assets/objects/object_st/object_st.h"
 
@@ -805,6 +808,9 @@ void EnSt_Sway(EnSt* this) {
 
 void EnSt_Init(Actor* thisx, PlayState* play) {
     EnSt* this = (EnSt*)thisx;
+#if PLATFORM_PS2
+    this->ps2RetreatToCeiling = false;
+#endif
     s32 pad;
 
     ActorShape_Init(&this->actor.shape, 0.0f, ActorShadow_DrawCircle, 14.0f);
@@ -923,6 +929,23 @@ void EnSt_MoveToGround(EnSt* this, PlayState* play) {
         }
     }
 
+#if PLATFORM_PS2
+    /* Over a ledge the center floor ray can be below Player's platform.
+     * Predict the next descent step so the body does not sink through that
+     * platform, then finish the retreat before considering another drop. */
+    Player* player = GET_PLAYER(play);
+    f32 playerFloor = player->actor.floorHeight;
+    if ((player->actor.bgCheckFlags & BGCHECKFLAG_GROUND) && this->actor.xzDistToPlayer <= 160.0f &&
+        playerFloor > this->actor.floorHeight + this->floorHeightOffset &&
+        this->actor.world.pos.y + this->actor.velocity.y * (R_UPDATE_RATE * 0.5f) <=
+            playerFloor + this->floorHeightOffset) {
+        this->ps2RetreatToCeiling = true;
+        this->actor.velocity.y = 0.0f;
+        EnSt_SetReturnToCeilingAnimation(this);
+        EnSt_SetupAction(this, EnSt_ReturnToCeiling);
+        return;
+    }
+#endif
     if (!EnSt_IsCloseToPlayer(this, play)) {
         // the player moved out of range, return to the ceiling.
         EnSt_SetReturnToCeilingAnimation(this);
@@ -945,6 +968,18 @@ void EnSt_ReturnToCeiling(EnSt* this, PlayState* play) {
         EnSt_SetReturnToCeilingAnimation(this);
     }
 
+#if PLATFORM_PS2
+    if (this->ps2RetreatToCeiling) {
+        if (EnSt_IsCloseToInitialPos(this)) {
+            this->ps2RetreatToCeiling = false;
+            EnSt_SetWaitingAnimation(this);
+            EnSt_SetupAction(this, EnSt_WaitOnCeiling);
+        } else {
+            this->actor.velocity.y = 4.0f * animPctDone;
+        }
+        return;
+    }
+#endif
     if (EnSt_IsCloseToPlayer(this, play)) {
         // player came back into range
         EnSt_SetDropAnimAndVel(this);

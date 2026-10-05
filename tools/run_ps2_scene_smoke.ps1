@@ -1,10 +1,11 @@
-param([string]$Emulator = 'C:\Program Files\PCSX2\pcsx2-qt.exe')
+param([string]$Emulator = 'C:\Program Files\PCSX2\pcsx2-qt.exe', [string]$LogPath = '')
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $testRoot = Join-Path $projectRoot 'build\PS2-full-test'
 $dataRoot = Join-Path $projectRoot 'build\PCSX2-scene-sweep'
 $elf = Join-Path $testRoot 'oot_ps2_scene_smoke.elf'
 $log = Join-Path $testRoot 'pcsx2-scene-sweep.log'
+if ($LogPath) { $log = [IO.Path]::GetFullPath($LogPath) }
 $pidFile = Join-Path $testRoot 'pcsx2-scene-sweep.pid'
 if (!(Test-Path -LiteralPath $elf)) { throw 'Build the scene test ELF first.' }
 if (!(Test-Path -LiteralPath (Join-Path $testRoot 'oot.z64'))) { throw 'Missing private full data image.' }

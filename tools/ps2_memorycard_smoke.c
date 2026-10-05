@@ -10,10 +10,12 @@
 #include <stdio.h>
 #include <string.h>
 #include "ps2_types.h"
+#include "ps2_save_icon.h"
 extern void ps2_save_init(void);
 extern int ps2_save_read(void*, u32);
 extern int ps2_save_write(const void*, u32);
 static u8 expected[0x8000], recovered[0x8000];
+static u8 iconBuffer[0x10000] __attribute__((aligned(64)));
 
 static int wait_result(int submitted) {
     int result;
@@ -24,6 +26,35 @@ static void finish(int failed, const char* what) {
     printf("[PS2 CARD TEST] %s: %s\n", failed ? "FAIL" : "PASS", what);
     fflush(stdout);
     SleepThread();
+}
+static int check_icon_file(const char* path, const u8* expectedData, unsigned expectedSize) {
+    int fd = wait_result(mcOpen(0, 0, path, FIO_O_RDONLY));
+    if (fd < 0 || expectedSize > sizeof(iconBuffer)) return -1;
+    memset(iconBuffer, 0, sizeof(iconBuffer));
+    int bytes = wait_result(mcRead(fd, iconBuffer, sizeof(iconBuffer)));
+    int closed = wait_result(mcClose(fd));
+    return closed < 0 || bytes != (int)expectedSize || memcmp(iconBuffer, expectedData, expectedSize) ? -1 : 0;
+}
+static int check_icons(void) {
+    if (check_icon_file("/OOT_PS2_TEST/icon.sys", ps2_save_icon_sys, ps2_save_icon_sys_size) ||
+        check_icon_file("/OOT_PS2_TEST/triforce.icn", ps2_save_icon_model, ps2_save_icon_model_size) ||
+        ps2_save_icon_install(0, 0, "OOT_PS2_TEST") != 0) return -1;
+    printf("[PS2 CARD TEST] Browser files read back; unchanged installation skips writes\n");
+    return 0;
+}
+static int check_icon_repair(void) {
+    int fd = wait_result(mcOpen(0, 0, "/OOT_PS2_TEST/triforce.icn", FIO_O_WRONLY | FIO_O_TRUNC));
+    if (fd < 0) return -1;
+    int written = wait_result(mcWrite(fd, "bad", 3));
+    int closed = wait_result(mcClose(fd));
+    if (written != 3 || closed < 0 || ps2_save_icon_install(0, 0, "OOT_PS2_TEST") != 1 || check_icons()) return -1;
+    if (wait_result(mcDelete(0, 0, "/OOT_PS2_TEST/icon.sys")) < 0 ||
+        ps2_save_icon_install(0, 0, "OOT_PS2_TEST") != 1 || check_icons()) return -1;
+    /* A metadata failure must not invalidate the already committed SRAM. */
+    if (ps2_save_icon_install(0, 0, "DIRECTORY_THAT_DOES_NOT_EXIST") != -1 ||
+        ps2_save_read(recovered, sizeof(recovered)) || memcmp(expected, recovered, sizeof(expected))) return -1;
+    printf("[PS2 CARD TEST] Corrupt model and missing icon.sys repaired; SRAM unchanged after icon failure\n");
+    return 0;
 }
 int main(void) {
     SifInitRpc(0);
@@ -50,11 +81,13 @@ int main(void) {
     }
     for (u32 i = 0; i < sizeof(expected); i++) expected[i] = (i * 17u + (i >> 8)) & 255;
     ps2_save_init();
+    if (check_icons()) { finish(1, "browser icon/title readback"); return 1; }
     if (ps2_save_read(recovered, sizeof(recovered)) == 0) {
         if (memcmp(expected, recovered, sizeof(expected))) {
             finish(1, "cold restart image differs"); return 1;
         }
-        finish(0, "cold restart: 32768 bytes persisted and verified");
+        if (check_icon_repair()) { finish(1, "icon repair must preserve saved image"); return 1; }
+        finish(0, "cold restart: 32768 bytes and 3D browser icon persisted and verified");
         return 0;
     }
     if (ps2_save_write(expected, sizeof(expected))) { finish(1, "first image write"); return 1; }
@@ -73,6 +106,7 @@ int main(void) {
     ps2_save_init();
     if (bytes != 3 || closed < 0 || ps2_save_read(recovered, sizeof(recovered)) ||
         memcmp(expected, recovered, sizeof(expected))) { finish(1, "corrupt-copy recovery"); return 1; }
+    if (check_icon_repair()) { finish(1, "icon repair must preserve saved image"); return 1; }
     finish(0, "real card: alternating writes, latest reload and corrupt-copy recovery; restart to verify persistence");
     return 0;
 }
