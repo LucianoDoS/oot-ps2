@@ -159,9 +159,17 @@ interpolación perspectiva pasa 256 cámaras y 1323 esquinas, junto a las prueba
 de las dos capas del suelo. Esto demuestra la corrección del cálculo, pero el
 usuario ya confirma que las olas siguen igual después de esta revisión física.
 
-La comparación adicional `mass:/OOTPS2/FLOOR.ELF` permite alternar con la
-cruceta entre dibujo normal, una capa y perspectiva forzada sin reiniciar.
-Registra el modo y muestras UV/W/STQ/XYZ del material. Instrucciones en
+La primera comparación adicional `mass:/OOTPS2/FLOOR.ELF` mantuvo las olas
+con perspectiva forzada; quitar la segunda capa las eliminó junto a parte de
+la textura. El log confirma los modos en Kokiri y perspectiva activa, sin
+errores USB ni pérdidas. Se conserva en
+`build/PS2/hardware-runtime/floor-lab-result-20261005-175141`.
+
+FLOOR v2 permite alternar con la cruceta entre segunda pasada revisada
+(arriba), una capa (izquierda) y la pasada anterior (derecha), sin reiniciar.
+La revisión mantiene la prueba de profundidad pero no vuelve a escribirla
+desde la segunda capa, con un margen mínimo en Z. Registra el modo y muestras
+UV/W/STQ/XYZ de ambas capas. Instrucciones en
 `PS2_FLOOR_DIAGNOSTIC.md` y `SUELO.txt` del paquete adicional. El ELF habitual
 se conserva; esta comparación todavía no es una corrección física confirmada.
 

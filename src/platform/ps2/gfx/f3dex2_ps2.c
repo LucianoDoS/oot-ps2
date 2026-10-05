@@ -331,7 +331,7 @@ static volatile unsigned s_floorRequested;
 static unsigned s_floorMode, s_floorFrame;
 static bool s_floorSampled;
 void ps2_floor_request_mode(unsigned mode) {
-    if (mode <= PS2_FLOOR_PERSPECTIVE) s_floorRequested = mode;
+    if (mode <= PS2_FLOOR_LEGACY) s_floorRequested = mode;
 }
 void ps2_floor_begin_frame(void) {
     s_floorMode = s_floorRequested;
@@ -339,10 +339,10 @@ void ps2_floor_begin_frame(void) {
     s_floorSampled = false;
 }
 unsigned ps2_floor_mode(void) { return s_floorMode; }
-static void floor_trace(const RSPState* rsp, const RDPState* rdp,
+static bool floor_trace(const RSPState* rsp, const RDPState* rdp,
                         const TileDescriptor* tile, const RSPVertex* const* vertices,
                         const GSPRIMSTQPOINT* points) {
-    if (s_floorSampled || s_floorFrame % 60 || !ps2_combiner_texture_lerp(rdp)) return;
+    if (s_floorSampled || s_floorFrame % 60 || !ps2_combiner_texture_lerp(rdp)) return false;
     s_floorSampled = true;
     printf("[PS2 FLOOR] frame=%u mode=%u hi=%08x lo=%08x env=%08x size=%ux%u scale=%.6g,%.6g shift=%u,%u\n",
         s_floorFrame, s_floorMode, rdp->otherMode.hi, rdp->otherMode.lo,
@@ -356,6 +356,7 @@ static void floor_trace(const RSPState* rsp, const RDPState* rdp,
             (unsigned)points[i].xyz2.xyz.x, (unsigned)points[i].xyz2.xyz.y,
             (unsigned)points[i].xyz2.xyz.z);
     }
+    return true;
 }
 #endif
 static u64 s_runGroundVertexValid;
@@ -566,7 +567,7 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
         if (!pointReady[2]) prepare_texture_point(tile,rsp,rdp,v2,(u32)c2,z2,fog,pointSlots[2],false,&points[2]);
 #ifdef PS2_FLOOR_DIAGNOSTIC
         const RSPVertex* floorVertices[3]={v0,v1,v2};
-        floor_trace(rsp,rdp,tile,floorVertices,points);
+        bool traceFloor=floor_trace(rsp,rdp,tile,floorVertices,points);
 #endif
 #ifdef PS2_RENDERER_SMOKE_CAPTURE
         capture_points(points);
@@ -595,6 +596,21 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
             if (!second->gsTextureLoaded) ps2_texture_upload(second, rdp);
             if (second->gsTextureLoaded) {
                 u32 depths[3] = {z0,z1,z2};
+#ifdef PS2_FLOOR_DIAGNOSTIC
+                /* Compare a read-only overlay with the exact legacy pass.
+                 * Retain GEQUAL: disabling Z test would expose hidden ground.
+                 * Only depth-writing, depth-tested receivers need this margin. */
+                bool receiverWrites=rdp->zWriteEnabled;
+                bool protectReceiver=ps2_floor_mode()==PS2_FLOOR_NORMAL &&
+                    receiverWrites && (rdp->otherMode.lo & 0x10);
+                if (protectReceiver) {
+                    u32 maximum=(gs->PSMZ==GS_PSMZ_16 || gs->PSMZ==GS_PSMZ_16S)?0xffffu:0xffffffu;
+                    u32 margin=maximum==0xffffu?1:2;
+                    for (unsigned i=0;i<3;i++)
+                        depths[i]=depths[i]>maximum-margin?maximum:depths[i]+margin;
+                    ps2_zbuffer_set_writes(rdp,false);
+                }
+#endif
                 u32 alpha = ((rdp->envColor & 255) * 128 + 127) / 255;
                 ps2_texture_apply_tile(second, rdp);
                 for (int i = 0; i < 3; i++) {
@@ -609,6 +625,18 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
                 gs->PrimFogEnable = fog;
                 gsKit_prim_list_triangle_goraud_texture_stq_3d(gs, &second->gsTexture, 3, points);
                 rdp->stats.texturePackets++;
+#ifdef PS2_FLOOR_DIAGNOSTIC
+                if (traceFloor) {
+                    printf("[PS2 FLOOR LAYER] mode=%u writes=%u compare=%u shift=%u,%u depth=%u,%u,%u\n",
+                        ps2_floor_mode(),rdp->zWriteEnabled,!!(rdp->otherMode.lo&0x10),
+                        (unsigned)second->shifts,(unsigned)second->shiftt,
+                        (unsigned)depths[0],(unsigned)depths[1],(unsigned)depths[2]);
+                    for (unsigned i=0;i<3;i++) printf("[PS2 FLOOR OVERLAY] i=%u stq=%.9g,%.9g,%.9g xyz=%u,%u,%u\n",
+                        i,points[i].stq.st.s,points[i].stq.st.t,points[i].rgbaq.color.q,
+                        (unsigned)points[i].xyz2.xyz.x,(unsigned)points[i].xyz2.xyz.y,(unsigned)points[i].xyz2.xyz.z);
+                }
+                if (protectReceiver) ps2_zbuffer_set_writes(rdp,receiverWrites);
+#endif
                 gs->PrimFogEnable = previousFog;
                 ps2_gs_set_alpha(rdp, rdp->gs_alpha);
                 rdp->stats.submitted++;

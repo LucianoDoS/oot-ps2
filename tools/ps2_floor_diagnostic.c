@@ -10,7 +10,7 @@ void __wrap_GameState_ReqPadData(GameState* state) {
     static unsigned announced, mode;
     __real_GameState_ReqPadData(state);
     if (!announced) {
-        ps2_runtime_event("FLOOR_LAB v1 up=normal left=base-only right=force-perspective");
+        ps2_runtime_event("FLOOR_LAB v2 up=read-only-overlay left=base-only right=legacy");
         announced = 1;
     }
     if (state->main != Play_Main) return;

@@ -6,10 +6,10 @@ Busca el suelo donde aparecen las olas al girar la cámara.
 Con el inventario cerrado, sin diálogo ni transición, pulsa una dirección
 de la cruceta para elegir el modo. No hace falta reiniciar:
 
-- Arriba: dibujo normal, con las dos capas del suelo.
+- Arriba: segunda pasada revisada, conservando las dos capas del suelo.
+  Es el modo inicial de esta versión.
 - Izquierda: sólo la primera capa. El suelo cambia de aspecto; es intencional.
-- Derecha: dos capas con perspectiva forzada. Si el material ya tenía
-  perspectiva, la imagen debe mantenerse igual.
+- Derecha: segunda pasada anterior, para comparar con las olas originales.
 
 Gira la cámara en el mismo lugar durante unos diez segundos con cada modo.
 Anota en cuál desaparecen, disminuyen o siguen iguales las olas. Usa el
@@ -25,15 +25,27 @@ FLOOR.ELF reemplaza BOOT.LOG y DIAG.LOG al arrancar. La copia del diagnóstico
 conserva los registros anteriores en el PC. Al acabar la comparación, conecta
 el USB de nuevo al PC para recoger DIAG.LOG antes de ejecutar otro diagnóstico.
 
-El log guarda `FLOOR_MODE`, la escena y el fotograma de cada selección.
+El log identifica esta versión mediante `FLOOR_LAB v2` y guarda `FLOOR_MODE`,
+la escena y el fotograma de cada selección.
 Cada sesenta fotogramas con material de suelo recoge un triángulo: modos RDP,
-escala, coordenadas UV, W y los valores STQ/XYZ enviados al GS. Son muestras
+escala, coordenadas UV, W y los valores STQ/XYZ enviados al GS. Incluye la
+profundidad y la máscara de escritura de la segunda pasada. Son muestras
 acotadas, no una captura de todos los polígonos. Las escrituras del logger
 pueden introducir pausas; esta variante sirve para comparar la imagen.
 
 El usuario confirma que las olas persisten tanto con DIAG224 como con la
-corrección de precisión del recorte. FLOOR.ELF permite aislar su causa;
-todavía no se presenta como una corrección confirmada en hardware.
+corrección de precisión del recorte. La primera comparación de FLOOR.ELF
+mantiene las olas en los modos normal y perspectiva forzada; omitir la segunda
+capa las elimina junto a parte de la textura. El registro confirma perspectiva
+activada, selecciones en Kokiri y ausencia de errores USB o pérdidas.
+
+Esta segunda versión prueba la profundidad de esa capa sin omitirla. Mantiene
+GEQUAL y añade sólo dos unidades de margen en Z24 (una en Z16), sin reescribir
+la profundidad del receptor; restaura el estado antes del siguiente dibujo.
+El margen sólo se aplica cuando la primera pasada compara y escribe Z. Las
+dos capas mantienen sus coordenadas, escalas, mezcla y niebla. La derecha
+recupera exactamente la política anterior. No se presenta todavía como una
+corrección confirmada en hardware; también deben comprobarse las ocultaciones.
 
 Para volver al juego habitual ejecuta `mass:/OOTPS2/OOTPS2.ELF`.
 

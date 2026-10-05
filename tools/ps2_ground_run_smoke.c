@@ -53,6 +53,23 @@ int ps2_ground_run_smoke(void) {
         const GSPRIMSTQPOINT* points=f3dex2_test_points(&referenceCount);
         u32 referencePackets=g_rdpState.stats.texturePackets-packets;
         memcpy(reference,points,referenceCount*sizeof(*points));
+#ifdef PS2_FLOOR_DIAGNOSTIC
+        if (g_rdpState.zWriteEnabled != !!(low & 0x20) ||
+            g_rdpState.gs->Test->ZTST != ((low & 0x10)?2:1)) failures++;
+        if (fixture!=0) for (unsigned i=0;i+5<referenceCount;i+=6) {
+            for (unsigned vertex=0;vertex<3;vertex++) {
+                const GSPRIMSTQPOINT* receiver=&reference[i+vertex];
+                const GSPRIMSTQPOINT* layer=&reference[i+3+vertex];
+                u32 depth=receiver->xyz2.xyz.z & 0xffffffu;
+                u32 expected=(low & 0x30)==0x30?(depth>0xfffffdu?0xffffffu:depth+2):depth;
+                if ((layer->xyz2.xyz.z & 0xffffffu)!=expected ||
+                    layer->xyz2.xyz.x!=receiver->xyz2.xyz.x ||
+                    layer->xyz2.xyz.y!=receiver->xyz2.xyz.y ||
+                    (layer->xyz2.xyz.z >> 24)!=(receiver->xyz2.xyz.z >> 24) ||
+                    layer->rgbaq.color.q!=receiver->rgbaq.color.q) failures++;
+            }
+        }
+#endif
         packets=g_rdpState.stats.texturePackets;
         u32 builds=g_rdpState.stats.textureVertexBuilds, hits=g_rdpState.stats.textureVertexHits;
         f3dex2_test_capture(true);
@@ -99,11 +116,22 @@ int ps2_ground_run_smoke(void) {
     ps2_floor_begin_frame();
     f3dex2_test_capture(true);
     u32 packets=g_rdpState.stats.texturePackets;
+    u64* queueStart=g_rdpState.gs->CurQueue->pool_cur;
+    u64 testBefore=g_rdpState.gs_test;
     f3dex2_tri1(0x05000204,0,&g_rspState,&g_rdpState);
     unsigned normalCount;
     const GSPRIMSTQPOINT* points=f3dex2_test_points(&normalCount);
     memcpy(reference,points,normalCount*sizeof(*points));
     if (normalCount!=6 || g_rdpState.stats.texturePackets-packets!=2) labFailures++;
+    unsigned readonlySeen=0,restoreSeen=0;
+    for (u64* q=queueStart; q+1<(u64*)g_rdpState.gs->CurQueue->pool_cur;q+=2) {
+        if (q[1] == (u64)(GS_ZBUF_1+g_rdpState.gs->PrimContext)) {
+            if (q[0] & (1ull<<32)) readonlySeen++;
+            else if (readonlySeen) restoreSeen++;
+        }
+    }
+    if (!readonlySeen || !restoreSeen || !g_rdpState.zWriteEnabled ||
+        g_rdpState.gs_test!=testBefore || g_rdpState.gs->Test->ZTST!=2) labFailures++;
     ps2_floor_request_mode(PS2_FLOOR_BASE_ONLY);
     ps2_floor_request_mode(99); /* Invalid requests must not erase the valid one. */
     if (ps2_floor_mode()!=PS2_FLOOR_NORMAL) labFailures++;
@@ -116,7 +144,7 @@ int ps2_ground_run_smoke(void) {
     points=f3dex2_test_points(&count);
     if (count!=3 || g_rdpState.stats.texturePackets-packets!=1 ||
         memcmp(reference,points,3*sizeof(*points))) labFailures++;
-    ps2_floor_request_mode(PS2_FLOOR_PERSPECTIVE);
+    ps2_floor_request_mode(PS2_FLOOR_LEGACY);
     ps2_floor_begin_frame();
     f3dex2_test_capture(true);
     f3dex2_batch_begin(&g_rspState,&g_rdpState);
@@ -125,17 +153,22 @@ int ps2_ground_run_smoke(void) {
     points=f3dex2_test_points(&count);
     if (count!=6) labFailures++;
     for (unsigned i=0; i<count; i++) {
-        if (points[i].rgbaq.color.q!=0.5f ||
-            points[i].stq.st.s!=reference[i].stq.st.s*0.5f ||
-            points[i].stq.st.t!=reference[i].stq.st.t*0.5f ||
-            points[i].xyz2.xyz2!=reference[i].xyz2.xyz2) labFailures++;
+        u32 expectedDepth=reference[i%3].xyz2.xyz.z;
+        if (i>=3 && reference[i].xyz2.xyz.z !=
+            (expectedDepth>0xfffffdu?0xffffffu:expectedDepth+2)) labFailures++;
+        if (points[i].rgbaq.color.q!=1.0f ||
+            points[i].stq.st.s!=reference[i].stq.st.s ||
+            points[i].stq.st.t!=reference[i].stq.st.t ||
+            points[i].xyz2.xyz.x!=reference[i].xyz2.xyz.x ||
+            points[i].xyz2.xyz.y!=reference[i].xyz2.xyz.y ||
+            points[i].xyz2.xyz.z!=expectedDepth) labFailures++;
     }
     PS2TextureVertexSetup setup;
     GSPRIMSTQPOINT direct, prepared;
     ps2_texture_prepare_vertices(&setup,&g_rdpState.tile[0],&g_rspState,&g_rdpState);
     ps2_texture_build_vertex(&g_rdpState.tile[0],&g_rspState,&g_rdpState,&g_rspState.vtx[0],0xffffffff,123,&direct);
     ps2_texture_build_vertex_prepared(&setup,&g_rspState.vtx[0],0xffffffff,123,&prepared);
-    if (memcmp(&direct,&prepared,sizeof(direct)) || direct.rgbaq.color.q!=0.5f) labFailures++;
+    if (memcmp(&direct,&prepared,sizeof(direct)) || direct.rgbaq.color.q!=1.0f) labFailures++;
     rdp_setcombine(0,0,&g_rdpState);
     ps2_texture_prepare_vertices(&setup,&g_rdpState.tile[0],&g_rspState,&g_rdpState);
     ps2_texture_build_vertex(&g_rdpState.tile[0],&g_rspState,&g_rdpState,&g_rspState.vtx[0],0xffffffff,123,&direct);
@@ -144,7 +177,7 @@ int ps2_ground_run_smoke(void) {
     ps2_floor_begin_frame();
     f3dex2_test_capture(false);
     failures+=labFailures;
-    printf("[PS2 FLOOR LAB TEST] frame latch, layer isolation, both vertex paths and unaffected materials failures=%d\n",labFailures);
+    printf("[PS2 FLOOR LAB TEST] frame latch, layer isolation, legacy depth, both vertex paths and unaffected materials failures=%d\n",labFailures);
 #endif
     g_rspState=savedRsp; g_rdpState=savedRdp;
     ps2_gs_state_reset(); rdp_apply_othermode(&g_rdpState);

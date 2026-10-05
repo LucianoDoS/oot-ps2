@@ -17,7 +17,7 @@ void f3dex2_tri2(u32 w0, u32 w1, RSPState* rsp, RDPState* rdp);
 bool f3dex2_batch_begin(RSPState* rsp, RDPState* rdp);
 void f3dex2_batch_end(RDPState* rdp);
 #ifdef PS2_FLOOR_DIAGNOSTIC
-enum { PS2_FLOOR_NORMAL, PS2_FLOOR_BASE_ONLY, PS2_FLOOR_PERSPECTIVE };
+enum { PS2_FLOOR_NORMAL, PS2_FLOOR_BASE_ONLY, PS2_FLOOR_LEGACY };
 /* Controller requests become visible only at a display-list frame boundary. */
 void ps2_floor_request_mode(unsigned mode);
 void ps2_floor_begin_frame(void);

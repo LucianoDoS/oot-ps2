@@ -4,6 +4,32 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Comparación física de capas y segunda pasada de sólo lectura — 2026-10-05
+
+- El usuario compara FLOOR v1 en la SCPH-90010: arriba y derecha conservan
+  las mismas olas; izquierda las elimina pero pierde la segunda textura.
+  El log físico confirma selecciones en escena 85 y perspectiva activa en
+  los materiales muestreados. Sus 160 muestras no contienen errores USB,
+  pérdidas, NUL ni reloj aproximado. Evidencia privada conservada con hashes
+  en `build/PS2/hardware-runtime/floor-lab-result-20261005-175141`.
+- FLOOR v2 mantiene las dos texturas y prueba una segunda pasada de sólo
+  lectura de profundidad. Para receptores que comparan y escriben Z añade
+  dos unidades en Z24 (una en Z16), saturadas al máximo. Conserva GEQUAL,
+  coordenadas UV/XYZ, mezcla y niebla, y restaura ZMSK al terminar la capa.
+  Arriba selecciona la revisión; derecha vuelve a la pasada anterior.
+  Esta comparación permanece limitada al ELF opcional: falta confirmar en
+  hardware si elimina las olas y conserva las ocultaciones.
+- La prueba extendida verifica las dos capas en los caminos inmediato y
+  preparado, vértices recortados, niebla, saturación del margen, decal sin
+  escrituras y restauración real de los comandos ZBUF/TEST. Pasa junto al
+  diagnóstico completo de 120 fotogramas:
+  `build/PS2/floor-v2-smoke-20261005-180608/report.json`.
+- Pasa el arranque con USB nativo emulado, sin HostFs ni memory cards del
+  jugador: `build/PS2/usb-stack-checks/20261005-180608-550/report.json`.
+  DIAG.LOG identifica FLOOR_LAB v2 y registra la segunda capa con comparación
+  activa y escrituras desactivadas. Se prepara el paquete opcional v2 con
+  los controles nuevos; el juego habitual conserva sus ejecutables.
+
 ## Comparación de capas y perspectiva del suelo — 2026-10-05
 
 - El usuario confirma que las olas siguen igual con la revisión del recorte.

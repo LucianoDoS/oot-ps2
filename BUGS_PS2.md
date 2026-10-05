@@ -39,9 +39,13 @@ líneas sigue mostrando las mismas olas. Se corrige una pérdida independiente
 de precisión al truncar las UV interpoladas en cada plano del recorte. Pasan
 256 cámaras y las pruebas del suelo, pero todavía no se da por corregido el
 defecto observado en la PS2; el usuario confirma que sigue igual tras ese cambio.
-FLOOR.ELF añade una comparación opcional de las dos capas y la perspectiva,
-con selección por cruceta y muestras del material en DIAG.LOG. Prueba e
-instrucciones en `PS2_FLOOR_DIAGNOSTIC.md`; todavía no confirma una solución.
+La comparación física de FLOOR v1 conserva las olas con perspectiva forzada;
+omitir la segunda capa las elimina pero pierde parte del suelo. El log confirma
+perspectiva activa y los modos en Kokiri, sin errores USB ni pérdidas. FLOOR v2
+prueba esa segunda pasada con profundidad de sólo lectura y un margen mínimo,
+manteniendo ambas texturas. Arriba selecciona la revisión; derecha recupera
+la pasada anterior. Prueba e instrucciones en `PS2_FLOOR_DIAGNOSTIC.md`;
+todavía no confirma una solución.
 Uso y límites generales en `PS2_HARDWARE.md`.
 
 ## Pantalla negra después del logo con DIAG224

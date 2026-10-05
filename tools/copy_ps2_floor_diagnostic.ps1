@@ -8,7 +8,8 @@ if ($volume.DriveType -ne 'Removable' -or $volume.FileSystem -ne 'FAT32') {
 }
 $destination = Join-Path ($DriveLetter.ToUpperInvariant()+':\') 'OOTPS2'
 $package = Get-Content -LiteralPath (Join-Path $source 'floor-package.json') -Raw | ConvertFrom-Json
-if ($package.status -ne 'PACKAGED' -or @($package.files.PSObject.Properties).Count -ne 2) { throw 'Invalid floor package.' }
+if ($package.status -ne 'PACKAGED' -or $package.diagnosticVersion -ne 2 -or
+    @($package.files.PSObject.Properties).Count -ne 2) { throw 'Invalid floor package.' }
 foreach ($entry in $package.files.PSObject.Properties) {
     if ($entry.Name -notin 'FLOOR.ELF','SUELO.txt') { throw 'Unexpected floor payload.' }
     if ((Get-FileHash -LiteralPath (Join-Path $source $entry.Name)).Hash.ToLowerInvariant() -ne $entry.Value) { throw 'Floor package hash mismatch.' }
