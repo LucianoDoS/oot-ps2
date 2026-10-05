@@ -38,6 +38,22 @@ una ejecución usando los ELF existentes y registra sus hashes.
 
 ## Casos concretos
 
+Para comprobar los ejecutables USB y sus registros:
+
+```powershell
+./tools/run_ps2_usb_checks.ps1
+./tools/run_ps2_usb_stack_check.ps1
+```
+
+El primer script prueba datos válidos/corruptos, arranque y lectura de los logs
+antiguos y rellenos por sectores mediante HostFs. El segundo ejecuta el ELF USB
+nativo con una imagen FAT32 privada y el dispositivo de almacenamiento USB de
+PCSX2; HostFs y ambas tarjetas quedan desactivados. Contrasta las etapas guardadas
+con la salida del EE, rechaza corrupción/errores USB y verifica que los datos
+conserven su SHA256. Requiere el entorno Python indicado por `-Python`, con
+`pyfatfs` y `setuptools<81`. Uso y límites físicos en `PS2_HARDWARE.md`.
+No sustituyen una prueba en consola ni formatean el USB del usuario.
+
 Para recorrer todas las salas referenciadas y revisar sus capturas:
 
 ```powershell

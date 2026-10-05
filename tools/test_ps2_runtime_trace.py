@@ -21,6 +21,7 @@ static int interrupts=1, failWrite, wakeCount, wakeSignals, failSema;
 static uint64_t now;
 static int short_write(int fd, const void* bytes, unsigned size) {
     if (failWrite) return -1;
+    if ((uintptr_t)bytes % 64 || size > 512 || !interrupts) return -1;
     return write(fd, bytes, size > 31 ? 31 : size);
 }
 #define write short_write
@@ -28,6 +29,8 @@ static int short_write(int fd, const void* bytes, unsigned size) {
 #undef write
 void* _gp;
 volatile unsigned gPS2DspCyclesTotal;
+void ps2_boot_trace_stage(const char* message) { (void)message; }
+void ps2_boot_trace_result(const char* name, int result) { (void)name; (void)result; }
 Ps2TraceTicks osGetTime(void) { return now; }
 void ps2_rom_cache_stats(unsigned* hits, unsigned* reads) { *hits=12; *reads=5; }
 int DIntr(void) { int old=interrupts; interrupts=0; return old; }
@@ -52,6 +55,9 @@ int main(int argc, char** argv) {
     ps2_runtime_trace_init(argv[1]);
     ps2_runtime_trace_start();
     if (!sRecording || !interrupts || !strstr(read_log(),"LOGGER_START")) return 1;
+    int fd=open(sPath,O_RDONLY);
+    int diskSize=lseek(fd,0,SEEK_END); close(fd);
+    if (sBytes % 512 || diskSize != (int)sBytes) return 14;
     for (int i=0;i<10;i++) ps2_runtime_frame(468750,93750,46875);
     ps2_runtime_audio(0,48000,2,1); ps2_runtime_audio(1920,48000,2,1);
     ps2_runtime_rom_read(0x1234,16384,2343750,0,1);
@@ -81,10 +87,17 @@ int main(int argc, char** argv) {
     if (sRecording || !interrupts) return 8; /* USB error must not block the game. */
     failWrite=0; sCount=sFirst=0;
     ps2_runtime_trace_init(argv[1]);
-    sBytes=FILE_LIMIT-40;
+    sBytes=FILE_LIMIT-512;
+    fd=open(sPath,O_WRONLY); if (ftruncate(fd,sBytes)) return 17; close(fd);
     ps2_runtime_event("this record does not fit the remaining file budget 0123456789");
     flush_records();
     if (sRecording || !interrupts) return 9;
+    fd=open(sPath,O_RDONLY);
+    if (lseek(fd,0,SEEK_END)!=FILE_LIMIT) return 15;
+    char footer[512]; lseek(fd,-512,SEEK_END);
+    if (read(fd,footer,512)!=512) return 18;
+    close(fd);
+    if (strncmp(footer,"LOG_LIMIT gameContinues=1\n",25)) return 16;
     sCount=sFirst=0; ps2_runtime_trace_init(argv[1]);
     trace_thread(NULL);
     if (sRecording || !strstr(read_log(),"LOGGER_ENTER wake=vblank") ||
@@ -92,7 +105,7 @@ int main(int argc, char** argv) {
     sCount=sFirst=0; sThread=sWake=-1; failSema=1;
     ps2_runtime_trace_init(argv[1]); ps2_runtime_trace_start();
     if (sRecording || !strstr(read_log(),"ERROR logger semaphore")) return 13;
-    puts("PS2 runtime logger: PASS batching, stats, partial writes, overflow, IRQ preservation, limit, vblank wake, stalled clock and wait failures");
+    puts("PS2 runtime logger: PASS aligned sector writes, padding, partial writes, exact disk cap, batching, stats, overflow, IRQ preservation, vblank wake, stalled clock and wait failures");
     return 0;
 }
 '''

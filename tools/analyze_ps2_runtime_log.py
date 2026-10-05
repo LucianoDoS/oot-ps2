@@ -22,6 +22,8 @@ def analyze(text):
             audio.append(row)
     fps = [row['fps10'] / 10 for row in samples]
     return {
+        'invalid_header': not text.startswith('OOT PS2 runtime log v'),
+        'nul_bytes': text.count('\0'),
         'header_only': not any(line.startswith('tMs=') for line in text.splitlines()),
         'logger_started': ' LOGGER_START ' in text,
         'logger_entered': ' LOGGER_ENTER ' in text,

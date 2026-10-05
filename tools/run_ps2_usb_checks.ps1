@@ -4,7 +4,20 @@ $project = Split-Path $PSScriptRoot -Parent
 $root = Join-Path $project ('build\PS2\usb-host-checks\'+(Get-Date -Format 'yyyyMMdd-HHmmss-fff'))
 [IO.Directory]::CreateDirectory($root) | Out-Null
 $results = @()
-foreach ($case in 'valid','wrong-size','wrong-block','valid-game','runtime-game','runtime224-game','missing-usb','missing-usb-game') {
+function Read-SharedText([string]$path) {
+    if (!(Test-Path -LiteralPath $path)) { return '' }
+    # The game may have a batch open while this harness polls its log.
+    # A transient Windows share lock is not an EE failure.
+    for ($attempt=0; $attempt -lt 4; $attempt++) {
+        try {
+            $stream = [IO.FileStream]::new($path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite)
+            $reader = [IO.StreamReader]::new($stream)
+            try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
+        } catch [IO.IOException] { Start-Sleep -Milliseconds 100 }
+    }
+    return ''
+}
+foreach ($case in 'valid','valid-padded','wrong-size','wrong-block','valid-game','runtime-game','runtime224-game','missing-usb','missing-usb-game') {
     $folder = Join-Path $root $case
     $config = Join-Path $folder 'emulator\PCSX2\inis'
     $bios = Join-Path $folder 'emulator\PCSX2\bios'
@@ -26,9 +39,13 @@ foreach ($case in 'valid','wrong-size','wrong-block','valid-game','runtime-game'
     Copy-Item -LiteralPath (Join-Path $project 'build\PS2-ntsc12\oot-full-next.z64') $data
     $bootLog = Join-Path $folder 'BOOT.LOG'
     $priorHash = $null
-    if ($case -eq 'valid') {
+    if ($case -in 'valid','valid-padded') {
         # A log longer than the reader's buffer must survive BOOTTEST unchanged.
-        $fixture = (1..120 | ForEach-Object { "$_ JUEGO: etapa anterior de prueba`n" }) -join ''
+        $fixture = (1..120 | ForEach-Object {
+            $line = "$_ JUEGO: etapa anterior de prueba"
+            if ($case -eq 'valid-padded') { $line = $line.PadRight(511) }
+            "$line`n"
+        }) -join ''
         [IO.File]::WriteAllText($bootLog, $fixture, [Text.Encoding]::ASCII)
         $priorHash = (Get-FileHash -LiteralPath $bootLog -Algorithm SHA256).Hash
     }
@@ -48,18 +65,14 @@ foreach ($case in 'valid','wrong-size','wrong-block','valid-game','runtime-game'
         $text = ''
         do {
             Start-Sleep -Milliseconds 500
-            if (Test-Path -LiteralPath $log) {
-                $s = [IO.FileStream]::new($log,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite)
-                $reader = [IO.StreamReader]::new($s)
-                try { $text=$reader.ReadToEnd() } finally { $reader.Dispose() }
-            }
+            $text = Read-SharedText $log
             $done = $text -match '\[PS2 USB DIAGNOSTIC\] PASS|\[PS2 USB BOOT\] FAIL|\[PS2 FRAME\].*frame 1'
             if ($case -in 'valid-game','runtime-game','runtime224-game' -and $done) {
-                $done = (Test-Path -LiteralPath $bootLog) -and ([IO.File]::ReadAllText($bootLog) -match '\[PS2 FRAME\].*frame 1\r?\n')
+                $done = (Read-SharedText $bootLog) -match '\[PS2 FRAME\].*frame 1 *\r?\n'
             }
             if ($case -in 'runtime-game','runtime224-game' -and $done) {
                 $runtimeLog = Join-Path $folder 'DIAG.LOG'
-                $runtimeText = if (Test-Path -LiteralPath $runtimeLog) { [IO.File]::ReadAllText($runtimeLog) } else { '' }
+                $runtimeText = Read-SharedText $runtimeLog
                 $done = $runtimeText -match 'FLUSH bytes=' -and $runtimeText -match 'PLAY_INIT_READY' -and $runtimeText -match 'ROOM_READY'
             }
         } while (!$done -and (Get-Date) -lt $deadline)
@@ -69,21 +82,21 @@ foreach ($case in 'valid','wrong-size','wrong-block','valid-game','runtime-game'
             if ($case -eq 'missing-usb-game' -and $text -notmatch 'Modulos IOP cargados\.') { throw 'Game IOP modules were not initialized before USB.' }
         } elseif ($case -in 'valid-game','runtime-game','runtime224-game') {
             if ($text -notmatch '\[PS2 USB BOOT\] PASS' -or $text -notmatch '\[osRom\] ROM abierta: host:OOT.Z64' -or $text -notmatch '\[PS2 FRAME\].*frame 1') { throw 'Game did not boot through the validated data path.' }
-            $bootText = [IO.File]::ReadAllText($bootLog)
-            foreach ($stage in 'MAIN: ejecutable iniciado','ACTORES: datos iniciales conservados','IOP: reinicio terminado','USB: DATOS OK','BOOT.LOG: registro activo','VIDEO: listo','MANDO init resultado=','GUARDADO: inicializacion terminada','AUDIO: inicializacion terminada','VBLANK: activo','DATOS: archivo abierto para el juego','LOGO N64: segmento cargado','LOGO N64: inicializacion terminada','ESTADO: mensaje grafico enviado','\[PS2 STATE\] Init completed','\[PS2 FRAME\].*frame 1') {
+            $bootText = Read-SharedText $bootLog
+            foreach ($stage in 'boot trace v2','MAIN: ejecutable iniciado','ACTORES: datos iniciales conservados','IOP: reinicio terminado','USB: DATOS OK','BOOT.LOG: registro activo','VIDEO: listo','MANDO init resultado=','GUARDADO: inicializacion terminada','AUDIO: inicializacion terminada','VBLANK: activo','DATOS: archivo abierto para el juego','LOGO N64: segmento cargado','LOGO N64: inicializacion terminada','ESTADO: mensaje grafico enviado','\[PS2 STATE\] Init completed','\[PS2 FRAME\].*frame 1') {
                 if ($bootText -notmatch $stage) { throw "BOOT.LOG is missing stage: $stage" }
             }
             if ($bootText -match 'ERROR:|BOOT.LOG: fallo|BOOT.LOG: no pude') { throw 'Startup tracing failed.' }
             if ($case -in 'runtime-game','runtime224-game') {
-                $runtimeText = [IO.File]::ReadAllText($runtimeLog)
-                foreach ($stage in 'runtime log v2','LOGGER_START .*wake=vblank','LOGGER_ENTER wake=vblank','LOGO N64: inicializacion terminada','SAMPLE .*frames=[1-9]','USB reads=','AUDIO queueBytesMin=','FLUSH bytes=','PLAY_INIT_READY','ROOM_SETUP_BEGIN','ROOM_READY') {
+                $runtimeText = Read-SharedText $runtimeLog
+                foreach ($stage in 'runtime log v3','LOGGER_START .*wake=vblank','LOGGER_ENTER wake=vblank','LOGO N64: inicializacion terminada','SAMPLE .*frames=[1-9]','USB reads=','AUDIO queueBytesMin=','FLUSH bytes=','PLAY_INIT_READY','ROOM_SETUP_BEGIN','ROOM_READY') {
                     if ($runtimeText -notmatch $stage) { throw "DIAG.LOG is missing: $stage" }
                 }
                 if ($runtimeText -match 'lost=[1-9]|lostRecords=[1-9]|ERROR logger|ERROR writing|clockFallback=1') { throw 'Runtime logger lost records, failed or used the clock fallback.' }
                 $video = if ($case -eq 'runtime224-game') { 'render=640x224 displayHeight=448 interlace=1 field=0 magV=1' } else { 'render=640x448 displayHeight=448 interlace=1 field=0 magV=0' }
                 if ($runtimeText -notmatch [regex]::Escape($video)) { throw 'Unexpected render/display configuration.' }
             } elseif (Test-Path -LiteralPath (Join-Path $folder 'DIAG.LOG')) { throw 'Normal game must not create DIAG.LOG.' }
-        } elseif ($case -eq 'valid') {
+        } elseif ($case -in 'valid','valid-padded') {
             if ($text -notmatch '\[PS2 USB DIAGNOSTIC\] PASS data=1 cardWrites=0 hardwareValidated=0') { throw 'Valid data was rejected.' }
             if ($text -notmatch '\[PS2 CACHE CHECK\] PASS neighbours=1 cpuPayload=1 dmaAlias=1 interruptState=1') { throw 'Cache/payload check failed.' }
             if ($text -notmatch '\[PS2 USB PREVIOUS LOG\]' -or $text -notmatch '120 JUEGO: etapa anterior de prueba' -or $text -match '110 JUEGO: etapa anterior de prueba') { throw 'Previous log tail was not displayed correctly.' }
@@ -92,7 +105,7 @@ foreach ($case in 'valid','wrong-size','wrong-block','valid-game','runtime-game'
             $expected = if ($case -eq 'wrong-size') { 'Tamano incorrecto' } else { 'Datos incorrectos o corruptos' }
             if ($text -notmatch "\[PS2 USB BOOT\] FAIL $expected" -or $text -match '\[PS2 USB BOOT\] PASS') { throw 'Invalid data was accepted or wrong failure.' }
         }
-        if ($case -notin 'valid','valid-game','runtime-game','runtime224-game' -and (Test-Path -LiteralPath $bootLog)) { throw 'Unexpected diagnostic log write.' }
+        if ($case -notin 'valid','valid-padded','valid-game','runtime-game','runtime224-game' -and (Test-Path -LiteralPath $bootLog)) { throw 'Unexpected diagnostic log write.' }
         $results += @{case=$case;status='PASS';log=$log}
         Write-Output "$case PASS"
     } finally {

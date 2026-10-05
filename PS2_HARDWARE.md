@@ -75,11 +75,15 @@ aciertos de caché y observaciones de la cola de audio. `fps10=180` equivale a
 Los productores registran en RAM; un semáforo despierta el hilo del registro
 desde el vblank, sin usar usleep ni escribir archivos desde el vblank. Se guarda
 el estado inicial inmediatamente y después se escriben y cierran bloques
-cada cinco segundos. Si falla el reloj del port, clockFallback=1 marca un
+cada cinco segundos. BOOT.LOG v2 y DIAG.LOG v3 usan transferencias de 512 bytes
+con buffers alineados; los espacios al final de líneas o lotes son normales.
+Las etapas de inicio del registro distinguen reloj, semáforo, hilo y apertura,
+escritura y cierre del primer lote. Si falla el reloj del port, clockFallback=1 marca un
 intervalo aproximado basado en retraces; no certifica los tiempos gráficos.
 El archivo se limita a 2 MiB; al llenarse registra
-`LOG_LIMIT` y continúa el juego sin registrar más. Un error de escritura tampoco
-detiene la partida. No guarda cada instrucción, triángulo o muestra de sonido.
+`LOG_LIMIT` y continúa el juego sin registrar más. Una escritura que devuelve
+error detiene sólo el registro; un controlador USB bloqueado dentro de una llamada
+puede detener también las cargas. No guarda cada instrucción, triángulo o muestra de sonido.
 Una excepción que detenga todos los hilos puede impedir el último volcado.
 El logger puede introducir una pausa: `FLUSH durationMs` mide su propia escritura.
 
@@ -89,6 +93,16 @@ para que se cierre el siguiente bloque. Guarda tu progreso desde el juego si
 quieres conservarlo. Vuelve a conectar el USB al PC y conserva DIAG.LOG y
 BOOT.LOG antes de iniciar otra sesión: DIAG.ELF reemplaza su registro al arrancar.
 El ELF normal no crea ni sobrescribe DIAG.LOG.
+
+Para comprobar el controlador USB en PCSX2 sin usar HostFs existe
+`tools/run_ps2_usb_stack_check.ps1`. Usa una imagen FAT32 privada de 128 MiB,
+el dispositivo de almacenamiento USB del emulador y los IRX incluidos en el ELF.
+No formatea el USB físico. Desactiva las tarjetas del jugador y comprueba los
+registros, errores del controlador y el SHA256 de los datos tras cerrar la prueba.
+La imagen y los resultados quedan en `build/PS2/usb-stack-checks`.
+Requiere el entorno Python local indicado por `-Python`, con `pyfatfs` y
+`setuptools<81`, además de la BIOS/configuración de prueba existente.
+La emulación de ese controlador no certifica la temporización del USB real.
 
 ## Comparación del temblor del suelo
 

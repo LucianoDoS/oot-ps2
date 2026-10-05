@@ -4,6 +4,53 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Escrituras del diagnóstico y prueba del controlador USB — 2026-10-05
+
+- El segundo intento físico también queda negro, esta vez con DIAG.ELF y
+  render normal de 448 líneas. BOOT.LOG termina en la etapa 45,
+  `REGISTRO: iniciando hilo por vblank`; DIAG.LOG v2 contiene sólo su cabecera
+  de 433 bytes. Se conservan ambos con hashes verificados en
+  `build/PS2/hardware-runtime/scph90010-diag448-20261005-143535`.
+- Se añade una prueba del ELF nativo con una imagen FAT32 y el dispositivo
+  USB de PCSX2, sin HostFs. La versión anterior permite seguir ejecutando el
+  juego en esa prueba, pero produce 288 errores de transferencia, 675 bytes
+  nulos en DIAG.LOG y 61 en BOOT.LOG, además de sobrescribir la cabecera.
+  Evidencia privada en `build/PS2/usb-stack-checks/20261005-144729-837`.
+- DIAG.LOG v3 escribe sectores de 512 bytes desde un buffer alineado a
+  64 bytes; también mantiene alineado el siguiente append. Los reintentos
+  de escrituras parciales desplazan los datos dentro del buffer, conservando
+  su dirección alineada. El límite de 2 MiB cuenta el relleno realmente
+  escrito y reserva un sector para LOG_LIMIT.
+- Corregir sólo DIAG.LOG elimina los errores de transferencia, pero aún
+  permite que BOOT.LOG corrompa la cabecera vecina. BOOT.LOG v2 usa también
+  un sector por línea. BOOTTEST lee hasta 8 KiB del final y elimina los
+  espacios de relleno para mostrar diez etapas, conservando los logs v1.
+  Se registran por separado reloj, semáforo, hilo y apertura/escritura/cierre
+  del primer lote para acotar cualquier bloqueo físico restante.
+- La prueba completa ya pasa en
+  `build/PS2/usb-stack-checks/20261005-151055-633/report.json`: ambos registros
+  íntegros, cero errores USB, 25 muestras sin pérdidas ni reloj aproximado,
+  carga de Hyrule Field y fotogramas posteriores al logo. El SHA256 de los
+  datos permanece intacto. El mayor volcado tarda 95 ms en ese emulador;
+  no certifica el tiempo en hardware ni confirma todavía el arranque físico
+  de esta revisión. El analizador marca cabeceras inválidas y bytes nulos.
+- Las pruebas del logger pasan con buffers alineados, transferencias
+  acotadas, escrituras parciales de 31 bytes y el límite exacto del archivo,
+  además de desbordamiento del anillo, errores y preservación de interrupciones.
+  La comparación del suelo con DIAG224 sigue aplazada hasta confirmar DIAG.ELF
+  en la SCPH-90010.
+- Pasan los nueve casos del paquete en
+  `build/PS2/usb-host-checks/20261005-151810-528/report.json`, incluidos los logs
+  de arranque antiguos y rellenos por sectores. La lectura del banco de pruebas
+  comparte los archivos abiertos por Windows y reintenta bloqueos transitorios.
+  DIAG.ELF probado con el controlador USB: SHA256
+  `c6eb78f8578f43d6e808d297366325e2431d5cf93f6fd95c025b5220df68343a`.
+- Los nueve archivos se copian y verifican en `D:\OOTPS2`, con respaldo en
+  `D:\OOTPS2-backup-20261005-152225`. Se conservan los dos registros físicos,
+  el ELF habitual de PCSX2 y la tarjeta del jugador, comprobados por SHA256.
+  Los segmentos estáticos terminan en `0x011afc70` para OOTPS2.ELF y
+  `0x011c2970` para DIAG.ELF, dentro de los 32 MiB del EE.
+
 ## Diagnóstico detenido tras el logo — 2026-10-05
 
 - La primera prueba física de DIAG224 muestra el logo y después queda negra.

@@ -52,6 +52,23 @@ con clockFallback=1. La siguiente prueba física debe usar DIAG.ELF con el víde
 normal de 448 líneas; la prueba del suelo con DIAG224 queda aplazada hasta confirmar
 que el registro y la partida funcionan en hardware.
 
+El segundo intento físico, DIAG.ELF con 448 líneas, también queda negro. Su
+BOOT.LOG termina en `REGISTRO: iniciando hilo por vblank`; DIAG.LOG conserva
+sólo la cabecera v2 de 433 bytes. Registros privados verificados en
+`build/PS2/hardware-runtime/scph90010-diag448-20261005-143535`.
+El bloqueo está dentro del inicio del logger; no demuestra un fallo del modo 224.
+
+La prueba nueva con una imagen FAT32 y el controlador USB emulado, sin HostFs,
+reproduce corrupción del texto y errores USBHDFSD durante los volcados, aunque
+el juego continúa. BOOT.LOG v2 y DIAG.LOG v3 escriben sectores de 512 bytes desde
+buffers alineados y mantienen alineado el archivo; los reintentos de una escritura
+parcial también conservan la alineación del buffer. BOOTTEST elimina el relleno
+para mostrar las últimas diez etapas. Se añaden hitos separados del primer lote.
+Falta confirmar que esta revisión elimine el bloqueo en la SCPH-90010.
+La prueba nativa del controlador USB en PCSX2 ya pasa en
+`build/PS2/usb-stack-checks/20261005-151055-633/report.json`: ambos registros
+íntegros, datos sin cambios, cargas de escena y fotogramas posteriores al logo.
+
 ## Cadencia del logo Nintendo 64
 
 Estado: pendiente. El estado del logo configura R_UPDATE_RATE=1, con objetivo

@@ -9,19 +9,27 @@
 
 #define TRACE_LINES 96
 #define TRACE_BYTES 160
+#define DISK_RECORD_BYTES 512u
 static char sLines[TRACE_LINES][TRACE_BYTES];
 static char sPath[256];
 static unsigned int sCount;
 static int sScreen, sFile, sMutex = -1;
 static int sFirstFrame;
+/* Protected by sMutex. File offsets and bulk-out buffers stay aligned. */
+static char sDiskRecord[DISK_RECORD_BYTES] __attribute__((aligned(64)));
 
 static int write_all(int fd, const char* text) {
-    unsigned int size = strlen(text);
-    while (size) {
-        int wrote = write(fd, text, size);
-        if (wrote <= 0) return 0;
-        text += wrote;
-        size -= wrote;
+    unsigned int size = strcspn(text, "\r\n");
+    if (size >= DISK_RECORD_BYTES) return 0;
+    memcpy(sDiskRecord, text, size);
+    memset(sDiskRecord + size, ' ', DISK_RECORD_BYTES - size);
+    sDiskRecord[DISK_RECORD_BYTES - 1] = '\n';
+    unsigned int remaining = DISK_RECORD_BYTES;
+    while (remaining) {
+        int wrote = write(fd, sDiskRecord, remaining);
+        if (wrote <= 0 || (unsigned)wrote > remaining) return 0;
+        remaining -= wrote;
+        if (remaining) memmove(sDiskRecord, sDiskRecord + wrote, remaining);
     }
     return 1;
 }
@@ -35,7 +43,7 @@ static void append_file(const char* line) {
         printf("[PS2 BOOT TRACE] Cannot append %s\n", sPath);
         return;
     }
-    int okay = write_all(fd, line) && write_all(fd, "\n");
+    int okay = write_all(fd, line);
     int closed = close(fd);
     if (!okay || closed < 0) {
         sFile = 0;
@@ -94,9 +102,9 @@ void ps2_boot_trace_file_ready(const char* data_path) {
         ps2_boot_trace_stage("BOOT.LOG: no pude crear el registro en USB");
         return;
     }
-    int okay = write_all(fd, "OoT PS2 boot trace v1 " __DATE__ " " __TIME__ "\n");
+    int okay = write_all(fd, "OoT PS2 boot trace v2 " __DATE__ " " __TIME__ "\n");
     for (unsigned int i = 0; okay && i < sCount; i++)
-        okay = write_all(fd, sLines[i]) && write_all(fd, "\n");
+        okay = write_all(fd, sLines[i]);
     int closed = close(fd);
     sFile = okay && closed >= 0;
     ps2_boot_trace_stage(sFile ? "BOOT.LOG: registro activo" : "BOOT.LOG: fallo al escribir el registro");

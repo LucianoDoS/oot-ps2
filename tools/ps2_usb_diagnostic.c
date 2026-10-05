@@ -16,7 +16,7 @@ extern int ps2_cache_smoke(void);
 
 /* Read the tail only; do not truncate the game's evidence on the next boot. */
 static void show_previous_boot(void) {
-    char path[256], tail[3072];
+    char path[256], tail[8192];
     const char* data = ps2_usb_data_path();
     const char* separator = strrchr(data, '/');
     if (!separator) separator = strchr(data, ':');
@@ -57,6 +57,19 @@ static void show_previous_boot(void) {
     /* The file is text supplied by the USB, never a format string. */
     for (char* p = start; *p; p++)
         if ((*p < 32 || *p > 126) && *p != '\n') *p = '?';
+    /* Boot log v2 stores sector-sized lines. Remove trailing padding so
+     * ten stages fit on the diagnostic screen; v1 logs remain readable. */
+    char* out = start;
+    for (char* line = start; *line;) {
+        char* newline = strchr(line, '\n');
+        char* end = newline ? newline : line + strlen(line);
+        while (end > line && end[-1] == ' ') end--;
+        unsigned bytes = end - line;
+        memmove(out, line, bytes); out += bytes;
+        if (!newline) break;
+        *out++ = '\n'; line = newline + 1;
+    }
+    *out = 0;
     scr_printf("\nUltimas etapas de OOTPS2.ELF:\n%s", start);
     printf("[PS2 USB PREVIOUS LOG] path=%s bytes=%d\n%s", path, used, start);
 }
