@@ -36,6 +36,22 @@ de 640x224 con líneas duplicadas, manteniendo la señal NTSC entrelazada del
 convertidor. Los ELF normales conservan 640x448. Falta la comparación física;
 no se da por corregido el temblor. Uso y límites en `PS2_HARDWARE.md`.
 
+## Pantalla negra después del logo con DIAG224
+
+Estado: reproducido por el usuario en SCPH-90010. El primer DIAG224 llega al
+primer fotograma del logo, pero DIAG.LOG sólo conserva su cabecera de 346 bytes;
+no hay muestras periódicas. Se conservan ambos registros en
+`build/PS2/hardware-runtime/scph90010-diag224-20261005-140823`.
+No demuestran si falló la salida de vídeo, el juego o el nuevo hilo del registro.
+
+Se elimina la espera usleep sin comprobación del logger: ahora un semáforo lo
+despierta desde el hilo de vblank. Se guarda el arranque del logger inmediatamente,
+se registra su entrada y se detiene el registro si falla la espera. Una ausencia
+de avance del Timer 0 permite muestras con tiempo aproximado de retrace, marcadas
+con clockFallback=1. La siguiente prueba física debe usar DIAG.ELF con el vídeo
+normal de 448 líneas; la prueba del suelo con DIAG224 queda aplazada hasta confirmar
+que el registro y la partida funcionan en hardware.
+
 ## Cadencia del logo Nintendo 64
 
 Estado: pendiente. El estado del logo configura R_UPDATE_RATE=1, con objetivo

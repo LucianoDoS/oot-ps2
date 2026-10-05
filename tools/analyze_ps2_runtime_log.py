@@ -22,10 +22,15 @@ def analyze(text):
             audio.append(row)
     fps = [row['fps10'] / 10 for row in samples]
     return {
+        'header_only': not any(line.startswith('tMs=') for line in text.splitlines()),
+        'logger_started': ' LOGGER_START ' in text,
+        'logger_entered': ' LOGGER_ENTER ' in text,
+        'logger_errors': [line for line in text.splitlines() if 'ERROR logger' in line],
         'samples': len(samples), 'fps_min': min(fps) if fps else None,
         'fps_median': statistics.median(fps) if fps else None,
         'fps_max': max(fps) if fps else None,
         'zero_frame_intervals': [row for row in samples if row['frames'] == 0],
+        'clock_fallback_intervals': [row for row in samples if row.get('clockFallback', 0)],
         'slow_or_failed_reads': reads, 'room_and_scene_loads': rooms,
         'audio_zero_queue_intervals': [row for row in audio if row.get('zeroPolls', 0)],
         'last_audio': audio[-1] if audio else None,

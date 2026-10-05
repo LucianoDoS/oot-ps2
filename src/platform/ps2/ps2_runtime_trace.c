@@ -20,7 +20,8 @@ static char sRecords[RECORDS][RECORD_BYTES], sPath[256];
 static char sBatch[RECORD_BYTES * 32];
 static unsigned char sStack[16384] __attribute__((aligned(64)));
 static unsigned sFirst, sCount, sLost, sBytes, sSequence;
-static int sRecording, sClockReady, sThread = -1;
+static int sRecording, sClockReady, sThread = -1, sWake = -1;
+static unsigned sRetraces, sSampleRetraces, sFlushRetraces;
 static Ps2TraceTicks sOrigin, sLastSample, sLastFlush;
 static unsigned sDspPrevious;
 typedef struct {
@@ -113,8 +114,16 @@ failed:
 static void trace_tick(void) {
     Ps2TraceTicks now = osGetTime();
     unsigned elapsed = millis(now - sLastSample);
-    if (!sRecording || elapsed < 1000) return;
     int previous = DIntr();
+    unsigned retraces = sRetraces;
+    unlock(previous);
+    unsigned retraceMs = (retraces - sSampleRetraces) * 1000 / 60;
+    if (!sRecording || (elapsed < 1000 && retraceMs < 1000)) return;
+    /* Keep recording if the port's Timer 0 stops advancing. The retrace
+     * estimate is approximate and explicitly marked, never a silent fix. */
+    unsigned clockMs = elapsed, fallback = retraceMs >= 1000 && elapsed < retraceMs / 2;
+    if (fallback) elapsed = retraceMs;
+    previous = DIntr();
     TraceStats stats = sStats;
     memset(&sStats, 0, sizeof(sStats));
     sStats.queueMin = ~0u;
@@ -124,25 +133,41 @@ static void trace_tick(void) {
     unlock(previous);
     unsigned hits, reads, dsp = gPS2DspCyclesTotal;
     ps2_rom_cache_stats(&hits, &reads);
-    ps2_runtime_event("SAMPLE seq=%u intervalMs=%u frames=%u fps10=%u gfxMs=%u,%u,%u dspCycles=%u lost=%u",
+    ps2_runtime_event("SAMPLE seq=%u intervalMs=%u frames=%u fps10=%u gfxMs=%u,%u,%u dspCycles=%u lost=%u retraces=%u clockMs=%u clockFallback=%u",
         ++sSequence, elapsed, stats.frames, stats.frames * 10000 / elapsed,
-        millis(stats.translate), millis(stats.submit), millis(stats.flip), dsp - sDspPrevious, sLost);
+        millis(stats.translate), millis(stats.submit), millis(stats.flip), dsp - sDspPrevious, sLost,
+        retraces - sSampleRetraces, clockMs, fallback);
     ps2_runtime_event("USB reads=%u bytes=%u seeks=%u errors=%u ioMs=%u waitMs=%u worstReadMs=%u cacheHits=%u cacheReads=%u",
         stats.reads, stats.bytes, stats.seeks, stats.errors, millis(stats.io), millis(stats.wait),
         millis(stats.worstRead), hits, reads);
     ps2_runtime_event("AUDIO queueBytesMin=%u queueBytesMax=%u polls=%u zeroPolls=%u outputHz=%u lateTotal=%u droppedTotal=%u",
         stats.polls ? stats.queueMin : 0, stats.queueMax, stats.polls, stats.empty,
         stats.audioRate, stats.late, stats.dropped);
-    sDspPrevious = dsp; sLastSample = now;
-    if (now - sLastFlush >= 5 * TICKS_PER_SECOND) {
-        flush_records(); sLastFlush = osGetTime();
+    sDspPrevious = dsp; sLastSample = now; sSampleRetraces = retraces;
+    if (now - sLastFlush >= 5 * TICKS_PER_SECOND || retraces - sFlushRetraces >= 300) {
+        flush_records(); sLastFlush = osGetTime(); sFlushRetraces = retraces;
     }
 }
 
 static void trace_thread(void* unused) {
     (void)unused;
-    while (sRecording) { usleep(1000000); trace_tick(); }
+    ps2_runtime_event("LOGGER_ENTER wake=vblank");
+    flush_records();
+    while (sRecording) {
+        if (WaitSema(sWake) < 0) {
+            ps2_runtime_event("ERROR logger wait failed; logging stopped");
+            flush_records(); sRecording = 0;
+            break;
+        }
+        trace_tick();
+    }
     ExitThread();
+}
+
+/* Called by the existing vblank THREAD, not an interrupt handler. The
+ * saturating semaphore prevents a delayed write from queuing extra work. */
+void ps2_runtime_vblank(void) {
+    if (sRecording && sWake >= 0 && ++sRetraces % 60 == 0) SignalSema(sWake);
 }
 
 void ps2_runtime_trace_init(const char* dataPath) {
@@ -153,11 +178,12 @@ void ps2_runtime_trace_init(const char* dataPath) {
     if (prefix + sizeof("DIAG.LOG") > sizeof(sPath)) return;
     memcpy(sPath, dataPath, prefix);
     memcpy(sPath + prefix, "DIAG.LOG", sizeof("DIAG.LOG"));
-    const char header[] = "OOT PS2 runtime log v1 " __DATE__ " " __TIME__ "\n"
+    const char header[] = "OOT PS2 runtime log v2 " __DATE__ " " __TIME__ "\n"
         "Units: wall milliseconds; gfxMs=translation,GS submission,presentation.\n"
         "fps10=displayed FPS x10. USB/read timings include thread preemption.\n"
         "Queue sampled by audio thread; zeroPolls is not an exact IOP underrun count.\n"
-        "FLUSH records measure logger I/O overhead. Max file 2 MiB; batches every 5 seconds.\n";
+        "FLUSH records measure logger I/O overhead. Max file 2 MiB; batches every 5 seconds.\n"
+        "Wake source: vblank semaphore. A set clockFallback flag uses approximate retrace time.\n";
     int fd = open(sPath, O_WRONLY | O_CREAT | O_TRUNC, 0666);
     if (fd < 0) { printf("[PS2 RUNTIME LOG] ERROR creating %s\n", sPath); return; }
     int okay = write_all(fd, header, sizeof(header) - 1);
@@ -171,6 +197,15 @@ void ps2_runtime_trace_init(const char* dataPath) {
 void ps2_runtime_trace_start(void) {
     if (!sRecording || sThread >= 0) return;
     sOrigin = sLastSample = sLastFlush = osGetTime(); sClockReady = 1;
+    ee_sema_t sema;
+    memset(&sema, 0, sizeof(sema));
+    sema.max_count = 1;
+    sWake = CreateSema(&sema);
+    if (sWake < 0) {
+        ps2_runtime_event("ERROR logger semaphore could not be created");
+        flush_records(); sRecording = 0;
+        return;
+    }
     ee_thread_t thread;
     memset(&thread, 0, sizeof(thread));
     thread.func = trace_thread; thread.stack = sStack; thread.stack_size = sizeof(sStack);
@@ -178,11 +213,16 @@ void ps2_runtime_trace_start(void) {
      * otherwise that worker can starve logging indefinitely. */
     thread.gp_reg = &_gp; thread.initial_priority = 51;
     sThread = CreateThread(&thread);
-    ps2_runtime_event("LOGGER_START priority=51 batchSeconds=5 reserveRamBytes=%u", (unsigned)(sizeof(sRecords) + sizeof(sBatch) + sizeof(sStack)));
-    if (sThread < 0 || StartThread(sThread, NULL) < 0) {
-        ps2_runtime_event("ERROR logger thread could not start");
+    ps2_runtime_event("LOGGER_START priority=51 batchSeconds=5 reserveRamBytes=%u wake=vblank thread=%d sema=%d",
+        (unsigned)(sizeof(sRecords) + sizeof(sBatch) + sizeof(sStack)), sThread, sWake);
+    /* Preserve startup metadata even if the worker never wakes in hardware. */
+    flush_records();
+    int started = sRecording && sThread >= 0 ? StartThread(sThread, NULL) : -1;
+    if (started < 0) {
+        ps2_runtime_event("ERROR logger thread could not start result=%d", started);
         flush_records(); sRecording = 0;
         if (sThread >= 0) DeleteThread(sThread);
+        DeleteSema(sWake); sWake = -1;
         sThread = -1;
     }
 }

@@ -7,15 +7,17 @@ import tempfile
 KERNEL = r'''
 #include <stdint.h>
 typedef struct { void (*func)(void*); void* stack; unsigned stack_size; void* gp_reg; int initial_priority; } ee_thread_t;
+typedef struct { int init_count, max_count; } ee_sema_t;
 int DIntr(void); void EIntr(void); int CreateThread(ee_thread_t*); int StartThread(int, void*);
 void ExitThread(void); int DeleteThread(int);
+int CreateSema(ee_sema_t*); int DeleteSema(int); int WaitSema(int); int SignalSema(int);
 '''
 DRIVER = r'''
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 #include <stdint.h>
-static int interrupts=1, failWrite;
+static int interrupts=1, failWrite, wakeCount, wakeSignals, failSema;
 static uint64_t now;
 static int short_write(int fd, const void* bytes, unsigned size) {
     if (failWrite) return -1;
@@ -34,6 +36,10 @@ int CreateThread(ee_thread_t* thread) { return thread->initial_priority == 51 ? 
 int StartThread(int id, void* arg) { (void)id; (void)arg; return 0; }
 int DeleteThread(int id) { (void)id; return 0; }
 void ExitThread(void) {}
+int CreateSema(ee_sema_t* sema) { wakeCount=sema->init_count; return failSema || sema->max_count != 1 ? -1 : 2; }
+int DeleteSema(int id) { (void)id; return 0; }
+int SignalSema(int id) { if (id != 2) return -1; wakeSignals++; if (wakeCount) return -1; wakeCount=1; return 0; }
+int WaitSema(int id) { (void)id; return -1; } /* Deliberate failure must end the worker. */
 static char contents[65536];
 static const char* read_log(void) {
     FILE* file=fopen(sPath,"rb");
@@ -45,7 +51,7 @@ int main(int argc, char** argv) {
     (void)argc;
     ps2_runtime_trace_init(argv[1]);
     ps2_runtime_trace_start();
-    if (!sRecording || !interrupts) return 1;
+    if (!sRecording || !interrupts || !strstr(read_log(),"LOGGER_START")) return 1;
     for (int i=0;i<10;i++) ps2_runtime_frame(468750,93750,46875);
     ps2_runtime_audio(0,48000,2,1); ps2_runtime_audio(1920,48000,2,1);
     ps2_runtime_rom_read(0x1234,16384,2343750,0,1);
@@ -59,6 +65,11 @@ int main(int argc, char** argv) {
         !strstr(log,"reads=2 bytes=16384 seeks=1 errors=1 ioMs=51 waitMs=10 worstReadMs=50") ||
         !strstr(log,"queueBytesMin=0 queueBytesMax=1920 polls=2 zeroPolls=1")) return 3;
     if (!interrupts) return 4;
+    for (int i=0;i<120;i++) ps2_runtime_vblank();
+    if (wakeSignals!=2 || wakeCount!=1 || strstr(read_log(),"clockFallback=1")) return 10;
+    trace_tick(); /* A stuck Timer 0 must not prevent the next sample. */
+    flush_records();
+    if (!strstr(read_log(),"retraces=120 clockMs=0 clockFallback=1")) return 11;
     interrupts=0; ps2_runtime_event("already disabled"); if (interrupts) return 5;
     interrupts=1;
     for (int i=0;i<200;i++) ps2_runtime_event("overflow id=%u",i);
@@ -74,7 +85,14 @@ int main(int argc, char** argv) {
     ps2_runtime_event("this record does not fit the remaining file budget 0123456789");
     flush_records();
     if (sRecording || !interrupts) return 9;
-    puts("PS2 runtime logger: PASS batching, stats, short writes, overflow, IRQ preservation, error and limit");
+    sCount=sFirst=0; ps2_runtime_trace_init(argv[1]);
+    trace_thread(NULL);
+    if (sRecording || !strstr(read_log(),"LOGGER_ENTER wake=vblank") ||
+        !strstr(read_log(),"ERROR logger wait failed")) return 12;
+    sCount=sFirst=0; sThread=sWake=-1; failSema=1;
+    ps2_runtime_trace_init(argv[1]); ps2_runtime_trace_start();
+    if (sRecording || !strstr(read_log(),"ERROR logger semaphore")) return 13;
+    puts("PS2 runtime logger: PASS batching, stats, partial writes, overflow, IRQ preservation, limit, vblank wake, stalled clock and wait failures");
     return 0;
 }
 '''

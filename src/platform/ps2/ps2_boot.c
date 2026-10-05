@@ -124,6 +124,8 @@ void ps2_vblank_tick(void) {
 
     /* 3. Audio: rellenar el buffer de reproducción. */
     PS2Audio_Update();
+    /* Only signal the diagnostic worker; never write USB here. */
+    ps2_runtime_vblank();
 }
 
 /* Manejador de VSync del GS */
@@ -196,7 +198,13 @@ void ps2_boot_game(void) {
     ps2_mesgqueue_init();
     ps2_event_init();
     ps2_timer_init();
+#ifdef PS2_RUNTIME_DIAGNOSTIC
+    BOOT_STAGE("REGISTRO: iniciando hilo por vblank");
+#endif
     ps2_runtime_trace_start();
+#ifdef PS2_RUNTIME_DIAGNOSTIC
+    BOOT_STAGE("REGISTRO: inicio retornado");
+#endif
     ps2_vi_init();
 
     /* Heap del juego.

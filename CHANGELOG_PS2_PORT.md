@@ -4,6 +4,39 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Diagnóstico detenido tras el logo — 2026-10-05
+
+- La primera prueba física de DIAG224 muestra el logo y después queda negra.
+  Se conservan BOOT.LOG y DIAG.LOG del USB, con hashes verificados, en
+  `build/PS2/hardware-runtime/scph90010-diag224-20261005-140823`.
+  BOOT.LOG llega al primer fotograma del logo; DIAG.LOG sólo contiene su
+  cabecera de 346 bytes. No hay datos para atribuirlo al modo de vídeo.
+- El hilo del registro deja de usar usleep con retorno ignorado. Un semáforo
+  de capacidad uno recibe una señal cada 60 llamadas del hilo de vblank,
+  que no hace E/S de archivos. El estado inicial se guarda antes de arrancar
+  el hilo y se registra también su entrada. Un fallo de semáforo o espera
+  detiene el registro. Los bloques periódicos siguen cerrándose cada cinco
+  segundos; los retraces permiten un volcado aunque el Timer 0 no avance.
+- Las muestras incluyen retraces, clockMs y clockFallback. Cuando falta
+  tiempo del Timer 0 se indica explícitamente el intervalo aproximado; no
+  se certifican los tiempos gráficos obtenidos con un reloj detenido.
+  El analizador reconoce un archivo con sólo cabecera, entrada del hilo,
+  errores del logger y uso de ese tiempo aproximado.
+- Las pruebas del logger pasan con saturación del semáforo, reloj detenido,
+  fallo de espera y fallo al crear el semáforo, además de los casos anteriores.
+  La siguiente prueba física debe usar DIAG.ELF a 448 líneas; se aplaza la
+  comparación del suelo con DIAG224 hasta confirmar el diagnóstico normal.
+- Pasan los ocho casos de arranque en
+  `build/PS2/usb-host-checks/20261005-142346-592/report.json`. El diagnóstico
+  normal registra entrada del hilo, diez muestras y carga de Hyrule Field,
+  sin pérdidas, errores ni uso del reloj aproximado. Los volcados tardan
+  como máximo 1 ms en PCSX2; esto no mide el USB físico. El ELF normal USB,
+  el ELF habitual de PCSX2 y la tarjeta del jugador conservan sus hashes.
+- Se verifica la copia actualizada en `D:\OOTPS2`, con respaldo en
+  `D:\OOTPS2-backup-20261005-142621`, conservando BOOT.LOG y DIAG.LOG físicos.
+  DIAG.ELF SHA256 `271cfe133d78b07c75f08706972df88265126c66a6162fa6dbb433545d18df31`;
+  los diagnósticos terminan sus segmentos estáticos en `0x011c22b0`.
+
 ## Registro USB, cargas y comparación del suelo — 2026-10-05
 
 - El usuario confirma que el juego inicia y permite jugar en su SCPH-90010

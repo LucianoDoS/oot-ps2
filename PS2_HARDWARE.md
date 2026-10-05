@@ -72,8 +72,12 @@ traducción/GS/presentación, ciclos de síntesis, bytes y esperas de lectura,
 aciertos de caché y observaciones de la cola de audio. `fps10=180` equivale a
 18 FPS. `zeroPolls` no es un contador exacto de faltas de audio en el IOP.
 
-Los productores registran en RAM; un hilo periódico escribe y cierra bloques
-cada cinco segundos. El archivo se limita a 2 MiB; al llenarse registra
+Los productores registran en RAM; un semáforo despierta el hilo del registro
+desde el vblank, sin usar usleep ni escribir archivos desde el vblank. Se guarda
+el estado inicial inmediatamente y después se escriben y cierran bloques
+cada cinco segundos. Si falla el reloj del port, clockFallback=1 marca un
+intervalo aproximado basado en retraces; no certifica los tiempos gráficos.
+El archivo se limita a 2 MiB; al llenarse registra
 `LOG_LIMIT` y continúa el juego sin registrar más. Un error de escritura tampoco
 detiene la partida. No guarda cada instrucción, triángulo o muestra de sonido.
 Una excepción que detenga todos los hilos puede impedir el último volcado.
@@ -93,6 +97,11 @@ El ELF normal no crea ni sobrescribe DIAG.LOG.
 para probar con el mismo convertidor AV a HDMI. Tiene menos detalle vertical;
 es una comparación para identificar el origen del temblor, no una corrección
 confirmada de las texturas. OOTPS2.ELF y DIAG.ELF conservan el render a 640x448.
+
+El usuario observó una pantalla negra después del logo con el primer DIAG224.
+Su registro sólo conservó la cabecera, sin muestras. La siguiente comprobación
+debe usar DIAG.ELF a 448 líneas con el registro revisado. Deja la comparación
+DIAG224 pendiente hasta confirmar que la sesión normal funciona en la consola.
 
 Prueba el mismo suelo con Link y la cámara quietos y después caminando.
 Compara con lo observado en la versión normal. Indica si el temblor desaparece,

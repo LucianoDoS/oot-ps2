@@ -75,7 +75,9 @@ paquete incluye DIAG.ELF, que guarda tiempos y eventos en DIAG.LOG durante la
 partida, y cachés específicas para reducir lecturas repetidas del USB.
 DIAG224.ELF permite comparar el temblor del suelo con líneas duplicadas y
 menor detalle vertical, conservando la señal NTSC entrelazada. La comparación
-en la consola real sigue pendiente.
+queda aplazada: el primer intento físico se detuvo después del logo y su
+registro sólo conservó la cabecera. La siguiente prueba usa DIAG.ELF con vídeo
+normal y el registro revisado para despertarse por vblank.
 El registro detallado está en [CHANGELOG_PS2_PORT.md](CHANGELOG_PS2_PORT.md).
 
 El juego completo ya enlaza: 724 objetos generan `build/PS2-ntsc12/oot_ps2.elf`.

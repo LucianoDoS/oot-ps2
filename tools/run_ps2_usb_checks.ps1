@@ -76,10 +76,10 @@ foreach ($case in 'valid','wrong-size','wrong-block','valid-game','runtime-game'
             if ($bootText -match 'ERROR:|BOOT.LOG: fallo|BOOT.LOG: no pude') { throw 'Startup tracing failed.' }
             if ($case -in 'runtime-game','runtime224-game') {
                 $runtimeText = [IO.File]::ReadAllText($runtimeLog)
-                foreach ($stage in 'runtime log v1','LOGGER_START','LOGO N64: inicializacion terminada','SAMPLE .*frames=[1-9]','USB reads=','AUDIO queueBytesMin=','FLUSH bytes=','PLAY_INIT_READY','ROOM_SETUP_BEGIN','ROOM_READY') {
+                foreach ($stage in 'runtime log v2','LOGGER_START .*wake=vblank','LOGGER_ENTER wake=vblank','LOGO N64: inicializacion terminada','SAMPLE .*frames=[1-9]','USB reads=','AUDIO queueBytesMin=','FLUSH bytes=','PLAY_INIT_READY','ROOM_SETUP_BEGIN','ROOM_READY') {
                     if ($runtimeText -notmatch $stage) { throw "DIAG.LOG is missing: $stage" }
                 }
-                if ($runtimeText -match 'lost=[1-9]|lostRecords=[1-9]|ERROR writing') { throw 'Runtime logger lost records or failed.' }
+                if ($runtimeText -match 'lost=[1-9]|lostRecords=[1-9]|ERROR logger|ERROR writing|clockFallback=1') { throw 'Runtime logger lost records, failed or used the clock fallback.' }
                 $video = if ($case -eq 'runtime224-game') { 'render=640x224 displayHeight=448 interlace=1 field=0 magV=1' } else { 'render=640x448 displayHeight=448 interlace=1 field=0 magV=0' }
                 if ($runtimeText -notmatch [regex]::Escape($video)) { throw 'Unexpected render/display configuration.' }
             } elseif (Test-Path -LiteralPath (Join-Path $folder 'DIAG.LOG')) { throw 'Normal game must not create DIAG.LOG.' }
