@@ -66,10 +66,27 @@ el archivo, muestra esa condición mientras aún está activa la pantalla de tex
 La primera pantalla negra se localiza antes de completar la inicialización
 del logo Nintendo 64. Esta versión corrige la invalidación global de caché y
 registra la reserva, carga del segmento, matrices, vista y buffer SRAM del logo.
-El usuario confirma que ahora arranca. El logo tiene configurado
-`R_UPDATE_RATE = 1` como objetivo de 60 FPS, pero el nuevo registro en PCSX2
-todavía mide unos 30 fotogramas presentados por segundo en esa pantalla.
-Queda pendiente revisar la cadencia efectiva; la configuración no certifica 60 FPS.
+El usuario confirma que ahora arranca. Se elimina el mínimo de dos vblank
+del planificador sólo durante el logo. Una prueba de presentación real con
+USB nativo emulado mide 59,9 FPS después de los primeros 30 fotogramas;
+el selector conserva 30 y el juego 20. Falta confirmar ese ritmo en la consola.
+
+## Español y rendimiento
+
+El paquete añade `ESP.DAT`. En el selector abre Options/Opciones, baja a
+LANGUAGE/IDIOMA y elige Español con izquierda o derecha. Pulsa B para guardar
+la opción y volver. Incluye diálogos, fuente y texturas de menús; algunos textos
+escritos en código y los créditos conservan inglés. Datos y créditos completos:
+[PS2_LANGUAGE.md](PS2_LANGUAGE.md).
+
+El juego reutiliza las coordenadas y la preparación de textura del suelo
+dentro de cada grupo de triángulos. Conserva la corrección física de las olas
+y pasa la comparación de los puntos enviados al GS. Esto reduce cálculos
+repetidos, pero todavía hay que medir la mejora de FPS en la consola y no
+certifica 20 FPS estables en todas las vistas. DIAG.ELF toma una muestra de
+los componentes del render cada 60 fotogramas para localizar los costes que
+quedan. Para comparar el rendimiento habitual usa OOTPS2.ELF: el registro
+de diagnóstico añade trabajo y escrituras USB.
 
 ## Registro de una partida y optimizaciones USB
 

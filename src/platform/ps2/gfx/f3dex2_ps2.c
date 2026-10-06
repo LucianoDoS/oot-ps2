@@ -373,6 +373,8 @@ static GSPRIMSTQPOINT s_runGroundVertices[RSP_VTX_CACHE_SIZE];
 static u32 s_runGroundColors[RSP_VTX_CACHE_SIZE], s_runGroundDepths[RSP_VTX_CACHE_SIZE];
 static PS2TextureVertexSetup s_runPointSetup[2];
 static bool s_runPointSetupValid[2];
+static u64 s_runGroundUvValid;
+static float s_runGroundUv[RSP_VTX_CACHE_SIZE][2];
 #ifdef PS2_RENDERER_SMOKE_CAPTURE
 static bool s_captureEnabled;
 static unsigned s_captureCount;
@@ -456,6 +458,7 @@ bool f3dex2_batch_begin(RSPState* rsp, RDPState* rdp) {
     s_runTileBound = false;
     s_runVertexValid = 0;
     s_runGroundVertexValid = 0;
+    s_runGroundUvValid = 0;
     s_runColorValid = 0;
     s_runPointSetupValid[0] = s_runPointSetupValid[1] = false;
     s_runColored = !rsp->texEnabled;
@@ -615,9 +618,31 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
                 /* Work on draw copies, never the shared vertex cache. A whole
                  * triangle moves by the same integer number of wrap periods. */
                 const RSPVertex* wrapVertices[3]={v0,v1,v2};
+                PS2TextureVertexSetup localSetup;
+                const PS2TextureVertexSetup* wrapSetup;
+                if (s_triangleRun) wrapSetup=&s_runPointSetup[1];
+                else {
+                    ps2_texture_prepare_vertices(&localSetup,second,rsp,rdp);
+                    wrapSetup=&localSetup;
+                }
+                float wrapUv[2][3];
+                for (unsigned i=0;i<3;i++) {
+                    int slot=pointSlots[i];
+                    float uv[2];
+                    if (slot>=0 && (s_runGroundUvValid & (1ull<<slot))) {
+                        uv[0]=s_runGroundUv[slot][0]; uv[1]=s_runGroundUv[slot][1];
+                    } else {
+                        ps2_texture_vertex_coordinates(wrapSetup,wrapVertices[i],uv);
+                        if (slot>=0) {
+                            s_runGroundUv[slot][0]=uv[0]; s_runGroundUv[slot][1]=uv[1];
+                            s_runGroundUvValid |= 1ull<<slot;
+                        }
+                    }
+                    wrapUv[0][i]=uv[0]; wrapUv[1][i]=uv[1];
+                }
 #ifdef PS2_FLOOR_DIAGNOSTIC
                 PS2TextureWrapResult wrap;
-                ps2_texture_rebase_triangle(second,rsp,rdp,wrapVertices,points,
+                ps2_texture_rebase_prepared_triangle(wrapSetup,wrapUv,points,
                     ps2_floor_mode()==PS2_FLOOR_NORMAL,&wrap);
                 s_floorTriangles++;
                 s_floorRebased += !!(wrap.offsetS || wrap.offsetT);
@@ -626,7 +651,7 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
                 if (wrap.maxAfter>s_floorMaxAfter) s_floorMaxAfter=wrap.maxAfter;
                 if (wrap.maxSpan>s_floorMaxSpan) s_floorMaxSpan=wrap.maxSpan;
 #else
-                ps2_texture_rebase_triangle(second,rsp,rdp,wrapVertices,points,true,NULL);
+                ps2_texture_rebase_prepared_triangle(wrapSetup,wrapUv,points,true,NULL);
 #endif
 #ifdef PS2_RENDERER_SMOKE_CAPTURE
                 capture_points(points);

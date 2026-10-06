@@ -1,5 +1,18 @@
 # Fallos y límites encontrados por las pruebas
 
+## Idioma y frecuencia del logo
+
+El selector permite inglés/español mediante `ESP.DAT` junto a OOT.Z64. Pasan
+la selección real, la conservación de las partidas al escribir la opción,
+su recarga en SRAM y la apertura de un diálogo traducido con USB nativo emulado.
+No están traducidos todos los textos escritos en código ni los créditos.
+Falta comprobar la persistencia del idioma en una memory card física.
+
+El mínimo de dos vblank del planificador mantenía el logo en 30 FPS pese a
+pedir uno. Ahora sólo esa pantalla admite un vblank: la prueba real de
+presentación mide 59,9 FPS en PCSX2. El menú y el juego mantienen 30/20.
+Falta la comprobación del logo en hardware.
+
 ## Pantalla negra al arrancar en PS2 real
 
 Estado: arranque corregido y confirmado por el usuario. El primer

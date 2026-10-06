@@ -67,7 +67,7 @@ int ps2_sched_smoke(void) {
     failures += admit(&sc, &gfx, OS_SC_SP | OS_SC_DP, 0);
     sc.retraceCount = 0;
     failures += admit(&sc, &gfx, OS_SC_SP | OS_SC_DP, 1);
-    cfb.updateRate = 1; /* boot/menu cannot exceed 30 Hz */
+    cfb.updateRate = 1; /* File menus cannot exceed 30 Hz. */
     failures += admit(&sc, &gfx, OS_SC_SP | OS_SC_DP, 0);
     sc.retraceCount = 1;
     failures += admit(&sc, &gfx, OS_SC_SP | OS_SC_DP, 0);
@@ -78,7 +78,22 @@ int ps2_sched_smoke(void) {
     failures += admit(&sc, &gfx, OS_SC_SP | OS_SC_DP, 0);
     sc.retraceCount = 4;
     failures += admit(&sc, &gfx, OS_SC_SP | OS_SC_DP, 1);
-    printf("[PS2 SCHED TEST] %s: 20/30 Hz, late frames, audio priority, DP ownership, flush and wrap (%d)\n",
+    Sched_SetConsoleLogoActive(1);
+    cfb.updateRate = 1;
+    failures += admit(&sc, &gfx, OS_SC_SP | OS_SC_DP, 0); /* No same-VI burst. */
+    for (int tick = 5; tick < 9; tick++) {
+        sc.retraceCount = tick;
+        failures += admit(&sc, &gfx, OS_SC_SP | OS_SC_DP, 1);
+    }
+    cfb.updateRate = 3; /* The exception never overrides a slower request. */
+    sc.retraceCount = 9;
+    failures += admit(&sc, &gfx, OS_SC_SP | OS_SC_DP, 0);
+    Sched_SetConsoleLogoActive(0);
+    cfb.updateRate = 1;
+    failures += admit(&sc, &gfx, OS_SC_SP | OS_SC_DP, 0);
+    sc.retraceCount = 10;
+    failures += admit(&sc, &gfx, OS_SC_SP | OS_SC_DP, 1);
+    printf("[PS2 SCHED TEST] %s: 20/30/60 Hz, logo exit, late frames, audio priority, DP ownership, flush and wrap (%d)\n",
            failures ? "FAIL" : "PASS", failures);
     return failures;
 }

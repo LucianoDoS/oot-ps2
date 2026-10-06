@@ -345,6 +345,16 @@ OBJS += $(BUILD_DIR)/tools/ps2_usb_transition_smoke.o
 DEPS += $(BUILD_DIR)/tools/ps2_usb_transition_smoke.d
 ROM_LDFLAGS += -Wl,--wrap=ConsoleLogo_Init,--wrap=GameState_ReqPadData
 endif
+ifeq ($(PS2_LOCALE_GAME_SMOKE),1)
+ifneq ($(PS2_USB_BOOT):$(PS2_RUNTIME_DIAGNOSTIC),1:1)
+$(error PS2_LOCALE_GAME_SMOKE requires native USB and the runtime logger)
+endif
+OBJS := $(filter-out $(BUILD_DIR)/tools/ps2_runtime_game.o,$(OBJS))
+OBJS += $(BUILD_DIR)/tools/ps2_runtime_game_locale.o
+OBJS += $(BUILD_DIR)/tools/ps2_locale_game_smoke.o $(BUILD_DIR)/tools/ps2_locale_capture.o
+DEPS += $(BUILD_DIR)/tools/ps2_locale_game_smoke.d $(BUILD_DIR)/tools/ps2_locale_capture.d $(BUILD_DIR)/tools/ps2_runtime_game_locale.d
+ROM_LDFLAGS += -Wl,--wrap=GameState_Update,--wrap=GameState_ReqPadData,--wrap=ps2_capture_frame,--wrap=rdp_to_gs_present
+endif
 ifeq ($(PS2_SCENE_SMOKE),1)
 OBJS += $(BUILD_DIR)/tools/ps2_scene_smoke.o
 OBJS += $(BUILD_DIR)/tools/ps2_actor_overlay_smoke.o
@@ -403,7 +413,7 @@ $(BUILD_DIR)/src/platform/ps2/ps2_actor_overlays.o: $(BUILD_DIR)/generated/actor
 $(BUILD_DIR)/src/platform/ps2/ps2_actor_overlays.o: PLATFORM_INCLUDES += -I$(BUILD_DIR)/generated
 $(BUILD_DIR)/tools/ps2_skulltula_smoke.o: $(BUILD_DIR)/generated/skulltula_pose_cases.h
 $(BUILD_DIR)/tools/ps2_room_smoke.o: $(BUILD_DIR)/generated/room_smoke_cases.h
-$(BUILD_DIR)/tools/ps2_room_capture.o: tools/ps2_room_capture.c
+$(BUILD_DIR)/tools/ps2_room_capture.o $(BUILD_DIR)/tools/ps2_locale_capture.o: $(BUILD_DIR)/tools/%.o: tools/%.c
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) $(CFLAGS) -Iinclude -Isrc $(PLATFORM_INCLUDES) $(DEPFLAGS) -c $< -o $@
 $(BUILD_DIR)/tools/ps2_actor_overlay_smoke.o: tools/ps2_actor_overlay_smoke.c $(BUILD_DIR)/generated/actor_overlays.inc
@@ -440,6 +450,9 @@ $(BUILD_DIR)/src/platform/ps2/ps2_main_diag224.o: src/platform/ps2/ps2_main.c
 $(BUILD_DIR)/tools/ps2_runtime_game.o: tools/ps2_runtime_game.c
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) $(CFLAGS) -DPS2_RUNTIME_DIAGNOSTIC=1 $(INCLUDES) $(DEPFLAGS) -c $< -o $@
+$(BUILD_DIR)/tools/ps2_runtime_game_locale.o: tools/ps2_runtime_game.c
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CFLAGS) -DPS2_RUNTIME_DIAGNOSTIC=1 -D__wrap_GameState_Update=ps2_runtime_test_update $(INCLUDES) $(DEPFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/src/platform/ps2/%_floor.o: src/platform/ps2/%.c
 	@mkdir -p $(dir $@)

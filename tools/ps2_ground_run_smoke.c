@@ -52,6 +52,18 @@ static int texture_wrap_smoke(void) {
         memcpy(withoutStats,original,sizeof(original));
         ps2_texture_rebase_triangle(&tile,&rsp,&rdp,addresses,withoutStats,true,NULL);
         if (memcmp(rebased,withoutStats,sizeof(rebased))) failures++;
+        PS2TextureVertexSetup setup;
+        ps2_texture_prepare_vertices(&setup,&tile,&rsp,&rdp);
+        float uv[2][3];
+        for (unsigned i=0;i<3;i++) {
+            float coordinates[2];
+            ps2_texture_vertex_coordinates(&setup,addresses[i],coordinates);
+            uv[0][i]=coordinates[0]; uv[1][i]=coordinates[1];
+        }
+        memcpy(withoutStats,original,sizeof(original));
+        PS2TextureWrapResult cached;
+        ps2_texture_rebase_prepared_triangle(&setup,uv,withoutStats,true,&cached);
+        if (memcmp(rebased,withoutStats,sizeof(rebased)) || memcmp(&result,&cached,sizeof(result))) failures++;
         if (fixture<3 && (!result.outsideBefore || result.outsideAfter || result.maxAfter>128)) failures++;
         if (fixture==3 && result.offsetS) failures++;
         if (fixture==4 && memcmp(original,rebased,sizeof(original))) failures++;

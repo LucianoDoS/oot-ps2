@@ -40,9 +40,16 @@ Se genera desde el modelo extraído localmente; sus archivos no se incluyen
 en Git. Pasan escritura, lectura completa, reparación y recarga tras cerrar
 el emulador, conservando SRAM. Falta comprobarlo en una PS2 física.
 El rendimiento llega a 20 FPS en muchas vistas; quedan caídas al caminar
-según la cámara. A petición del usuario, la optimización adicional se aplaza
-para priorizar el port del resto del juego. El logo inicial de Nintendo 64
-conserva 60 FPS, el selector 30 y el juego 20 como frecuencias objetivo.
+según la cámara. La optimización vuelve a estar en curso para hardware real,
+reutilizando ahora las coordenadas del suelo sin perder la corrección física.
+El logo inicial elimina el límite de 30 del planificador: se miden 59,9 FPS
+presentados con USB nativo emulado. El selector conserva 30 y el juego 20;
+falta confirmar el logo y el rendimiento de esta revisión en la consola.
+
+El selector incorpora idioma English/Español cuando encuentra el paquete
+privado `ESP.DAT`. Traduce diálogos, fuente y texturas de menús conservando
+los índices y las partidas nativas. Algunos textos de código y los créditos
+siguen en inglés. Uso, generación y créditos: [PS2_LANGUAGE.md](PS2_LANGUAGE.md).
 
 La corrección más reciente conserva el blanco de los fundidos, la textura
 animada de los huevos de Gohma, las dos fuentes del brillo de la esmeralda

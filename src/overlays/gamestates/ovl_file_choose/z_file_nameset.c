@@ -16,6 +16,11 @@
 #include "versions.h"
 #include "audio.h"
 #include "save.h"
+#if PLATFORM_PS2
+#include "ps2_locale.h"
+#include "segment_symbols.h"
+#include "dma.h"
+#endif
 
 #include "assets/textures/title_static/title_static.h"
 
@@ -1298,6 +1303,9 @@ void FileSelect_UpdateOptionsMenu(GameState* thisx) {
         this->configMode = CM_OPTIONS_TO_MAIN;
         sramCtx->readBuff[0] = gSaveContext.soundSetting;
         sramCtx->readBuff[1] = gSaveContext.zTargetSetting;
+#if PLATFORM_PS2
+        sramCtx->readBuff[2] = ps2_locale_language()==PS2_LANGUAGE_SPANISH ? 2 : 1;
+#endif
 #if OOT_PAL_N64
         sramCtx->readBuff[2] = gSaveContext.language;
 #endif
@@ -1315,6 +1323,16 @@ void FileSelect_UpdateOptionsMenu(GameState* thisx) {
         return;
     }
 
+#if PLATFORM_PS2
+    if (sSelectedSetting==FS_SETTING_LANGUAGE && (this->stickAdjX < -30 || this->stickAdjX > 30)) {
+        SFX_PLAY_CENTERED(NA_SE_SY_FSEL_CURSOR);
+        ps2_locale_set_language(ps2_locale_language() ^ 1);
+        DMA_REQUEST_SYNC(this->staticSegment,(uintptr_t)_title_staticSegmentRomStart,
+            (uintptr_t)_title_staticSegmentRomEnd-(uintptr_t)_title_staticSegmentRomStart,__FILE__,__LINE__);
+        DMA_REQUEST_SYNC(this->parameterSegment,(uintptr_t)_parameter_staticSegmentRomStart,
+            (uintptr_t)_parameter_staticSegmentRomEnd-(uintptr_t)_parameter_staticSegmentRomStart,__FILE__,__LINE__);
+    } else
+#endif
     if (this->stickAdjX < -30) {
         SFX_PLAY_CENTERED(NA_SE_SY_FSEL_CURSOR);
 
@@ -1364,7 +1382,13 @@ void FileSelect_UpdateOptionsMenu(GameState* thisx) {
         }
     }
 
-#if !OOT_PAL_N64
+#if PLATFORM_PS2
+    if (this->stickAdjY < -30 || this->stickAdjY > 30 || CHECK_BTN_ALL(input->press.button,BTN_A)) {
+        unsigned count=ps2_locale_available()?FS_SETTING_MAX:2;
+        SFX_PLAY_CENTERED(NA_SE_SY_FSEL_CURSOR);
+        sSelectedSetting=(sSelectedSetting+count+(this->stickAdjY>30?-1:1))%count;
+    }
+#elif !OOT_PAL_N64
     if ((this->stickAdjY < -30) || (this->stickAdjY > 30)) {
         SFX_PLAY_CENTERED(NA_SE_SY_FSEL_CURSOR);
         sSelectedSetting ^= 1;
@@ -1617,6 +1641,9 @@ void FileSelect_DrawOptionsImpl(GameState* thisx) {
 
 #if !OOT_PAL_N64
     for (i = 0, vtx = 0; i < 4; i++, vtx += 4) {
+#if PLATFORM_PS2
+        if (i==3 && ps2_locale_available()) continue; /* Language replaces the calibration preview. */
+#endif
         gDPLoadTextureBlock(POLY_OPA_DISP++, sOptionsMenuHeaders[i].texture[gSaveContext.language], G_IM_FMT_IA,
                             G_IM_SIZ_8b, OPTIONS_MENU_TEXTURE_WIDTH(sOptionsMenuHeaders[i]),
                             OPTIONS_MENU_TEXTURE_HEIGHT(sOptionsMenuHeaders[i]), 0, G_TX_NOMIRROR | G_TX_WRAP,
@@ -1683,7 +1710,7 @@ void FileSelect_DrawOptionsImpl(GameState* thisx) {
         gDPPipeSync(POLY_OPA_DISP++);
 
         if (i == (gSaveContext.zTargetSetting + 4)) {
-            if (sSelectedSetting != FS_SETTING_AUDIO) {
+            if (sSelectedSetting == FS_SETTING_TARGET) {
                 gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, cursorPrimRed, cursorPrimGreen, cursorPrimBlue,
                                 this->titleAlpha[0]);
                 gDPSetEnvColor(POLY_OPA_DISP++, cursorEnvRed, cursorEnvGreen, cursorEnvBlue, 0xFF);
@@ -1767,6 +1794,38 @@ void FileSelect_DrawOptionsImpl(GameState* thisx) {
 
     gDPPipeSync(POLY_OPA_DISP++);
 
+#if PLATFORM_PS2
+    if (ps2_locale_available()) {
+        static Vtx languageVertices[] = {
+            VTX(-104,-36,0,0,0,255,255,255,255), VTX(-8,-36,0,3072,0,255,255,255,255),
+            VTX(-104,-52,0,0,512,255,255,255,255), VTX(-8,-52,0,3072,512,255,255,255,255),
+            VTX(-104,-54,0,0,0,255,255,255,255), VTX(-8,-54,0,3072,0,255,255,255,255),
+            VTX(-104,-70,0,0,512,255,255,255,255), VTX(-8,-70,0,3072,512,255,255,255,255),
+            VTX(-52,-54,0,0,0,255,255,255,255), VTX(44,-54,0,3072,0,255,255,255,255),
+            VTX(-52,-70,0,0,512,255,255,255,255), VTX(44,-70,0,3072,512,255,255,255,255),
+        };
+        /* SDK allocations can be above 16 MiB, where bare EE pointers look
+         * like N64 segment 1 addresses. Bind temporary explicit segments. */
+        gSPSegment(POLY_OPA_DISP++,14,languageVertices);
+        gSPVertex(POLY_OPA_DISP++,(Vtx*)0x0e000000,12,0);
+        for (unsigned choice=0;choice<3;choice++) {
+            unsigned label=choice?choice+1:ps2_locale_language();
+            s32 selected=choice && choice-1==ps2_locale_language();
+            s32 pulse=selected && sSelectedSetting==FS_SETTING_LANGUAGE;
+            u8 level=choice && !selected?120:255;
+            gDPPipeSync(POLY_OPA_DISP++);
+            gDPSetPrimColor(POLY_OPA_DISP++,0,0,pulse?cursorPrimRed:level,
+                pulse?cursorPrimGreen:level,pulse?cursorPrimBlue:level,this->titleAlpha[0]);
+            gDPSetEnvColor(POLY_OPA_DISP++,pulse?cursorEnvRed:0,pulse?cursorEnvGreen:0,pulse?cursorEnvBlue:0,255);
+            gSPSegment(POLY_OPA_DISP++,15,ps2_locale_label(label));
+            gDPLoadTextureBlock(POLY_OPA_DISP++,(u8*)0x0f000000,G_IM_FMT_IA,G_IM_SIZ_8b,96,16,0,
+                G_TX_CLAMP,G_TX_CLAMP,G_TX_NOMASK,G_TX_NOMASK,G_TX_NOLOD,G_TX_NOLOD);
+            unsigned first=choice*4;
+            gSP1Quadrangle(POLY_OPA_DISP++,first,first+2,first+3,first+1,0);
+        }
+    } else
+#endif
+    {
     // check brightness bars
     gDPLoadTextureBlock_4b(POLY_OPA_DISP++, gFileSelBrightnessCheckTex, G_IM_FMT_IA, 96, 16, 0,
                            G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD,
@@ -1810,6 +1869,7 @@ void FileSelect_DrawOptionsImpl(GameState* thisx) {
         gSP1Quadrangle(POLY_OPA_DISP++, vtx, vtx + 2, vtx + 3, vtx + 1, 0);
     }
 #endif
+    }
 
     // blue divider lines
     gDPPipeSync(POLY_OPA_DISP++);

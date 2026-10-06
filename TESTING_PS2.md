@@ -38,6 +38,30 @@ una ejecución usando los ELF existentes y registra sus hashes.
 
 ## Casos concretos
 
+### Idioma y ritmo del logo por USB nativo
+
+Con `ESP.DAT` privado ya generado junto a la imagen convertida:
+
+```powershell
+wsl -d Ubuntu -- bash tools/build_ps2_locale_game_smoke.sh
+./tools/run_ps2_locale_game_check.ps1 -Python 'C:\ruta\python.exe'
+```
+
+Requiere el mismo entorno Python de la prueba USB y Pillow. Ejecuta el logo
+Nintendo 64 original y mide las presentaciones reales después de 30 fotogramas
+de calentamiento. A continuación cambia las opciones a español, comprueba que
+las partidas no cambian al guardar y recargar el encabezado SRAM, captura la
+fila de idioma y un diálogo, y completa casa → Kokiri → casa. Ambas tarjetas
+del jugador y HostFs quedan desactivados. El logger termina sus escrituras
+antes de cerrar el emulador; se comprueban los registros y los SHA256 de ambos
+archivos de datos. Guarda `language-game-check.json` junto al informe USB.
+No demuestra la persistencia del idioma en una tarjeta física.
+
+Para comprobar todos los mensajes, texturas, glifos y lecturas parciales en EE,
+añade `PS2_SMOKE_LOCALE=1` al compilar `tools/build_ps2_smoke.sh`; sin ese flag,
+la prueba de gráficos no necesita datos de traducción. El empaquetador también
+rechaza una versión, tamaño, rango o CRC incorrectos de ESP.DAT.
+
 Para comprobar los ejecutables USB y sus registros:
 
 ```powershell

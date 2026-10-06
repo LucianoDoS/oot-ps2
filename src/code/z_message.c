@@ -23,6 +23,9 @@
 #include "play_state.h"
 #include "player.h"
 #include "save.h"
+#if PLATFORM_PS2
+#include "ps2_locale.h"
+#endif
 
 #include "assets/textures/parameter_static/parameter_static.h"
 
@@ -1703,7 +1706,11 @@ void Message_DrawText(PlayState* play, Gfx** gfxP) {
                 Message_DrawTextChar(play, &font->charTexBuf[charTexIdx], &gfx);
                 charTexIdx += FONT_CHAR_TEX_SIZE;
 
+#if PLATFORM_PS2
+                msgCtx->textPosX += (s32)(ps2_locale_char_width(character,sFontWidths[character - ' ']) * (R_TEXT_CHAR_SCALE / 100.0f));
+#else
                 msgCtx->textPosX += (s32)(sFontWidths[character - ' '] * (R_TEXT_CHAR_SCALE / 100.0f));
+#endif
                 break;
         }
     }
@@ -2659,6 +2666,11 @@ void Message_OpenText(PlayState* play, u16 textId) {
                                  font->msgLength, "../z_message_PAL.c", UNK_LINE);
             }
 #else
+#if PLATFORM_PS2
+            if (ps2_locale_message(textId,MSG_BUF,sizeof(font->msgBuf),&font->charTexBuf[0],&font->msgLength)) {
+                msgCtx->msgLength=font->msgLength;
+            } else
+#endif
             DMA_REQUEST_SYNC(MSG_BUF, (uintptr_t)_nes_message_data_staticSegmentRomStart + font->msgOffset,
                              font->msgLength, "../z_message_PAL.c", UNK_LINE);
 #endif

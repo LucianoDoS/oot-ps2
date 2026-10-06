@@ -73,6 +73,11 @@ OSTime sRDPTimeStart;
  * serializes flips and the next render. Late frames do not accumulate catch-up. */
 static u32 sPs2LastGfxRetrace;
 static u8 sPs2GfxStarted;
+static u8 sPs2ConsoleLogoActive;
+
+void Sched_SetConsoleLogoActive(s32 active) {
+    sPs2ConsoleLogoActive = active != 0;
+}
 #endif
 
 #if OOT_VERSION < PAL_1_0 || DEBUG_FEATURES
@@ -275,10 +280,10 @@ OSScTask* Sched_GfxTaskFramebufferValid(Scheduler* sc, OSScTask* task) {
 
 #if PLATFORM_PS2
     if (task->list.t.type == M_GFXTASK && task->framebuffer != NULL) {
-        /* The boot/file menus request one VI, which could run at 60 Hz
-         * after removing the dummy framebuffer wait. Cap those at 30 Hz;
-         * gameplay's three-VI interval remains 20 Hz. */
-        u32 interval = task->framebuffer->updateRate > 2 ? task->framebuffer->updateRate : 2;
+        /* The logo requests 60 Hz. File menus also request one VI but keep
+         * their 30 Hz cap; gameplay's three-VI interval remains 20 Hz. */
+        s32 minimum = sPs2ConsoleLogoActive ? 1 : 2;
+        u32 interval = task->framebuffer->updateRate > minimum ? task->framebuffer->updateRate : minimum;
         if (sPs2GfxStarted && (u32)((u32)sc->retraceCount - sPs2LastGfxRetrace) < interval) {
             return NULL;
         }
@@ -739,6 +744,7 @@ void Sched_Init(Scheduler* sc, void* stack, OSPri priority, u8 viModeType, UNK_T
 #if PLATFORM_PS2
     sPs2LastGfxRetrace = 0;
     sPs2GfxStarted = false;
+    sPs2ConsoleLogoActive = false;
 #endif
 
     // Create message queues for receiving interrupt events and tasks

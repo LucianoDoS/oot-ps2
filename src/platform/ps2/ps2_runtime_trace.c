@@ -181,6 +181,12 @@ static void trace_tick(void) {
     }
 }
 
+static volatile int sFinishRequested;
+void ps2_runtime_trace_finish(void) {
+    sFinishRequested=1;
+    if (sWake>=0) SignalSema(sWake);
+}
+
 static void trace_thread(void* unused) {
     (void)unused;
     ps2_runtime_event("LOGGER_ENTER wake=vblank");
@@ -189,6 +195,14 @@ static void trace_thread(void* unused) {
         if (WaitSema(sWake) < 0) {
             ps2_runtime_event("ERROR logger wait failed; logging stopped");
             flush_records(); sRecording = 0;
+            break;
+        }
+        if (sFinishRequested) {
+            ps2_runtime_event("LOGGER_FINISH requested=1");
+            flush_records();
+            int finished=sRecording;
+            sRecording=0;
+            printf("[PS2 RUNTIME LOG] %s\n",finished?"CLOSED final flush completed":"ERROR final flush failed");
             break;
         }
         trace_tick();

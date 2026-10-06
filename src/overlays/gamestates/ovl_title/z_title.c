@@ -18,6 +18,7 @@
 #include "padmgr.h"
 #include "printf.h"
 #include "regs.h"
+#include "sched.h"
 #include "segment_symbols.h"
 #include "sequence.h"
 #include "sys_matrix.h"
@@ -206,6 +207,10 @@ void ConsoleLogo_Main(GameState* thisx) {
 void ConsoleLogo_Destroy(GameState* thisx) {
     ConsoleLogoState* this = (ConsoleLogoState*)thisx;
 
+#if PLATFORM_PS2
+    Sched_SetConsoleLogoActive(false);
+#endif
+
 #if PLATFORM_N64
     if (this->unk_1E0) {
         if (func_801C7818() != 0) {
@@ -245,6 +250,9 @@ void ConsoleLogo_Init(GameState* thisx) {
     DMA_REQUEST_SYNC(this->staticSegment, (uintptr_t)_nintendo_rogo_staticSegmentRomStart, size, "../z_title.c", 615);
     BOOT_STAGE("LOGO N64: segmento cargado");
     R_UPDATE_RATE = 1;
+#if PLATFORM_PS2
+    Sched_SetConsoleLogoActive(true);
+#endif
     Matrix_Init(&this->state);
     BOOT_STAGE("LOGO N64: matrices inicializadas");
     View_Init(&this->view, this->state.gfxCtx);

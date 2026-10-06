@@ -36,6 +36,7 @@
 #include "ps2_os_internal.h"
 #include "ps2_runtime_trace.h"
 #include "rdp_to_gs.h"
+#include "ps2_gfx_profile.h"
 
 /* ───────────────────────────────────────────────────────────────── *
  *  OSTask — layout real de libultra
@@ -94,6 +95,10 @@ void ps2_runtime_gfx_snapshot(void) {
 
 static void graphics_worker(void* arg) {
     (void)arg;
+#ifdef PS2_RUNTIME_DIAGNOSTIC
+    /* Sample one frame in sixty, and include subphase timings in DIAG.LOG. */
+    ps2_gfx_profile_enable(true);
+#endif
     for (;;) {
         WaitSema(s_gfxWake);
         u64 begin = osGetTime();

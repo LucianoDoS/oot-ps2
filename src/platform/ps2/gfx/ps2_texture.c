@@ -458,6 +458,8 @@ void ps2_texture_build_vertex(const TileDescriptor* tile, const RSPState* rsp,
     output->xyz2 = vertex_to_XYZ2(rdp->gs, vertex->sx, vertex->sy, depth);
 }
 
+static unsigned texture_repeat_period(unsigned mode, unsigned mask, unsigned extent);
+
 void ps2_texture_prepare_vertices(PS2TextureVertexSetup* setup,
     const TileDescriptor* tile, const RSPState* rsp, const RDPState* rdp) {
     setup->texScaleS = rsp->texScaleS;
@@ -475,6 +477,8 @@ void ps2_texture_prepare_vertices(PS2TextureVertexSetup* setup,
     setup->perspective = !!(rdp->otherMode.hi & (1u << 19));
     setup->dynamicAlpha = ps2_combiner_dynamic_alpha(rdp);
     setup->primAlpha = rdp->primColor & 255;
+    setup->repeatS = texture_repeat_period(coordinates->cms, coordinates->masks, tile->gsTexture.Width);
+    setup->repeatT = texture_repeat_period(coordinates->cmt, coordinates->maskt, tile->gsTexture.Height);
 }
 
 void ps2_texture_build_vertex_prepared(const PS2TextureVertexSetup* setup,
@@ -506,18 +510,27 @@ void ps2_texture_rebase_triangle(const TileDescriptor* tile,
     const RSPState* rsp, const RDPState* rdp,
     const RSPVertex* const vertices[3], GSPRIMSTQPOINT points[3], bool apply,
     PS2TextureWrapResult* result) {
-    if (result) memset(result, 0, sizeof(*result));
     PS2TextureVertexSetup setup;
     ps2_texture_prepare_vertices(&setup, tile, rsp, rdp);
-    const TileDescriptor* coordinates = coordinate_tile(tile, rdp);
-    const unsigned periods[2] = {
-        texture_repeat_period(coordinates->cms, coordinates->masks, tile->gsTexture.Width),
-        texture_repeat_period(coordinates->cmt, coordinates->maskt, tile->gsTexture.Height)};
-    float uv[2][3], offsets[2] = {0};
+    float uv[2][3];
     for (unsigned i = 0; i < 3; i++) {
         uv[0][i] = (vertices[i]->tc_s * setup.texScaleS / 32.0f) * setup.shiftS - setup.offsetS;
         uv[1][i] = (vertices[i]->tc_t * setup.texScaleT / 32.0f) * setup.shiftT - setup.offsetT;
     }
+    ps2_texture_rebase_prepared_triangle(&setup,uv,points,apply,result);
+}
+
+void ps2_texture_vertex_coordinates(const PS2TextureVertexSetup* setup,
+    const RSPVertex* vertex, float coordinates[2]) {
+    coordinates[0] = (vertex->tc_s * setup->texScaleS / 32.0f) * setup->shiftS - setup->offsetS;
+    coordinates[1] = (vertex->tc_t * setup->texScaleT / 32.0f) * setup->shiftT - setup->offsetT;
+}
+
+void ps2_texture_rebase_prepared_triangle(const PS2TextureVertexSetup* setup,
+    const float uv[2][3], GSPRIMSTQPOINT points[3], bool apply, PS2TextureWrapResult* result) {
+    const unsigned periods[2] = {setup->repeatS,setup->repeatT};
+    float offsets[2] = {0};
+    if (result) memset(result,0,sizeof(*result));
     for (unsigned axis = 0; axis < 2; axis++) {
         float minimum = uv[axis][0], maximum = minimum;
         for (unsigned i = 1; i < 3; i++) {
@@ -544,8 +557,8 @@ void ps2_texture_rebase_triangle(const TileDescriptor* tile,
     if (result) { result->offsetS = offsets[0]; result->offsetT = offsets[1]; }
     if (offsets[0] || offsets[1]) for (unsigned i = 0; i < 3; i++) {
         float q = points[i].rgbaq.color.q;
-        points[i].stq = vertex_to_STQ((uv[0][i] - offsets[0]) * q * setup.invWidth,
-                                     (uv[1][i] - offsets[1]) * q * setup.invHeight);
+        points[i].stq = vertex_to_STQ((uv[0][i] - offsets[0]) * q * setup->invWidth,
+                                     (uv[1][i] - offsets[1]) * q * setup->invHeight);
     }
 }
 

@@ -25,6 +25,7 @@ void ps2_texture_apply_tile(TileDescriptor* tile, RDPState* rdp);
 typedef struct {
     float texScaleS, texScaleT, shiftS, shiftT, offsetS, offsetT;
     float invWidth, invHeight;
+    unsigned repeatS, repeatT;
     GSGLOBAL* gs;
     u32 primAlpha;
     bool perspective, dynamicAlpha;
@@ -47,6 +48,11 @@ typedef struct {
 void ps2_texture_rebase_triangle(const TileDescriptor* tile,
     const RSPState* rsp, const RDPState* rdp,
     const RSPVertex* const vertices[3], GSPRIMSTQPOINT points[3], bool apply,
+    PS2TextureWrapResult* result);
+void ps2_texture_vertex_coordinates(const PS2TextureVertexSetup* setup,
+    const RSPVertex* vertex, float coordinates[2]);
+void ps2_texture_rebase_prepared_triangle(const PS2TextureVertexSetup* setup,
+    const float coordinates[2][3], GSPRIMSTQPOINT points[3], bool apply,
     PS2TextureWrapResult* result);
 
 #endif /* PS2_TEXTURE_H */

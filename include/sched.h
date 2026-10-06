@@ -71,6 +71,11 @@ void Sched_Notify(Scheduler* sc);
 void Sched_Init(Scheduler* sc, void* stack, OSPri priority, u8 viModeType, UNK_TYPE arg4, IrqMgr* irqMgr);
 void Sched_FlushTaskQueue(void);
 
+#if PLATFORM_PS2
+/* Only the console logo requests one VI per frame; file menus remain at 30 Hz. */
+void Sched_SetConsoleLogoActive(s32 active);
+#endif
+
 extern Scheduler gScheduler;
 
 #endif

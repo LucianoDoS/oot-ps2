@@ -96,6 +96,7 @@ _Static_assert(sizeof(OSIoMesg)   == 0x18, "OSIoMesg debe medir 0x18");
  * ───────────────────────────────────────────────────────────────── */
 static int  s_romFd   = -1;
 static bool s_romOpen = false;
+static const char* s_openedPath;
 static u32 s_romSize;
 static int s_romMutex = -1;
 static u32 s_romPosition;
@@ -168,6 +169,7 @@ static bool rom_open(void) {
             }
             s_romFd   = fd;
             s_romOpen = true;
+            s_openedPath = kRomPaths[i];
             s_romSize = (u32)size;
             s_romPosition = 0;
             s_positionKnown = true;
@@ -184,6 +186,8 @@ static bool rom_open(void) {
     printf("[osRom]        Coloca oot.z64 junto al ELF (host:) o en el disco.\n");
     return false;
 }
+
+const char* ps2_rom_path(void) { return s_openedPath; }
 
 /* ───────────────────────────────────────────────────────────────── *
  *  osCartRomInit — devuelve el handle del "cartucho"

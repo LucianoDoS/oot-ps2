@@ -14,6 +14,9 @@
 #include "ocarina.h"
 #include "printf.h"
 #include "save.h"
+#if PLATFORM_PS2
+#include "ps2_locale.h"
+#endif
 #include "scene.h"
 #include "ss_sram.h"
 #include "terminal.h"
@@ -1045,6 +1048,13 @@ void Sram_InitSram(GameState* gameState, SramContext* sramCtx) {
 
     gSaveContext.soundSetting = sramCtx->readBuff[SRAM_HEADER_SOUND] & 3;
     gSaveContext.zTargetSetting = sramCtx->readBuff[SRAM_HEADER_Z_TARGET] & 1;
+
+#if PLATFORM_PS2
+    ps2_locale_init(ps2_rom_path());
+    ps2_locale_set_language(sramCtx->readBuff[SRAM_HEADER_LANGUAGE] == 2 ? PS2_LANGUAGE_SPANISH : PS2_LANGUAGE_ENGLISH);
+    /* Keep existing two-entry texture tables on their western index. */
+    gSaveContext.language = LANGUAGE_ENG;
+#endif
 
 #if OOT_PAL
     gSaveContext.language = sramCtx->readBuff[SRAM_HEADER_LANGUAGE];

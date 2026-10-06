@@ -10,6 +10,10 @@ flags=(-D_EE -DPLATFORM_PS2=1 -DPS2_RENDERER_SMOKE_CAPTURE=1 -G0 -O2 -std=gnu11 
        -fno-strict-aliasing '-DPS2_ROM_TEST_PATH="host:ps2-rom-smoke.bin"' -Iinclude/ps2 -I"$PS2SDK/ee/include"
        -I"$PS2SDK/common/include" -I"$PS2SDK/ports/include" -I"$GSKIT/include")
 objects=()
+if [[ "${PS2_SMOKE_LOCALE:-0}" == 1 ]]; then
+    flags+=(-DPS2_SMOKE_LOCALE=1)
+    cp build/PS2-ntsc12/ESP.DAT build/PS2/ESP.DAT
+fi
 if [[ "${PS2_SMOKE_FLOOR_DIAGNOSTIC:-0}" == 1 ]]; then
     flags+=(-DPS2_FLOOR_DIAGNOSTIC=1)
 fi
@@ -32,6 +36,11 @@ for src in tools/ps2_transition_smoke.c src/code/z_fbdemo_fade.c src/code/z_fbde
         -DOOT_VERSION=NTSC_1_2 -DMML_VERSION=MML_VERSION_OOT \
         -Iinclude -Iinclude/libc -I"$upstream" -I"$upstream/extracted/ntsc-1.2" \
         -I"$upstream/build/ntsc-1.2" -c "$src" -o "$obj"
+    objects+=("$obj")
+done
+for src in tools/ps2_locale_smoke.c src/platform/ps2/io/ps2_locale.c; do
+    obj="build/PS2/smoke/$(basename "${src%.c}").o"
+    "$cc" -Iinclude -D_LANGUAGE_C=1 "${flags[@]}" -c "$src" -o "$obj"
     objects+=("$obj")
 done
 "$cc" -G0 -T"$PS2SDK/ee/startup/linkfile" -Wl,-zmax-page-size=128 \

@@ -4,6 +4,50 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Idioma, ritmo del logo y reutilización del suelo — 2026-10-05
+
+- El mínimo de dos vblank sólo se elimina durante el estado del logo Nintendo
+  64. El planificador sigue limitando los menús a 30 y el juego a 20. La prueba
+  de presentación del logo real, por USB nativo emulado, mide 59,9 FPS tras
+  30 fotogramas de calentamiento. No equivale a confirmar 60 FPS en consola.
+- Se añade ESP.DAT privado con 2.114 mensajes y 380 recursos de textura de
+  la traducción eduardo_aj2 v2.2 (Patcher64Plus-Tool). Se relocalizan por ID y
+  descriptores compatibles, sin importar código o geometría N64. El archivo
+  se carga una vez fuera del arena; sus lecturas de glifos y recursos cubiertos
+  usan RAM. CRC32, límites, registros ordenados y anchuras se validan antes de
+  usarlo. Si falta o es inválido se conservan las opciones y mensajes ingleses.
+- LANGUAGE/IDIOMA se elige con izquierda/derecha en Opciones y se guarda con
+  B en el encabezado SRAM. Las tablas nativas mantienen su índice occidental
+  y las partidas conservan su formato. La fila usa palabras completas sans
+  serif, tamaño y contorno uniformes, espaciado proporcional e IA8 (archivo
+  versión 2); evita mezclar la fuente de diálogos con las opciones. El TTF del
+  sistema queda fuera del repo y su hash se registra en el informe privado.
+- Se enlazan segmentos explícitos para los vértices y etiquetas de esta fila:
+  las direcciones EE de más de 16 MiB podrían confundirse con direcciones
+  segmentadas N64 y dejar el texto en blanco. Los textos en código y créditos
+  no están traducidos por completo; voces y sonido conservan los originales.
+- El render prepara los periodos y las coordenadas del suelo una vez por
+  vértice compartido de cada grupo de triángulos. Conserva la traslación de
+  periodos completos confirmada en hardware, el orden de capas, perspectiva,
+  niebla, profundidad y recorte. La comparación de puntos GS pasa, junto a
+  las pruebas de audio y gráficos de 120 fotogramas. No se afirma que esto
+  garantice 20 FPS en todas las vistas; falta medir la mejora física.
+- DIAG.ELF muestra tiempos de los componentes del render cada 60 fotogramas.
+  OOTPS2.ELF omite ese perfil detallado. El test nativo de idioma captura las
+  opciones y el diálogo, comprueba el encabezado sin cambiar las partidas,
+  y completa casa → Kokiri → casa con HostFs y tarjetas del jugador
+  desactivados. Su logger cierra las escrituras FAT antes de terminar la
+  prueba. Uso, créditos y límites en PS2_LANGUAGE.md y TESTING_PS2.md.
+- Pasa la comprobación EE completa con datos de idioma:
+  `build/PS2/floor-production-smoke-20261005-222748/report.json`.
+  El recorrido USB con la tipografía final y sus capturas pasa en
+  `build/PS2/usb-stack-checks/20261005-223443-071/language-game-check.json`.
+  Se recompilan los tres ELF USB y el ELF para PCSX2. El paquete con ESP.DAT
+  se copia y verifica por SHA256 en D:\OOTPS2 (once archivos); la versión
+  anterior queda en D:\OOTPS2-backup-20261005-223751. OOT.Z64, los registros
+  físicos y la tarjeta del jugador conservan sus hashes. La confirmación
+  física del idioma, el ritmo del logo y la mejora de FPS sigue pendiente.
+
 ## Suelo confirmado en PS2 real e integrado al juego — 2026-10-05
 
 - El usuario confirma que Arriba de FLOOR v3 elimina las olas del suelo

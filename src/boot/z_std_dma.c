@@ -43,6 +43,9 @@
 #include "yaz0.h"
 #endif
 #include "dma.h"
+#if PLATFORM_PS2
+#include "ps2_locale.h"
+#endif
 #include "thread.h"
 #if PLATFORM_PS2
 #include "ps2/ps2_queue.h"
@@ -390,6 +393,10 @@ void DmaMgr_ProcessRequest(DmaRequest* req) {
     UNUSED_NDEBUG const char* filename;
     s32 i = 0;
 
+#if PLATFORM_PS2
+    if (ps2_locale_read(vrom,ram,size)) return;
+#endif
+
 #if DEBUG_FEATURES
     // Get the filename (for debugging)
     filename = DmaMgr_GetFileName(vrom);
@@ -511,6 +518,9 @@ void DmaMgr_ProcessRequest(DmaRequest* req) {
             }
         }
     }
+#if PLATFORM_PS2
+    ps2_locale_overlay(vrom,ram,size);
+#endif
 }
 
 void DmaMgr_ThreadEntry(void* arg) {

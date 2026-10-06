@@ -11,6 +11,10 @@ u32 gPS2GfxProfileCycles[GFX_PROFILE_COUNT];
 u32 gPS2GfxProfileCalls[GFX_PROFILE_COUNT];
 static unsigned sFrame;
 static bool sChecked, sEnabled;
+void ps2_gfx_profile_enable(bool enabled) {
+    sChecked = true;
+    sEnabled = enabled;
+}
 static u32 sStart;
 static u32 sWallStart;
 typedef struct {

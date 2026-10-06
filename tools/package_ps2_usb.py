@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import shutil
 import struct
+from ps2_locale_archive import inspect_locale
 
 
 def inspect_elf(path):
@@ -47,17 +48,29 @@ def main():
              'DIAG224.ELF': a.build_dir / 'oot_ps2_usb_runtime224.elf',
              'BOOTTEST.ELF': a.build_dir / 'oot_ps2_usb_diagnostic.elf', 'OOT.Z64': image}
     memory = {name: inspect_elf(path) for name, path in files.items() if name.endswith('.ELF')}
+    locale_path=a.build_dir/'ESP.DAT'
+    locale=None
+    if locale_path.is_file():
+        locale=inspect_locale(locale_path.read_bytes())
+        locale_report=json.loads(locale_path.with_suffix('.json').read_text())
+        assert locale_report['native_image_sha256']==image_hash, 'Language data belongs to a different converted image'
+        assert locale_report['sha256']==hashlib.sha256(locale_path.read_bytes()).hexdigest(), 'Language archive hash mismatch'
+        files['ESP.DAT']=locale_path
+        locale['source']=locale_report['source']
+        locale['limitation']=locale_report['limitation']
     a.output.mkdir(parents=True, exist_ok=True)
     hashes = {}
     for name, source in files.items():
         shutil.copyfile(source, a.output / name)
         hashes[name] = hashlib.sha256((a.output / name).read_bytes()).hexdigest()
         assert hashes[name] == hashlib.sha256(source.read_bytes()).hexdigest()
-    report = dict(status='PACKAGED', real_ps2_validated=False, data=expected, elf_memory=memory, files=hashes)
+    report = dict(status='PACKAGED', real_ps2_validated=False, data=expected, elf_memory=memory, locale=locale, files=hashes)
     (a.output / 'package.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     (a.output / 'HASHES.sha256').write_text(''.join(f'{digest}  {name}\n' for name, digest in hashes.items()), encoding='ascii')
     shutil.copyfile('PS2_HARDWARE.md', a.output / 'LEEME.txt')
     shutil.copyfile('BUGS_PS2.md', a.output / 'BUGS.txt')
+    if locale:
+        shutil.copyfile('PS2_LANGUAGE.md', a.output / 'PS2_LANGUAGE.md')
     print(f'USB package: {a.output.resolve()}')
     print(f'Game static memory end: 0x{memory["OOTPS2.ELF"]["static_end"]:08x}')
     print(f'Diagnostic static memory end: 0x{memory["DIAG.ELF"]["static_end"]:08x}')
