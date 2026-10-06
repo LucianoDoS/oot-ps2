@@ -103,6 +103,11 @@ partida, y cachés específicas para reducir lecturas repetidas del USB.
 DIAG224.ELF conserva el diagnóstico de vídeo a 224 líneas duplicadas; esa
 comparación no solucionó las olas. BOOT.LOG y DIAG.LOG usan escrituras
 alineadas por sectores, tras corregir los primeros bloqueos del registro.
+El juego habitual también registra la sesión automáticamente; agrupa las
+escrituras cada 15 segundos en transferencias de hasta 4 KiB. El primer log
+físico identifica el dibujo como el coste sostenido en una vista lenta de
+Kokiri, incluso sin lecturas USB. La comprobación de texturas ahora acelera
+también fuentes sin alineación a dieciséis bytes y conserva todos sus contenidos.
 Para jugar usa OOTPS2.ELF, que ya incorpora la corrección del suelo sin los
 controles de comparación ni las mediciones de FLOOR.ELF.
 El registro detallado está en [CHANGELOG_PS2_PORT.md](CHANGELOG_PS2_PORT.md).

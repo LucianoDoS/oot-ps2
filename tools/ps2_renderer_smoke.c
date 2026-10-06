@@ -177,7 +177,7 @@ int ps2_renderer_smoke(void) {
         {0xda8072dc,0x75048b5b},{0x3c8fd07d,0x845fe473},{0x3922f755,0xc8c31042},
         {0x0c5d12f1,0x896ebb1d}
     };
-    static u8 hashInput[273];
+    static u8 hashInput[273] __attribute__((aligned(16)));
     for (int offset=0;offset<16;offset++) {
         for (int i=0;i<257;i++) hashInput[offset+i]=(i*37+11)&255;
         for (unsigned i=0;i<sizeof(lengths)/sizeof(lengths[0]);i++) {
@@ -192,19 +192,29 @@ int ps2_renderer_smoke(void) {
     }
     printf("[PS2 TEXTURE HASH TEST] reference vectors, unaligned rows, all-byte mutations (%d)\n",failures);
     static u8 alignedHash[4096] __attribute__((aligned(128)));
+    static u8 eightHash[4104] __attribute__((aligned(128)));
+    static u8 wordHash[4100] __attribute__((aligned(128)));
     static u8 unalignedHash[4097] __attribute__((aligned(128)));
-    for (unsigned i=0;i<4096;i++) alignedHash[i]=unalignedHash[i+1]=(i*37+11)&255;
+    for (unsigned i=0;i<4096;i++)
+        alignedHash[i]=eightHash[i+8]=wordHash[i+4]=unalignedHash[i+1]=(i*37+11)&255;
     for (unsigned bytes=2048;bytes<=4096;bytes*=2) {
-        volatile u32 alignedChecksum=0, unalignedChecksum=0;
+        volatile u32 alignedChecksum=0, eightChecksum=0, wordChecksum=0, unalignedChecksum=0;
         u32 start=ps2_gfx_cycles();
         for (unsigned i=0;i<1000;i++) alignedChecksum+=ps2_texture_hash(alignedHash,bytes,i);
         u32 alignedCycles=ps2_gfx_cycles()-start;
         start=ps2_gfx_cycles();
+        for (unsigned i=0;i<1000;i++) eightChecksum+=ps2_texture_hash(eightHash+8,bytes,i);
+        u32 eightCycles=ps2_gfx_cycles()-start;
+        start=ps2_gfx_cycles();
+        for (unsigned i=0;i<1000;i++) wordChecksum+=ps2_texture_hash(wordHash+4,bytes,i);
+        u32 wordCycles=ps2_gfx_cycles()-start;
+        start=ps2_gfx_cycles();
         for (unsigned i=0;i<1000;i++) unalignedChecksum+=ps2_texture_hash(unalignedHash+1,bytes,i);
         u32 unalignedCycles=ps2_gfx_cycles()-start;
-        if (alignedChecksum != unalignedChecksum) failures++;
-        printf("[PS2 HASH ALIGN BENCH] bytes=%u alignedCycles=%u unalignedCycles=%u checksum=%08x failures=%d\n",
-            bytes,alignedCycles,unalignedCycles,(u32)alignedChecksum,failures);
+        if (alignedChecksum != eightChecksum || alignedChecksum != wordChecksum ||
+            alignedChecksum != unalignedChecksum) failures++;
+        printf("[PS2 HASH ALIGN BENCH] bytes=%u alignedCycles=%u eightCycles=%u wordCycles=%u unalignedCycles=%u checksum=%08x failures=%d\n",
+            bytes,alignedCycles,eightCycles,wordCycles,unalignedCycles,(u32)alignedChecksum,failures);
     }
     int initializedDepth = g_rdpState.gs->PSMZ;
     const int formats[] = {GS_PSMZ_16, GS_PSMZ_16S, GS_PSMZ_24, GS_PSMZ_32};

@@ -20,6 +20,7 @@ def verify(root):
     assert '[PS2 RUNTIME LOG] CLOSED final flush completed' in log
     runtime=(root/'DIAG.LOG').read_text(encoding='utf-8',errors='replace')
     automatic='AUTO-PLAY' in runtime.splitlines()[0]
+    transfer=re.search(r'LOGGER_START .*\btransferBytes=(\d+)',runtime)
     if automatic:
         assert re.search(r'LOGGER_START .*batchSeconds=15 .*reserveRamBytes=',runtime)
         assert 'FPS-HUD' not in runtime.splitlines()[0]
@@ -44,6 +45,7 @@ def verify(root):
         r'\[PS2 LOGO CADENCE\] PASS .*fps10=(\d+)',log)[1]),
         english_save_slots_unchanged=True,locale_text_pixels=counts,captures=captures,
         automatic_runtime_log=automatic,log_flush_seconds=15 if automatic else 5,
+        log_transfer_bytes=int(transfer[1]) if transfer else 512,
         real_ps2_validated=False,physical_language_persistence_validated=False)
     (root/'language-game-check.json').write_text(json.dumps(report,indent=2)+'\n')
     print(json.dumps(report,indent=2))

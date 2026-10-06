@@ -69,7 +69,8 @@ registra la reserva, carga del segmento, matrices, vista y buffer SRAM del logo.
 El usuario confirma que ahora arranca. Se elimina el mínimo de dos vblank
 del planificador sólo durante el logo. Una prueba de presentación real con
 USB nativo emulado mide 59,9 FPS después de los primeros 30 fotogramas;
-el selector conserva 30 y el juego 20. Falta confirmar ese ritmo en la consola.
+el selector conserva 30 y el juego 20. El registro automático físico de la
+SCPH-90010 confirma tres intervalos del logo a 59,9–60 FPS.
 
 ## Español y rendimiento
 
@@ -128,6 +129,14 @@ El contador dibuja sprites sólidos después del juego: no carga fuentes ni
 texturas y no entra en el retrato del inventario. OOTPS2.ELF registra con menor
 frecuencia de escritura y sin añadir ese indicador a la imagen.
 
+La primera sesión automática en consola confirma 12 FPS de mediana en el
+tramo final de Kokiri incluso en intervalos sin lecturas ni escritura del
+logger. La traducción gráfica ocupa 66,82 ms por fotograma, incluida la
+interrupción por otros hilos; no identifica todavía qué fase gráfica domina.
+La nueva comprobación de texturas acelera también las fuentes sin alineación
+a dieciséis bytes, conservando todos sus contenidos y la corrección del suelo.
+El resultado de esta revisión aún necesita compararse en esa misma vista.
+
 BOOTTEST sigue siendo sólo la comprobación inicial.
 
 DIAG.LOG registra etapas y errores del EE, cambios de estado, solicitudes y
@@ -147,8 +156,9 @@ una excepción. El registro no cambia los callbacks de las escenas.
 Los productores registran en RAM; un semáforo despierta el hilo del registro
 desde el vblank, sin usar usleep ni escribir archivos desde el vblank. Se guarda
 el estado inicial inmediatamente y después se escriben y cierran bloques
-cada cinco segundos en DIAG y cada quince en OOTPS2. BOOT.LOG v2 y DIAG.LOG v3 usan transferencias de 512 bytes
-con buffers alineados; los espacios al final de líneas o lotes son normales.
+cada cinco segundos en DIAG y cada quince en OOTPS2. BOOT.LOG v2 escribe sectores
+de 512 bytes; DIAG.LOG v3 agrupa hasta 4 KiB por llamada, con buffers alineados
+y tamaños/offsets múltiplos de 512. Los espacios al final de los lotes son normales.
 Las etapas de inicio del registro distinguen reloj, semáforo, hilo y apertura,
 escritura y cierre del primer lote. Si falla el reloj del port, clockFallback=1 marca un
 intervalo aproximado basado en retraces; no certifica los tiempos gráficos.
@@ -158,6 +168,8 @@ error detiene sólo el registro; un controlador USB bloqueado dentro de una llam
 puede detener también las cargas. No guarda cada instrucción, triángulo o muestra de sonido.
 Una excepción que detenga todos los hilos puede impedir el último volcado.
 El logger puede introducir una pausa: `FLUSH durationMs` mide su propia escritura.
+La primera partida automática física registra un máximo de 949 ms. Agrupar
+sectores reduce llamadas, pero aún hay que medir esa latencia en el USB real.
 
 Prueba unos 20 segundos quieto, otros caminando, y entra/sal de una casa.
 Tras ver un fallo, espera al menos veinte segundos antes de apagar o reiniciar
@@ -277,3 +289,6 @@ debe subirse a GitHub; se publicarán sólo código y herramientas cuando se
 prepare esa fase.
 
 Referencia técnica de los controladores: [ps2sdk USBHDFSD](https://github.com/ps2dev/ps2sdk/tree/master/iop/usb/usbhdfsd).
+La agrupación evita repetir el RPC por cada sector; se conserva la interfaz
+POSIX del SDK. Referencia de la llamada subyacente:
+[ps2sdk fioWrite](https://github.com/ps2dev/ps2sdk/blob/master/ee/kernel/src/fileio.c).

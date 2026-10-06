@@ -4,6 +4,52 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Primer registro automático en consola y comprobación de texturas — 2026-10-06
+
+- Se conserva la partida física en
+  `build/PS2/hardware-runtime/auto-play-physical-20261006-114209`:
+  255 muestras, encabezado AUTO-PLAY, sin errores USB, pérdidas, reloj detenido
+  ni límite del archivo. El ELF coincide con la versión copiada anteriormente.
+- El último minuto contiene 46 intervalos sin lecturas ni solapamiento con
+  escrituras del logger: 549 fotogramas, mediana de 12 FPS, 66,82 ms de
+  traducción, 2,74 ms de envío y 13,98 ms de presentación por fotograma.
+  Esos tiempos incluyen interrupciones y otros hilos; señalan el camino
+  gráfico como el coste principal sostenido, sin atribuirlo a una fase concreta.
+  El analizador ahora separa esa ventana de cargas y escrituras del registro.
+- El logger acumula 2.885 ms de escrituras y una llega a 949 ms. Se agrupan
+  hasta ocho sectores por llamada (4 KiB), manteniendo alineación a 64 bytes,
+  offsets/tamaños múltiplos de 512, relleno, cierre del lote y límite de 2 MiB.
+  El arranque registra `transferBytes=4096`. Pasan escrituras parciales,
+  exactamente dos llamadas para un lote de unos 7 KiB, fallos, overflow y
+  batching en los modos automático y diagnóstico. Falta contrastar la latencia
+  de esta revisión con el USB físico.
+- La comprobación XXH32 ahora usa MMI también para fuentes alineadas a ocho
+  bytes y a bytes arbitrarios. Usa LD o LDL/LDR completos y PCPYLD, conserva
+  el camino escalar de cuatro bytes y no redondea hacia arriba el final de una
+  franja. Comprueba todos los bytes en cada binding: no omite datos mutables ni
+  conserva hashes sólo por dirección o fotograma.
+- El registro físico confirma tres intervalos del logo Nintendo 64 a
+  59,9–60 FPS. Ya no queda pendiente esa comprobación en la SCPH-90010.
+- La revisión final pasa los 120 fotogramas de gráficos/audio y los casos de
+  las 16 alineaciones, colas, niebla, recorte y dos capas del suelo en
+  `build/PS2/floor-production-smoke-20261006-120848/report.json`.
+  Para 1.000 comprobaciones de 4 KiB, el camino de bytes arbitrarios registra
+  11.606.022 ciclos frente a 25.939.162 en el fixture anterior; es una medida
+  de esa operación en el EE emulado, no de FPS del juego ni de hardware.
+- La prueba del juego con USB nativo emulado también pasa en
+  `build/PS2/usb-stack-checks/20261006-121059-666/language-game-check.json`:
+  logo a 59,9 FPS, opciones y diálogo español, casa → Kokiri → casa, datos
+  intactos, cierre del registro, lotes de 15 segundos y `transferBytes=4096`.
+  Las dos capturas coinciden byte por byte con las de la revisión anterior
+  de referencia. Se desactivan las tarjetas del jugador y no se compila
+  simultáneamente durante estas comprobaciones. La mejora de FPS en la
+  consola aún requiere una partida comparable.
+- La versión se copia y verifica en `D:\OOTPS2`, con respaldo en
+  `D:\OOTPS2-backup-20261006-121605`. Los registros físicos y la tarjeta del
+  jugador conservan sus hashes. La comprobación conjunta del paquete,
+  transferencias, capturas y archivos conservados queda en
+  `build/PS2/hash-bulk-release-verification.json`.
+
 ## Registro automático, contador de FPS y envío de vértices — 2026-10-06
 
 - El usuario confirma que las vistas grandes siguen ralentizándose. BOOT.LOG

@@ -18,11 +18,14 @@ DRIVER = r'''
 #include <unistd.h>
 #include <stdint.h>
 static int interrupts=1, failWrite, wakeCount, wakeSignals, failSema, snapshots;
+static int partialWrites=1, writeCalls, largestWrite;
 static uint64_t now;
 static int short_write(int fd, const void* bytes, unsigned size) {
     if (failWrite) return -1;
-    if ((uintptr_t)bytes % 64 || size > 512 || !interrupts) return -1;
-    return write(fd, bytes, size > 31 ? 31 : size);
+    if ((uintptr_t)bytes % 64 || size > 4096 || !interrupts) return -1;
+    writeCalls++;
+    if ((int)size > largestWrite) largestWrite=size;
+    return write(fd, bytes, partialWrites && size > 31 ? 31 : size);
 }
 #define write short_write
 #include "TRACE_SOURCE"
@@ -66,7 +69,7 @@ int main(int argc, char** argv) {
     ps2_runtime_rom_wait(468750);
     now=46875000; trace_tick();
     if (strstr(read_log(),"SAMPLE")) return 2; /* No producer writes to disk. */
-    now=5ull*46875000; trace_tick();
+    now=FLUSH_SECONDS*46875000ull; trace_tick();
     const char* log=read_log();
     if (!strstr(log,"frames=10 fps10=100 gfxMs=100,20,10") ||
         !strstr(log,"reads=2 bytes=16384 seeks=1 errors=1 ioMs=51 waitMs=10 worstReadMs=50") ||
@@ -84,11 +87,19 @@ int main(int argc, char** argv) {
     if (sIdleSamples) return 21; /* Frame progress resets the stall detector. */
     interrupts=0; ps2_runtime_event("already disabled"); if (interrupts) return 5;
     interrupts=1;
-    for (int i=0;i<200;i++) ps2_runtime_event("overflow id=%u",i);
-    if (sCount!=128 || sLost<72) return 6;
+    sCount=sFirst=0; partialWrites=0; writeCalls=largestWrite=0;
+    for (int i=0;i<50;i++) ps2_runtime_event("BULK id=%u %s",i,
+        "012345678901234567890123456789012345678901234567890123456789012345"
+        "012345678901234567890123456789012345678901234567890123456789012345");
+    flush_records();
+    if (writeCalls!=2 || largestWrite!=4096 || sBytes%512 ||
+        !strstr(read_log(),"BULK id=49 ")) return 22;
+    for (unsigned i=0;i<RECORDS+72;i++) ps2_runtime_event("overflow id=%u",i);
+    if (sCount!=RECORDS || sLost<72) return 6;
     flush_records();
     log=read_log();
-    if (!strstr(log,"overflow id=199\n") || strstr(log,"overflow id=0\n")) return 7;
+    char last[64]; snprintf(last,sizeof(last),"overflow id=%u\n",RECORDS+71);
+    if (!strstr(log,last) || strstr(log,"overflow id=0\n")) return 7;
     failWrite=1; flush_records();
     if (sRecording || !interrupts) return 8; /* USB error must not block the game. */
     failWrite=0; sCount=sFirst=0;
@@ -111,7 +122,7 @@ int main(int argc, char** argv) {
     sCount=sFirst=0; sThread=sWake=-1; failSema=1;
     ps2_runtime_trace_init(argv[1]); ps2_runtime_trace_start();
     if (sRecording || !strstr(read_log(),"ERROR logger semaphore")) return 13;
-    puts("PS2 runtime logger: PASS aligned sector writes, padding, partial writes, exact disk cap, batching, stats, overflow, IRQ preservation, vblank wake, stalled clock and wait failures");
+    puts("PS2 runtime logger: PASS aligned 4 KiB transfers, padding, partial writes, exact disk cap, batching, stats, overflow, IRQ preservation, vblank wake, stalled clock and wait failures");
     return 0;
 }
 '''
@@ -123,9 +134,11 @@ def main():
         (root / 'kernel.h').write_text(KERNEL)
         (root / 'driver.c').write_text(DRIVER.replace('TRACE_SOURCE', str(source)))
         executable = root / 'test'
-        subprocess.run(['cc', '-std=gnu11', '-O2', '-Wall', '-Wextra', '-DPS2_RUNTIME_DIAGNOSTIC=1',
-            '-I', str(root), '-Iinclude/ps2', str(root / 'driver.c'), '-o', str(executable)], check=True)
-        subprocess.run([str(executable), str(root / 'OOT.Z64')], check=True)
+        for automatic in (False, True):
+            flags=['-DPS2_RUNTIME_AUTOMATIC=1'] if automatic else []
+            subprocess.run(['cc', '-std=gnu11', '-O2', '-Wall', '-Wextra', '-DPS2_RUNTIME_DIAGNOSTIC=1',
+                *flags, '-I', str(root), '-Iinclude/ps2', str(root / 'driver.c'), '-o', str(executable)], check=True)
+            subprocess.run([str(executable), str(root / 'OOT.Z64')], check=True)
 
 if __name__ == '__main__':
     main()

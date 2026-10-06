@@ -24,6 +24,7 @@
 #define RECORD_BYTES 320u
 #define FILE_LIMIT (2u * 1024u * 1024u)
 #define SECTOR_BYTES 512u
+#define TRANSFER_BYTES 4096u
 #define TICKS_PER_SECOND 46875000ull
 extern Ps2TraceTicks osGetTime(void);
 extern void ps2_rom_cache_stats(unsigned*, unsigned*);
@@ -32,7 +33,7 @@ extern void* _gp;
 extern void ps2_runtime_stall_snapshot(void) __attribute__((weak));
 static char sRecords[RECORDS][RECORD_BYTES], sPath[256];
 static char sBatch[RECORD_BYTES * 32];
-static char sSector[SECTOR_BYTES] __attribute__((aligned(64)));
+static char sSector[TRANSFER_BYTES] __attribute__((aligned(64)));
 static unsigned char sStack[16384] __attribute__((aligned(64)));
 static unsigned sFirst, sCount, sLost, sBytes, sSequence;
 static int sRecording, sClockReady, sThread = -1, sWake = -1;
@@ -77,16 +78,18 @@ static unsigned disk_bytes(unsigned bytes) {
 
 /* USBHDFSD's partial-sector/bulk write path must not receive an arbitrary
  * append offset or a pointer advanced by a short write. Keep the file and
- * each normal transfer sector-aligned, with whitespace between batches. */
+ * each normal transfer sector-aligned, with whitespace between batches.
+ * Group up to eight sectors per RPC instead of issuing one RPC per sector. */
 static int write_all(int fd, const char* text, unsigned bytes) {
     while (bytes) {
-        unsigned take = bytes < SECTOR_BYTES ? bytes : SECTOR_BYTES;
+        unsigned take = bytes < TRANSFER_BYTES ? bytes : TRANSFER_BYTES;
+        unsigned transfer = disk_bytes(take);
         memcpy(sSector, text, take);
-        if (take < SECTOR_BYTES) {
-            memset(sSector + take, ' ', SECTOR_BYTES - take);
-            sSector[SECTOR_BYTES - 1] = '\n';
+        if (take < transfer) {
+            memset(sSector + take, ' ', transfer - take);
+            sSector[transfer - 1] = '\n';
         }
-        unsigned remaining = SECTOR_BYTES;
+        unsigned remaining = transfer;
         while (remaining) {
             int wrote = write(fd, sSector, remaining);
             if (wrote <= 0 || (unsigned)wrote > remaining) return 0;
@@ -277,8 +280,9 @@ void ps2_runtime_trace_start(void) {
     thread.gp_reg = &_gp; thread.initial_priority = 51;
     sThread = CreateThread(&thread);
     ps2_boot_trace_result("REGISTRO hilo", sThread);
-    ps2_runtime_event("LOGGER_START priority=51 batchSeconds=%u reserveRamBytes=%u wake=vblank thread=%d sema=%d",
-        FLUSH_SECONDS, (unsigned)(sizeof(sRecords) + sizeof(sBatch) + sizeof(sSector) + sizeof(sStack)), sThread, sWake);
+    ps2_runtime_event("LOGGER_START priority=51 batchSeconds=%u reserveRamBytes=%u transferBytes=%u wake=vblank thread=%d sema=%d",
+        FLUSH_SECONDS, (unsigned)(sizeof(sRecords) + sizeof(sBatch) + sizeof(sSector) + sizeof(sStack)),
+        TRANSFER_BYTES, sThread, sWake);
     /* Preserve startup metadata even if the worker never wakes in hardware. */
     sStartupFlush = 1;
     flush_records();
