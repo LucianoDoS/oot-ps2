@@ -57,6 +57,7 @@
 #include "f3dex2_ps2.h"
 #include "ps2_gfx_profile.h"
 #include "ps2_texture.h"
+#include "ps2_triangle_packet.h"
 
 /* ───────────────────────────────────────────────────────────────── *
  *  Bits de geometry mode (F3DEX2)
@@ -433,15 +434,34 @@ static void prepare_texture_point(const TileDescriptor* tile, const RSPState* rs
         if (s_runGround && !second) { s_runGroundColors[slot]=color; s_runGroundDepths[slot]=depth; }
     }
 }
+static bool s_runFilterValid;
+static u32 s_runFilter;
+static bool s_runPacketValid[2];
+static PS2TriangleTextureSetup s_runPacketSetup[2];
+static void submit_texture_packet(GSGLOBAL* gs, GSTEXTURE* texture, int count,
+    const GSPRIMSTQPOINT* points, bool second) {
+    /* Only triangle commands execute inside a run. CLAMP/ALPHA changes and
+     * texture uploads don't change TEX1. Every state command ends the run. */
+    bool setFilter = !s_triangleRun || !s_runFilterValid || s_runFilter != texture->Filter;
+    if (s_triangleRun) {
+        unsigned layer = second ? 1 : 0;
+        if (!s_runPacketValid[layer]) {
+            ps2_triangle_prepare_texture(&s_runPacketSetup[layer], gs, texture);
+            s_runPacketValid[layer] = true;
+        }
+        ps2_prim_prepared_textured_triangles(gs, &s_runPacketSetup[layer], texture, count, points, setFilter);
+    } else ps2_prim_textured_triangles(gs, texture, count, points, setFilter);
+    if (s_triangleRun) { s_runFilter = texture->Filter; s_runFilterValid = true; }
+}
 static void flush_tri2(RDPState* rdp) {
     if (!s_tri2Count) return;
     int previousFog = rdp->gs->PrimFogEnable;
     rdp->gs->PrimFogEnable = s_tri2Fog;
     if (s_runColored) {
-        gsKit_prim_list_triangle_gouraud_3d(rdp->gs,s_tri2Count,s_triColorPoints);
+        ps2_prim_colored_triangles(rdp->gs,s_tri2Count,s_triColorPoints);
         rdp->stats.colorPackets++;
     } else {
-        gsKit_prim_list_triangle_goraud_texture_stq_3d(rdp->gs, &s_tri2Texture, s_tri2Count, s_tri2Points);
+        submit_texture_packet(rdp->gs, &s_tri2Texture, s_tri2Count, s_tri2Points, false);
         rdp->stats.texturePackets++;
     }
     rdp->gs->PrimFogEnable = previousFog;
@@ -461,6 +481,8 @@ bool f3dex2_batch_begin(RSPState* rsp, RDPState* rdp) {
     s_runGroundUvValid = 0;
     s_runColorValid = 0;
     s_runPointSetupValid[0] = s_runPointSetupValid[1] = false;
+    s_runFilterValid = false;
+    s_runPacketValid[0] = s_runPacketValid[1] = false;
     s_runColored = !rsp->texEnabled;
     s_runRgbShade = rsp->texEnabled && ps2_combiner_uses_shade(rdp,false);
     s_runAlphaShade = rsp->texEnabled && ps2_combiner_uses_shade(rdp,true);
@@ -565,6 +587,7 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
     if (rsp->texEnabled) {
         TileDescriptor* tile = &rdp->tile[rsp->texTile & 7];
         if (!tile->gsTextureLoaded) {
+            s_runPacketValid[0] = false;
             ps2_texture_upload(tile, rdp);
         }
         if (!tile->gsTextureLoaded) { rdp->stats.textureFailed++; return; }
@@ -592,7 +615,7 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
             memcpy(s_tri2Points + s_tri2Count, points, sizeof(texturePoints));
             s_tri2Count += 3;
         } else {
-            gsKit_prim_list_triangle_goraud_texture_stq_3d(gs, &tile->gsTexture, 3, points);
+            submit_texture_packet(gs, &tile->gsTexture, 3, points, false);
             rdp->stats.texturePackets++;
         }
         gs->PrimFogEnable = previousFog;
@@ -605,7 +628,10 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
 #endif
         ) {
             TileDescriptor* second = &rdp->tile[(rsp->texTile + 1) & 7];
-            if (!second->gsTextureLoaded) ps2_texture_upload(second, rdp);
+            if (!second->gsTextureLoaded) {
+                s_runPacketValid[1] = false;
+                ps2_texture_upload(second, rdp);
+            }
             if (second->gsTextureLoaded) {
                 u32 depths[3] = {z0,z1,z2};
                 u32 alpha = ((rdp->envColor & 255) * 128 + 127) / 255;
@@ -658,7 +684,7 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
 #endif
                 ps2_gs_set_alpha(rdp, GS_SETREG_ALPHA(0,1,0,1,0x80));
                 gs->PrimFogEnable = fog;
-                gsKit_prim_list_triangle_goraud_texture_stq_3d(gs, &second->gsTexture, 3, points);
+                submit_texture_packet(gs, &second->gsTexture, 3, points, true);
                 rdp->stats.texturePackets++;
 #ifdef PS2_FLOOR_DIAGNOSTIC
                 if (traceFloor) {
@@ -697,7 +723,7 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
             if (!s_tri2Count) s_tri2Fog=fog;
             memcpy(s_triColorPoints+s_tri2Count,points,sizeof(points)); s_tri2Count+=3;
         } else {
-            gsKit_prim_list_triangle_gouraud_3d(gs,3,points);
+            ps2_prim_colored_triangles(gs,3,points);
             rdp->stats.colorPackets++;
         }
         gs->PrimFogEnable = previousFog;

@@ -278,7 +278,7 @@ static s32 bulk_read(u32 offset, void* dram, u32 size) {
 }
 #endif
 
-static s32 rom_read(u32 devAddr, void* dram, u32 size) {
+static s32 rom_read(u32 devAddr, void* dram, u32 size, bool audio) {
     if (!dram || size == 0) return -1;
 #ifdef PS2_RUNTIME_DIAGNOSTIC
     extern u64 osGetTime(void);
@@ -305,7 +305,10 @@ static s32 rom_read(u32 devAddr, void* dram, u32 size) {
             goto copied;
         }
     }
-    if (size >= ROM_CACHE_BLOCK && size <= PS2_ROM_BULK_BLOCK) {
+    /* Small Link animation frames also reuse adjacent game data. Audio keeps
+     * its independent 4 KiB working set, including NORMAL-priority DMA. The
+     * maximum individual prefetch stays at 16 KiB to bound audio lock waits. */
+    if ((!audio || size >= ROM_CACHE_BLOCK) && size <= PS2_ROM_BULK_BLOCK) {
         if (bulk_read(offset, dram, size) < 0) goto done;
     } else
 #endif
@@ -353,14 +356,14 @@ done:
 /* ───────────────────────────────────────────────────────────────── *
  *  osEPiStartDma — el camino que usa TODO el juego para cargar datos
  * ───────────────────────────────────────────────────────────────── */
-s32 osEPiStartDma(OSPiHandle* handle, OSIoMesg* mb, s32 direction) {
+static s32 start_dma(OSPiHandle* handle, OSIoMesg* mb, s32 direction, bool audio) {
     (void)handle;
     if (!mb) return -1;
 
     s32 ret = 0;
 
     if (direction == OS_READ) {
-        ret = rom_read(mb->devAddr, mb->dramAddr, mb->size);
+        ret = rom_read(mb->devAddr, mb->dramAddr, mb->size, audio);
     } else {
         /* Escribir al cartucho no tiene sentido; el guardado va por
          * memory card (ver io/ps2_controller.c). */
@@ -374,6 +377,14 @@ s32 osEPiStartDma(OSPiHandle* handle, OSIoMesg* mb, s32 direction) {
     }
 
     return ret;
+}
+
+s32 osEPiStartDma(OSPiHandle* handle, OSIoMesg* mb, s32 direction) {
+    return start_dma(handle, mb, direction, false);
+}
+
+s32 ps2_rom_start_audio_dma(OSPiHandle* handle, OSIoMesg* mb, s32 direction) {
+    return start_dma(handle, mb, direction, true);
 }
 
 s32 osPiStartDma(OSIoMesg* mb, s32 priority, s32 direction,
@@ -395,7 +406,7 @@ s32 osEPiReadIo(OSPiHandle* handle, u32 devAddr, u32* data) {
     (void)handle;
     if (!data) return -1;
     u32 value = 0;
-    if (rom_read(devAddr, &value, sizeof(value)) != 0) return -1;
+    if (rom_read(devAddr, &value, sizeof(value), true) != 0) return -1;
     // Register reads return an integer; DMA payloads retain their byte stream.
     *data = __builtin_bswap32(value);
     return 0;

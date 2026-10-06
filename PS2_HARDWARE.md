@@ -90,6 +90,15 @@ de diagnóstico añade trabajo y escrituras USB.
 
 ## Registro de una partida y optimizaciones USB
 
+La caché de datos del juego retiene 256 KiB y reutiliza también las lecturas
+cortas de animaciones; mantiene una caché independiente de muestras de audio.
+Cada prelectura sigue limitada a 16 KiB. Reduce solicitudes repetidas al
+caminar y al reutilizar recursos, pero una zona nueva aún necesita leerse
+desde el USB. Los paquetes de triángulos también omiten las direcciones
+repetidas de los registros y reutilizan su preparación por material.
+La equivalencia pasa en el EE emulado; falta medir los FPS de esta revisión
+en la consola, especialmente en zonas grandes.
+
 Para registrar una sesión abre `mass:/OOTPS2/DIAG.ELF` en lugar de OOTPS2.ELF.
 Ejecuta el mismo juego con tu mando y guardado normal; crea `DIAG.LOG` junto a
 los datos. BOOTTEST sigue siendo sólo la comprobación inicial.

@@ -24,7 +24,7 @@ for src in tools/ps2_jewel_smoke.c tools/ps2_pcm_ring_smoke.c tools/ps2_audio_dr
     src/platform/ps2/audio/ps2_rsp_audio.c src/platform/ps2/audio/rsp_hle/*.c \
     src/platform/ps2/libultra_stub/osMessage.c src/platform/ps2/libultra_stub/osTimer.c \
     src/platform/ps2/libultra_stub/osInterrupt.c src/platform/ps2/libultra_stub/osPrintf.c \
-    src/platform/ps2/libultra_stub/osRom.c src/platform/ps2/libultra_stub/ps2_memcpy.c tools/ps2_memcpy_smoke.c; do
+    src/platform/ps2/libultra_stub/osRom.c src/platform/ps2/libultra_stub/ps2_memcpy.c tools/ps2_memcpy_smoke.c tools/ps2_triangle_packet_smoke.c; do
     obj="build/PS2/smoke/$(basename "${src%.c}").o"
     "$cc" "${flags[@]}" -c "$src" -o "$obj"
     objects+=("$obj")

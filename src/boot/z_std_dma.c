@@ -45,6 +45,7 @@
 #include "dma.h"
 #if PLATFORM_PS2
 #include "ps2_locale.h"
+#include "ps2_rom_dma.h"
 #endif
 #include "thread.h"
 #if PLATFORM_PS2
@@ -242,7 +243,11 @@ s32 DmaMgr_AudioDmaHandler(OSPiHandle* pihandle, OSIoMesg* mb, s32 direction) {
                OS_CYCLES_TO_USEC(osGetTime()), mb->dramAddr, mb->devAddr, mb->size, MQ_GET_COUNT(&gPiMgrCmdQueue));
     }
 
+#if PLATFORM_PS2
+    ret = ps2_rom_start_audio_dma(pihandle, mb, direction);
+#else
     ret = osEPiStartDma(pihandle, mb, direction);
+#endif
     if (ret != 0) {
         PRINTF("OOPS!!\n");
     }

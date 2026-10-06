@@ -4,6 +4,48 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Paquetes GS compactos y caché USB de animaciones — 2026-10-05
+
+- Los triángulos usan listas de registros GS en lugar de repetir la dirección
+  A_D por cada atributo. Conservan los valores RGBAQ, ST, XYZ2/XYZF2 y los
+  estados de textura, profundidad, niebla, mezcla y contexto. PRIM continúa
+  como escritura explícita: PRE no aplica en REGLIST. Las entradas con
+  alineación o registros incompatibles usan la función original del SDK.
+- Dentro de cada grupo de triángulos se preparan TEX0/PRIM por capa una sola
+  vez y TEX1 sólo cuando cambia el filtro. Cada comando de estado termina
+  el grupo; una nueva subida de textura invalida su preparación. Las dos
+  capas del suelo siguen alternándose por triángulo. No se reduce resolución,
+  contenido ni calidad de las texturas.
+- La comparación EE contra el SDK instalado decodifica ambas representaciones
+  y comprueba todos los registros, incluidos Q y niebla. Cubre contextos,
+  paletas, tamaños no potencia de dos, filtros y listas de 3/6/60 vértices,
+  además de alineación arbitraria y cambio de bloque DMA. El conjunto ocupa
+  16.000 frente a 28.800 bytes. Dos ejecuciones de 64 triángulos por grupo
+  muestran 636.876 frente a 748.329 ciclos y 628.292 frente a 827.407 ciclos
+  acumulados. Son medidas de esta operación en PCSX2, con posibles
+  interrupciones; no son una medida del FPS físico ni de todo el render.
+- USB conserva dieciséis bloques de juego de 16 KiB (256 KiB de datos), frente
+  a los cuatro anteriores. Las lecturas pequeñas de animaciones también los
+  reutilizan. El manejador de audio identifica su caché explícitamente:
+  música y animaciones comparten la prioridad NORMAL de libultra, por lo que
+  esa prioridad no permite distinguirlas. Sus 64 sectores de 4 KiB se conservan.
+  El incremento estático es aproximadamente 193 KiB, sin ampliar el tamaño
+  máximo de prelectura ni quitar la sincronización de la caché del EE.
+- La prueba intercalada de 64 sectores de animación y 20 sectores de muestras
+  necesita 16 lecturas del archivo en la primera pasada y ninguna en la
+  segunda; las muestras siguen residentes. Comprueba expulsión LRU, cruces,
+  final de archivo, guardas y dos lectores concurrentes. Las cargas nuevas
+  de escenas grandes siguen limitadas por el USB de la PS2.
+- Pasan los 120 fotogramas de gráficos/audio y la caché USB en
+  `build/PS2/floor-production-smoke-20261005-232942/report.json`.
+  El recorrido USB nativo casa → Kokiri → casa pasa en
+  `build/PS2/usb-stack-checks/20261005-233611-477/language-game-check.json`:
+  ambas capturas tienen exactamente los mismos SHA256 que la revisión anterior.
+  El logo sigue a 59,9 FPS en esa prueba y los datos/idioma permanecen intactos.
+  El perfil completo no establece todavía una ganancia general de FPS.
+  Se recompilan los tres ELF USB y el ELF para PCSX2; sus rangos estáticos
+  caben en los 32 MiB del EE. Queda comprobar esta revisión en la consola.
+
 ## Idioma, ritmo del logo y reutilización del suelo — 2026-10-05
 
 - El mínimo de dos vblank sólo se elimina durante el estado del logo Nintendo

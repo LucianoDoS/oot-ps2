@@ -68,6 +68,14 @@ registra 58 coordenadas fuera de rango antes del ajuste y cero después en
 pendientes otras zonas y circunstancias; no es una validación de todo el juego.
 Uso y límites generales en `PS2_HARDWARE.md`.
 
+El usuario confirma que la última revisión funciona bien y sitúa las caídas
+de FPS principalmente en zonas grandes. La revisión de paquetes GS conserva
+los registros del SDK con menos bytes por vértice y reutiliza TEX0/PRIM/TEX1
+por grupo de triángulos. La caché USB de animaciones mantiene 256 KiB de
+datos de juego separados de las muestras. Pasan las pruebas de equivalencia
+y las lecturas intercaladas; falta medir la mejora en la PS2 real. Esto no
+garantiza 20 FPS en todas las vistas ni elimina las primeras cargas.
+
 ## Pantalla negra después del logo con DIAG224
 
 Estado: arranque corregido y confirmado en la última comparación física.
@@ -125,10 +133,10 @@ Esta corrección del diagnóstico no corrige por sí sola las olas del suelo.
 
 ## Cadencia del logo Nintendo 64
 
-Estado: pendiente. El estado del logo configura R_UPDATE_RATE=1, con objetivo
-de 60 FPS, pero las muestras del nuevo diagnóstico en PCSX2 indican unos
-30 fotogramas presentados por segundo. Hay que revisar la cadencia efectiva
-del planificador y distinguirla de la frecuencia de retrace de la salida NTSC.
+Estado: corregida y medida en PCSX2 con USB nativo. El mínimo de dos vblank
+del planificador impedía aplicar R_UPDATE_RATE=1. Se elimina sólo durante
+el logo; la prueba de presentación mide 59,9 FPS después del calentamiento.
+El selector conserva 30 FPS y el juego 20. Falta medir la cadencia física.
 
 ## Campo de Entrenamiento Gerudo, sala 2
 
@@ -173,5 +181,5 @@ funciones de estado. No resuelven cada puzle, combate, diálogo, transición
 natural, cambio de edad ni final. En PS2 real están confirmados la
 comprobación inicial de datos y el arranque a la partida; quedan los fallos
 de carga, vídeo/audio y la comprobación del guardado físico. El Árbol Deku y el audio
-en PCSX2 se mantienen como casos confirmados por el
-usuario; el rendimiento adicional sigue aplazado.
+en PCSX2 se mantienen como casos confirmados por el usuario. El trabajo
+actual retoma el rendimiento y las cargas USB, especialmente en zonas grandes.

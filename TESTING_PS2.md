@@ -38,6 +38,23 @@ una ejecución usando los ELF existentes y registra sus hashes.
 
 ## Casos concretos
 
+### Paquetes de triángulos y caché de animaciones USB
+
+```powershell
+wsl -d Ubuntu -- bash -c 'PS2_SMOKE_LOCALE=1 PS2_SMOKE_USB_CACHE=1 bash tools/build_ps2_smoke.sh'
+```
+
+La prueba gráfica incluye `PS2 TRIANGLE PACKET TEST`: decodifica los paquetes
+del SDK y los compactos y compara la secuencia completa de registros GS.
+Prueba padding, niebla/Q, ambos contextos, filtros/paletas, tamaños impares,
+alineación y cambio de bloque DMA. Su benchmark mide construcción de paquetes,
+no FPS. `PS2 USB CACHE TEST` intercala fotogramas de animaciones pequeños con
+muestras: exige 16 lecturas para 64 sectores, ninguna al repetir, y conserva
+20 sectores de muestras. Usa un fichero generado, sin datos de juego.
+Las pruebas de capas del suelo, recorte, audio y los 120 fotogramas del
+diagnóstico deben pasar también. `PS2_SMOKE_USB_CACHE=1` es necesario para
+comprobar la configuración USB, que difiere de la usada con HostFs.
+
 ### Idioma y ritmo del logo por USB nativo
 
 Con `ESP.DAT` privado ya generado junto a la imagen convertida:
