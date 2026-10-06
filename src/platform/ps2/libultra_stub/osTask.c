@@ -37,6 +37,9 @@
 #include "ps2_runtime_trace.h"
 #include "rdp_to_gs.h"
 #include "ps2_gfx_profile.h"
+#ifdef PS2_RUNTIME_DIAGNOSTIC
+#include "ps2_fps_overlay.h"
+#endif
 
 /* ───────────────────────────────────────────────────────────────── *
  *  OSTask — layout real de libultra
@@ -96,14 +99,22 @@ void ps2_runtime_gfx_snapshot(void) {
 static void graphics_worker(void* arg) {
     (void)arg;
 #ifdef PS2_RUNTIME_DIAGNOSTIC
-    /* Sample one frame in sixty, and include subphase timings in DIAG.LOG. */
+    /* Detailed per-vertex timers are reserved for DIAG. Ordinary sessions
+     * keep the frame/USB/audio aggregates without profiling triangle work. */
+#ifdef PS2_RUNTIME_AUTOMATIC
+    ps2_gfx_profile_enable(false);
+#else
     ps2_gfx_profile_enable(true);
+#endif
 #endif
     for (;;) {
         WaitSema(s_gfxWake);
         u64 begin = osGetTime();
         rdp_to_gs_exec((const Gfx*)s_graphicsTask.t.data_ptr);
         u64 translated = osGetTime();
+#if defined(PS2_RUNTIME_DIAGNOSTIC) && !defined(PS2_RUNTIME_AUTOMATIC)
+        ps2_fps_overlay_draw(&g_rdpState, ps2_runtime_fps10(), ps2_runtime_fps_fallback());
+#endif
         rdp_to_gs_submit();
         u64 submitted = osGetTime();
         /* FINISH has retired GS reads, so the CPU can reuse its task data

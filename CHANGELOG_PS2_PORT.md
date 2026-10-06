@@ -4,6 +4,66 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Registro automático, contador de FPS y envío de vértices — 2026-10-06
+
+- El usuario confirma que las vistas grandes siguen ralentizándose. BOOT.LOG
+  y DIAG.LOG del USB tienen los mismos hashes que el registro anterior de
+  FLOOR v3; no constituyen una medición de los paquetes/caché de la nueva
+  revisión. Se conserva otra copia privada antes de actualizar el USB.
+- DIAG.ELF y DIAG224.ELF muestran los fotogramas presentados por segundo,
+  con una ventana de aproximadamente un segundo. La estimación por retraces
+  se señala con un asterisco si falla el reloj. La cuenta es independiente
+  del logger: continúa después de alcanzar el límite del archivo o de fallar
+  una escritura. La marca `FPS-HUD` tras la fecha del encabezado v3 identifica
+  un log nuevo conservando el formato compatible de los lectores existentes.
+- El indicador usa sprites sólidos agrupados, sin fuentes, lecturas USB ni
+  reservas de textura. Se añade al framebuffer principal después del juego;
+  conserva los estados de alpha/profundidad y el scissor, y no dibuja en el
+  retrato del inventario. OOTPS2.ELF conserva la imagen sin ese contador.
+- A petición del usuario, el juego USB habitual ahora crea DIAG.LOG al arrancar
+  con la marca `AUTO-PLAY`, sin abrir el diagnóstico. Conserva muestras de FPS,
+  escena/sala, carga, audio y dibujo. Tiene 256 registros en RAM, agrupa las
+  escrituras cada 15 segundos, sin activar cronómetros por triángulo. DIAG conserva
+  sus lotes de cinco segundos y el perfil cada 60 fotogramas. El límite de
+  2 MiB y la parada del logger ante errores no detienen el juego; los costes
+  de escritura se identifican en FLUSH. Esperar 20 segundos antes de apagar
+  permite cerrar el siguiente lote. El historial anterior ya está conservado.
+  `PS2_USB_AUTO_LOG=0` permite compilar una comparación sin escritura periódica.
+- Los puntos construidos por el renderer usan una entrada interna con
+  alineación explícita y registros uniformes. Evita revisar por segunda vez
+  las etiquetas RGBAQ/ST/XYZ de cada vértice. Las entradas generales mantienen
+  sus validaciones y el fallback del SDK para layouts mixtos o desalineados.
+  No altera registros enviados, capas del suelo, Q, niebla, color ni geometría.
+- La comparación EE de 24 fixtures contra el SDK y los 120 fotogramas de
+  gráficos/audio pasan en
+  `build/PS2/floor-production-smoke-20261006-000224/report.json`.
+  En la operación de envío, el camino validado registra 655.700 ciclos y el
+  interno 483.820; no es una medida de FPS general. El contador registra
+  12.250 ciclos y 1.648 bytes en su fixture. Su captura comprueba texto visible
+  y restauración del rechazo alpha. Pasan 60/30/20/12/8 FPS, pausas largas y
+  reloj detenido con wraparound de retraces. Falta medir esta revisión en PS2.
+- La prueba final con registro automático ligero pasa mediante USB nativo
+  emulado, sin HostFs, tarjetas del jugador ni compilación simultánea:
+  `build/PS2/usb-stack-checks/20261006-112018-371/language-game-check.json`.
+  Comprueba logo a 59,9 FPS, opciones, diálogo español y casa → Kokiri → casa,
+  con 120 actualizaciones en cada fase. Confirma lotes de 15 segundos y ausencia
+  de registros de perfil por triángulo. Datos/idioma no cambian, el registro
+  termina sin errores ni pérdidas y las ranuras de guardado de prueba se conservan.
+  La captura de opciones coincide byte por byte con la anterior; en el diálogo
+  sólo cambian 51 píxeles de los ojos de Link por el parpadeo de su animación.
+- Al reconectar el USB, BOOT.LOG sí había cambiado pero DIAG.LOG seguía siendo
+  el FLOOR v3 antiguo: la partida habitual anterior no registraba rendimiento.
+  Se conserva la nueva lectura en
+  `build/PS2/hardware-runtime/before-auto-light-20261006-112309`.
+  Esa evidencia no permite atribuir todavía las caídas a USB, dibujo o audio;
+  la siguiente partida con OOTPS2.ELF permitirá contrastarlo.
+- Paquete final copiado y verificado en `D:/OOTPS2` (11 archivos), con copia
+  de la versión anterior en `D:/OOTPS2-backup-20261006-113145`. El ELF habitual
+  contiene `AUTO-PLAY`; los diagnósticos contienen `FPS-HUD`. Las direcciones
+  estáticas están dentro de los 32 MiB del EE. Se conservan BOOT.LOG/DIAG.LOG
+  físicos y el SHA256 de la tarjeta del jugador en PCSX2. Informe privado:
+  `build/PS2/automatic-light-release-verification.json`.
+
 ## Paquetes GS compactos y caché USB de animaciones — 2026-10-05
 
 - Los triángulos usan listas de registros GS en lugar de repetir la dirección

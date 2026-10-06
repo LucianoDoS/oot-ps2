@@ -42,6 +42,12 @@ el emulador, conservando SRAM. Falta comprobarlo en una PS2 física.
 El rendimiento llega a 20 FPS en muchas vistas; quedan caídas al caminar
 según la cámara. La optimización vuelve a estar en curso para hardware real,
 reutilizando ahora las coordenadas del suelo sin perder la corrección física.
+DIAG.ELF y DIAG224.ELF incluyen un contador de FPS en pantalla para medir
+las vistas grandes directamente en consola y registrar una sesión nueva.
+El ejecutable USB habitual OOTPS2.ELF registra automáticamente la sesión en
+DIAG.LOG: FPS, escenas, cargas, dibujo y audio. Agrupa las escrituras cada
+15 segundos y conserva tiempos generales sin perfilado de triángulos ni indicador
+en pantalla. El registro se limita a 2 MiB y se reemplaza al arrancar otra sesión.
 El logo inicial elimina el límite de 30 del planificador: se miden 59,9 FPS
 presentados con USB nativo emulado. El selector conserva 30 y el juego 20;
 falta confirmar el logo y el rendimiento de esta revisión en la consola.

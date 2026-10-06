@@ -81,10 +81,22 @@ int ps2_triangle_packet_smoke(void) {
         if (expectedCount < 0 || actualCount != expectedCount ||
             memcmp(expected, actual, expectedCount * sizeof(*expected))) failures++;
         reset(&queue);
+        ps2_prim_trusted_textured_triangles(&gs, &setup, count, textured, true,
+            gs.PrimFogEnable ? GS_XYZF2 : GS_XYZ2);
+        actualCount = decode(&queue, actual);
+        if (expectedCount < 0 || actualCount != expectedCount ||
+            memcmp(expected, actual, expectedCount * sizeof(*expected))) failures++;
+        reset(&queue);
         gsKit_prim_list_triangle_gouraud_3d(&gs, count, colored);
         expectedCount = decode(&queue, expected);
         reset(&queue);
         ps2_prim_colored_triangles(&gs, count, colored);
+        actualCount = decode(&queue, actual);
+        if (expectedCount < 0 || actualCount != expectedCount ||
+            memcmp(expected, actual, expectedCount * sizeof(*expected))) failures++;
+        reset(&queue);
+        ps2_prim_trusted_colored_triangles(&gs, count, colored,
+            gs.PrimFogEnable ? GS_XYZF2 : GS_XYZ2);
         actualCount = decode(&queue, actual);
         if (expectedCount < 0 || actualCount != expectedCount ||
             memcmp(expected, actual, expectedCount * sizeof(*expected))) failures++;
@@ -117,7 +129,7 @@ int ps2_triangle_packet_smoke(void) {
     actualCount = decode(&queue, actual);
     if (queue.dma_tag != arena + 2 || expectedCount < 0 || actualCount != expectedCount ||
         memcmp(expected, actual, expectedCount * sizeof(*expected))) failures++;
-    u32 oldCycles = 0, newCycles = 0;
+    u32 oldCycles = 0, newCycles = 0, trustedCycles = 0;
     for (unsigned pass = 0; pass < 40; pass++) {
         textured[0].xyz2.tag = textured[1].xyz2.tag;
         reset(&queue);
@@ -131,8 +143,14 @@ int ps2_triangle_packet_smoke(void) {
         for (unsigned i = 0; i < 64; i++)
             ps2_prim_prepared_textured_triangles(&gs, &setup, &texture, 3, textured, i == 0);
         newCycles += ps2_gfx_cycles() - start;
+        reset(&queue);
+        start = ps2_gfx_cycles();
+        ps2_triangle_prepare_texture(&setup, &gs, &texture);
+        for (unsigned i = 0; i < 64; i++)
+            ps2_prim_trusted_textured_triangles(&gs, &setup, 3, textured, i == 0, textured[0].xyz2.tag);
+        trustedCycles += ps2_gfx_cycles() - start;
     }
-    printf("[PS2 TRIANGLE PACKET TEST] failures=%d oldBytes=%u newBytes=%u oldCycles=%u newCycles=%u\n",
-        failures, oldBytes, newBytes, oldCycles, newCycles);
+    printf("[PS2 TRIANGLE PACKET TEST] failures=%d oldBytes=%u newBytes=%u oldCycles=%u newCycles=%u trustedCycles=%u\n",
+        failures, oldBytes, newBytes, oldCycles, newCycles, trustedCycles);
     return failures;
 }

@@ -8,8 +8,19 @@
 #include <string.h>
 #include "ps2_runtime_trace.h"
 #include "ps2_boot_trace.h"
+#include "ps2_fps_meter.h"
 
+#ifdef PS2_RUNTIME_AUTOMATIC
+#define RECORDS 256u
+#define FLUSH_SECONDS 15u
+#define FLUSH_DESCRIPTION "15"
+#define FEATURE_MARKER "AUTO-PLAY"
+#else
 #define RECORDS 128u
+#define FLUSH_SECONDS 5u
+#define FLUSH_DESCRIPTION "5"
+#define FEATURE_MARKER "FPS-HUD"
+#endif
 #define RECORD_BYTES 320u
 #define FILE_LIMIT (2u * 1024u * 1024u)
 #define SECTOR_BYTES 512u
@@ -30,6 +41,7 @@ static Ps2TraceTicks sOrigin, sLastSample, sLastFlush;
 static unsigned sDspPrevious;
 static int sStartupFlush;
 static unsigned sIdleSamples;
+static PS2FpsMeter sFpsMeter;
 typedef struct {
     unsigned frames, reads, bytes, seeks, errors, polls, empty, queueMin, queueMax;
     unsigned late, dropped, audioRate;
@@ -176,7 +188,7 @@ static void trace_tick(void) {
         ps2_runtime_stall_snapshot();
     }
     sDspPrevious = dsp; sLastSample = now; sSampleRetraces = retraces;
-    if (now - sLastFlush >= 5 * TICKS_PER_SECOND || retraces - sFlushRetraces >= 300) {
+    if (now - sLastFlush >= FLUSH_SECONDS * TICKS_PER_SECOND || retraces - sFlushRetraces >= FLUSH_SECONDS * 60) {
         flush_records(); sLastFlush = osGetTime(); sFlushRetraces = retraces;
     }
 }
@@ -213,7 +225,8 @@ static void trace_thread(void* unused) {
 /* Called by the existing vblank THREAD, not an interrupt handler. The
  * saturating semaphore prevents a delayed write from queuing extra work. */
 void ps2_runtime_vblank(void) {
-    if (sRecording && sWake >= 0 && ++sRetraces % 60 == 0) SignalSema(sWake);
+    ++sRetraces;
+    if (sRecording && sWake >= 0 && sRetraces % 60 == 0) SignalSema(sWake);
 }
 
 void ps2_runtime_trace_init(const char* dataPath) {
@@ -224,11 +237,13 @@ void ps2_runtime_trace_init(const char* dataPath) {
     if (prefix + sizeof("DIAG.LOG") > sizeof(sPath)) return;
     memcpy(sPath, dataPath, prefix);
     memcpy(sPath + prefix, "DIAG.LOG", sizeof("DIAG.LOG"));
-    const char header[] = "OOT PS2 runtime log v3 " __DATE__ " " __TIME__ "\n"
+    /* The telemetry schema is unchanged: keep v3 readers compatible and
+     * identify the new executable with a feature marker after the timestamp. */
+    const char header[] = "OOT PS2 runtime log v3 " __DATE__ " " __TIME__ " " FEATURE_MARKER "\n"
         "Units: wall milliseconds; gfxMs=translation,GS submission,presentation.\n"
         "fps10=displayed FPS x10. USB/read timings include thread preemption.\n"
         "Queue sampled by audio thread; zeroPolls is not an exact IOP underrun count.\n"
-        "FLUSH records measure logger I/O overhead. Max file 2 MiB; batches every 5 seconds.\n"
+        "FLUSH records measure logger I/O overhead. Max file 2 MiB; batches every " FLUSH_DESCRIPTION " seconds.\n"
         "Wake source: vblank semaphore. A set clockFallback flag uses approximate retrace time.\n";
     int fd = open(sPath, O_WRONLY | O_CREAT | O_TRUNC, 0666);
     if (fd < 0) { printf("[PS2 RUNTIME LOG] ERROR creating %s\n", sPath); return; }
@@ -262,8 +277,8 @@ void ps2_runtime_trace_start(void) {
     thread.gp_reg = &_gp; thread.initial_priority = 51;
     sThread = CreateThread(&thread);
     ps2_boot_trace_result("REGISTRO hilo", sThread);
-    ps2_runtime_event("LOGGER_START priority=51 batchSeconds=5 reserveRamBytes=%u wake=vblank thread=%d sema=%d",
-        (unsigned)(sizeof(sRecords) + sizeof(sBatch) + sizeof(sSector) + sizeof(sStack)), sThread, sWake);
+    ps2_runtime_event("LOGGER_START priority=51 batchSeconds=%u reserveRamBytes=%u wake=vblank thread=%d sema=%d",
+        FLUSH_SECONDS, (unsigned)(sizeof(sRecords) + sizeof(sBatch) + sizeof(sSector) + sizeof(sStack)), sThread, sWake);
     /* Preserve startup metadata even if the worker never wakes in hardware. */
     sStartupFlush = 1;
     flush_records();
@@ -279,11 +294,14 @@ void ps2_runtime_trace_start(void) {
 }
 
 void ps2_runtime_frame(Ps2TraceTicks translate, Ps2TraceTicks submit, Ps2TraceTicks flip) {
+    ps2_fps_meter_frame(&sFpsMeter, osGetTime(), sRetraces);
     if (!sRecording) return;
     int previous = DIntr();
     sStats.frames++; sStats.translate += translate; sStats.submit += submit; sStats.flip += flip;
     unlock(previous);
 }
+unsigned ps2_runtime_fps10(void) { return sFpsMeter.started ? sFpsMeter.fps10 : PS2_FPS_UNKNOWN; }
+int ps2_runtime_fps_fallback(void) { return sFpsMeter.fallback; }
 void ps2_runtime_rom_read(unsigned offset, unsigned bytes, Ps2TraceTicks ticks, int result, int seek) {
     if (!sRecording) return;
     int previous = DIntr();

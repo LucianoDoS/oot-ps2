@@ -78,6 +78,13 @@ void ps2_prim_prepared_textured_triangles(GSGLOBAL* gs, const PS2TriangleTexture
             return;
         }
     }
+    ps2_prim_trusted_textured_triangles(gs, setup, count, points, setFilter, xyz);
+}
+
+void ps2_prim_trusted_textured_triangles(GSGLOBAL* gs, const PS2TriangleTextureSetup* setup,
+    int count, const GSPRIMSTQPOINT* points, bool setFilter, unsigned xyz) {
+    if (count <= 0) return;
+    const PacketWord* input = (const PacketWord*)points;
     if (setFilter) gsKit_set_texfilter(gs, setup->filter);
     u64* output = vertex_packet(gs, count, 3,
         GS_RGBAQ | ((u64)GS_ST << 4) | ((u64)xyz << 8), setup->prim, true, setup->tex0);
@@ -105,6 +112,13 @@ void ps2_prim_colored_triangles(GSGLOBAL* gs, int count, const GSPRIMPOINT* poin
             return;
         }
     }
+    ps2_prim_trusted_colored_triangles(gs, count, points, xyz);
+}
+
+void ps2_prim_trusted_colored_triangles(GSGLOBAL* gs, int count,
+    const GSPRIMPOINT* points, unsigned xyz) {
+    if (count <= 0) return;
+    const PacketWord* input = (const PacketWord*)points;
     u64 prim = GS_SETREG_PRIM(GS_PRIM_PRIM_TRIANGLE, 1, 0, gs->PrimFogEnable,
         gs->PrimAlphaEnable, gs->PrimAAEnable, 0, gs->PrimContext, 0);
     u64* output = vertex_packet(gs, count, 2, GS_RGBAQ | ((u64)xyz << 4), prim, false, 0);

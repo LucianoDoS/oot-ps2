@@ -99,9 +99,36 @@ repetidas de los registros y reutilizan su preparación por material.
 La equivalencia pasa en el EE emulado; falta medir los FPS de esta revisión
 en la consola, especialmente en zonas grandes.
 
-Para registrar una sesión abre `mass:/OOTPS2/DIAG.ELF` en lugar de OOTPS2.ELF.
+El juego USB habitual `mass:/OOTPS2/OOTPS2.ELF` registra ahora tu sesión
+automáticamente en `DIAG.LOG`, sin abrir otro programa. Incluye FPS cada
+segundo, identificadores de escenas y salas, tiempos de carga/USB, dibujo y
+observaciones de audio. La marca `AUTO-PLAY` aparece después de la fecha del
+encabezado. Usa un buffer RAM de 256 registros, escribe lotes cada 15 segundos
+y registra los tiempos generales sin activar los cronómetros por triángulo
+o vértice. No muestra un contador.
+Para recoger una caída basta con jugar en esa zona un minuto, guardar tu
+progreso y esperar al menos 20 segundos antes de apagar. Después conecta
+el USB al PC. El archivo se reemplaza al iniciar otra sesión; consérvalo primero.
+
+Para una prueba con contador visible abre `mass:/OOTPS2/DIAG.ELF`.
 Ejecuta el mismo juego con tu mando y guardado normal; crea `DIAG.LOG` junto a
-los datos. BOOTTEST sigue siendo sólo la comprobación inicial.
+los archivos del juego. Desde la revisión FPS-HUD muestra también `FPS 20.0`
+en una esquina, actualizado aproximadamente cada segundo: mide los fotogramas
+presentados, no los 60 retraces de vídeo. Al arrancar muestra `FPS --.-` hasta
+la primera muestra. Un asterisco indica la estimación por retraces si el reloj
+del EE deja de avanzar. El contador continúa aunque el registro alcance su
+límite o falle una escritura. DIAG224.ELF incluye el mismo contador.
+
+Para medir una zona grande basta con mirar una vista lenta durante 20 segundos,
+caminar otros 20 y esperar diez antes de apagar. Anota el mínimo y el valor
+habitual del contador. Al volver a conectar el USB al PC, el encabezado
+`runtime log v3` con la marca `FPS-HUD` después de la fecha distingue esta
+prueba de los registros anteriores, conservando compatibilidad con el lector.
+El contador dibuja sprites sólidos después del juego: no carga fuentes ni
+texturas y no entra en el retrato del inventario. OOTPS2.ELF registra con menor
+frecuencia de escritura y sin añadir ese indicador a la imagen.
+
+BOOTTEST sigue siendo sólo la comprobación inicial.
 
 DIAG.LOG registra etapas y errores del EE, cambios de estado, solicitudes y
 finalización de salas, lecturas lentas o fallidas, y muestras de rendimiento
@@ -120,7 +147,7 @@ una excepción. El registro no cambia los callbacks de las escenas.
 Los productores registran en RAM; un semáforo despierta el hilo del registro
 desde el vblank, sin usar usleep ni escribir archivos desde el vblank. Se guarda
 el estado inicial inmediatamente y después se escriben y cierran bloques
-cada cinco segundos. BOOT.LOG v2 y DIAG.LOG v3 usan transferencias de 512 bytes
+cada cinco segundos en DIAG y cada quince en OOTPS2. BOOT.LOG v2 y DIAG.LOG v3 usan transferencias de 512 bytes
 con buffers alineados; los espacios al final de líneas o lotes son normales.
 Las etapas de inicio del registro distinguen reloj, semáforo, hilo y apertura,
 escritura y cierre del primer lote. Si falla el reloj del port, clockFallback=1 marca un
@@ -133,11 +160,11 @@ Una excepción que detenga todos los hilos puede impedir el último volcado.
 El logger puede introducir una pausa: `FLUSH durationMs` mide su propia escritura.
 
 Prueba unos 20 segundos quieto, otros caminando, y entra/sal de una casa.
-Tras ver un fallo, espera al menos diez segundos antes de apagar o reiniciar
+Tras ver un fallo, espera al menos veinte segundos antes de apagar o reiniciar
 para que se cierre el siguiente bloque. Guarda tu progreso desde el juego si
 quieres conservarlo. Vuelve a conectar el USB al PC y conserva DIAG.LOG y
 BOOT.LOG antes de iniciar otra sesión: DIAG.ELF reemplaza su registro al arrancar.
-El ELF normal no crea ni sobrescribe DIAG.LOG.
+El ELF habitual también crea y reemplaza DIAG.LOG al arrancar.
 
 Para comprobar el controlador USB en PCSX2 sin usar HostFs existe
 `tools/run_ps2_usb_stack_check.ps1`. Usa una imagen FAT32 privada de 128 MiB,
@@ -210,8 +237,10 @@ con 58 coordenadas originalmente fuera del rango ±2047 y ninguna después
 del ajuste. Los 105 intervalos no contienen errores USB, pérdidas o NUL.
 Esto documenta la vista comprobada; no certifica todo el juego en hardware.
 
-Para comparar el juego sin el coste de escribir DIAG.LOG, ejecuta OOTPS2.ELF.
-DIAG.ELF se usa cuando hay que recoger tiempos o un bloqueo. Sus escrituras
+Para compilar una comparación sin escritura periódica, usa
+`PS2_USB_AUTO_LOG=0 bash tools/build_ps2_usb.sh`; por defecto el paquete USB
+incluye el registro automático solicitado. DIAG.ELF ofrece más muestras de
+render y el contador visible. Las escrituras de ambas variantes
 pueden introducir pausas adicionales: en las dos sesiones físicas anteriores
 un volcado tardó hasta 184 y 221 ms, respectivamente.
 
@@ -223,7 +252,7 @@ python tools/analyze_ps2_runtime_log.py D:\OOTPS2\DIAG.LOG --output build/PS2/ha
 ```
 
 Los tres ELF del juego USB incluyen una caché de muestras de 256 KiB y otra de cargas de
-64 KiB. Las peticiones de carga de 8 KiB pueden reutilizar lecturas de 16 KiB;
+256 KiB. Las peticiones de carga de 8 KiB pueden reutilizar lecturas de 16 KiB;
 las cargas grandes no expulsan los sectores de audio. Se omiten seeks cuando
 la siguiente lectura empieza donde acabó la anterior. La lectura anticipada
 está limitada y respeta el final del archivo; las primeras cargas aún pueden tardar.

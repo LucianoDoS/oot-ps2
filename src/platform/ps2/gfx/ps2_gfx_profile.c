@@ -10,6 +10,8 @@ bool gPS2GfxProfileActive;
 u32 gPS2GfxProfileCycles[GFX_PROFILE_COUNT];
 u32 gPS2GfxProfileCalls[GFX_PROFILE_COUNT];
 static unsigned sFrame;
+static unsigned sInterval = 60;
+void ps2_gfx_profile_sample_every(unsigned frames) { sInterval = frames ? frames : 60; }
 static bool sChecked, sEnabled;
 void ps2_gfx_profile_enable(bool enabled) {
     sChecked = true;
@@ -37,7 +39,7 @@ void ps2_gfx_profile_begin(void) {
         if (flag) fclose(flag);
         sChecked = true;
     }
-    gPS2GfxProfileActive = sEnabled && ++sFrame % 60 == 0;
+    gPS2GfxProfileActive = sEnabled && ++sFrame % sInterval == 0;
     if (gPS2GfxProfileActive) {
         memset(gPS2GfxProfileCycles, 0, sizeof(gPS2GfxProfileCycles));
         memset(gPS2GfxProfileCalls, 0, sizeof(gPS2GfxProfileCalls));

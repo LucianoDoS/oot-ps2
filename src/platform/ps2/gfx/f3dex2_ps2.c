@@ -315,8 +315,8 @@ void f3dex2_vtx(u32 w0, u32 w1, RSPState* rsp) {
 static bool s_tri2Batch;
 static bool s_triangleRun;
 static unsigned s_tri2Count;
-static GSPRIMSTQPOINT s_tri2Points[60];
-static GSPRIMPOINT s_triColorPoints[60];
+static GSPRIMSTQPOINT s_tri2Points[60] __attribute__((aligned(8)));
+static GSPRIMPOINT s_triColorPoints[60] __attribute__((aligned(8)));
 static bool s_runColored;
 static u64 s_runColorValid;
 static u64 s_runColors[RSP_VTX_CACHE_SIZE];
@@ -325,7 +325,7 @@ static bool s_tri2Fog;
 static bool s_runTileBound;
 static bool s_runRgbShade, s_runAlphaShade, s_runFog;
 static u64 s_runVertexValid;
-static GSPRIMSTQPOINT s_runVertices[RSP_VTX_CACHE_SIZE];
+static GSPRIMSTQPOINT s_runVertices[RSP_VTX_CACHE_SIZE] __attribute__((aligned(8)));
 static bool s_runGround;
 #ifdef PS2_FLOOR_DIAGNOSTIC
 static volatile unsigned s_floorRequested;
@@ -370,7 +370,7 @@ static bool floor_trace(const RSPState* rsp, const RDPState* rdp,
 }
 #endif
 static u64 s_runGroundVertexValid;
-static GSPRIMSTQPOINT s_runGroundVertices[RSP_VTX_CACHE_SIZE];
+static GSPRIMSTQPOINT s_runGroundVertices[RSP_VTX_CACHE_SIZE] __attribute__((aligned(8)));
 static u32 s_runGroundColors[RSP_VTX_CACHE_SIZE], s_runGroundDepths[RSP_VTX_CACHE_SIZE];
 static PS2TextureVertexSetup s_runPointSetup[2];
 static bool s_runPointSetupValid[2];
@@ -449,8 +449,14 @@ static void submit_texture_packet(GSGLOBAL* gs, GSTEXTURE* texture, int count,
             ps2_triangle_prepare_texture(&s_runPacketSetup[layer], gs, texture);
             s_runPacketValid[layer] = true;
         }
-        ps2_prim_prepared_textured_triangles(gs, &s_runPacketSetup[layer], texture, count, points, setFilter);
-    } else ps2_prim_textured_triangles(gs, texture, count, points, setFilter);
+        ps2_prim_trusted_textured_triangles(gs, &s_runPacketSetup[layer], count, points,
+            setFilter, gs->PrimFogEnable ? GS_XYZF2 : GS_XYZ2);
+    } else {
+        PS2TriangleTextureSetup setup;
+        ps2_triangle_prepare_texture(&setup, gs, texture);
+        ps2_prim_trusted_textured_triangles(gs, &setup, count, points, setFilter,
+            gs->PrimFogEnable ? GS_XYZF2 : GS_XYZ2);
+    }
     if (s_triangleRun) { s_runFilter = texture->Filter; s_runFilterValid = true; }
 }
 static void flush_tri2(RDPState* rdp) {
@@ -458,7 +464,8 @@ static void flush_tri2(RDPState* rdp) {
     int previousFog = rdp->gs->PrimFogEnable;
     rdp->gs->PrimFogEnable = s_tri2Fog;
     if (s_runColored) {
-        ps2_prim_colored_triangles(rdp->gs,s_tri2Count,s_triColorPoints);
+        ps2_prim_trusted_colored_triangles(rdp->gs,s_tri2Count,s_triColorPoints,
+            s_tri2Fog ? GS_XYZF2 : GS_XYZ2);
         rdp->stats.colorPackets++;
     } else {
         submit_texture_packet(rdp->gs, &s_tri2Texture, s_tri2Count, s_tri2Points, false);
@@ -524,7 +531,7 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
     bool decal = (rdp->otherMode.lo & 0xc30) == 0xc10;
     bool pointReady[3] = {false,false,false};
     int pointSlots[3] = {-1,-1,-1};
-    GSPRIMSTQPOINT texturePoints[3];
+    GSPRIMSTQPOINT texturePoints[3] __attribute__((aligned(8)));
     /* The cached GS point already includes shade, alpha and depth. Look it
      * up before calculating those inputs again. Clipped temporaries and
      * per-triangle decal slopes still use the complete preparation path. */
@@ -706,7 +713,7 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
             } else rdp->stats.textureFailed++;
         }
     } else {
-        GSPRIMPOINT points[3];
+        GSPRIMPOINT points[3] __attribute__((aligned(8)));
         u32 depths[3] = {z0,z1,z2};
         for (int i = 0; i < 3; i++) {
             points[i].rgbaq = rgba_to_RGBAQ((u32)*colors[i], 1);
@@ -723,7 +730,7 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
             if (!s_tri2Count) s_tri2Fog=fog;
             memcpy(s_triColorPoints+s_tri2Count,points,sizeof(points)); s_tri2Count+=3;
         } else {
-            ps2_prim_colored_triangles(gs,3,points);
+            ps2_prim_trusted_colored_triangles(gs,3,points, fog ? GS_XYZF2 : GS_XYZ2);
             rdp->stats.colorPackets++;
         }
         gs->PrimFogEnable = previousFog;

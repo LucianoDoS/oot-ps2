@@ -9,6 +9,8 @@ void ps2_runtime_trace_finish(void);
 void ps2_runtime_vblank(void);
 void ps2_runtime_event(const char* format, ...);
 void ps2_runtime_frame(Ps2TraceTicks translate, Ps2TraceTicks submit, Ps2TraceTicks flip);
+unsigned ps2_runtime_fps10(void);
+int ps2_runtime_fps_fallback(void);
 void ps2_runtime_rom_read(unsigned offset, unsigned bytes, Ps2TraceTicks ticks, int result, int seek);
 void ps2_runtime_rom_wait(Ps2TraceTicks ticks);
 void ps2_runtime_audio(unsigned queue, unsigned rate, unsigned late, unsigned dropped);

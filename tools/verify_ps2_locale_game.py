@@ -18,6 +18,13 @@ def verify(root):
     for i in range(3):
         assert re.search(rf'\[PS2 LANGUAGE TRANSITION\] PASS phase={i} .*frames=120',log)
     assert '[PS2 RUNTIME LOG] CLOSED final flush completed' in log
+    runtime=(root/'DIAG.LOG').read_text(encoding='utf-8',errors='replace')
+    automatic='AUTO-PLAY' in runtime.splitlines()[0]
+    if automatic:
+        assert re.search(r'LOGGER_START .*batchSeconds=15 .*reserveRamBytes=',runtime)
+        assert 'FPS-HUD' not in runtime.splitlines()[0]
+        profiles=[int(frame) for frame in re.findall(r'\[PS2 GFX PROFILE\] frame=(\d+)',runtime)]
+        assert not profiles, 'Automatic logging must not profile individual triangle work'
     assert not re.search(r'\[PS2 (?:LOGO CADENCE|LANGUAGE[^\]]*)\] FAIL',log)
     counts=[]
     captures={}
@@ -36,6 +43,7 @@ def verify(root):
     report=dict(status='PASS',usb_fixture=str(root),logo_fps10=int(re.search(
         r'\[PS2 LOGO CADENCE\] PASS .*fps10=(\d+)',log)[1]),
         english_save_slots_unchanged=True,locale_text_pixels=counts,captures=captures,
+        automatic_runtime_log=automatic,log_flush_seconds=15 if automatic else 5,
         real_ps2_validated=False,physical_language_persistence_validated=False)
     (root/'language-game-check.json').write_text(json.dumps(report,indent=2)+'\n')
     print(json.dumps(report,indent=2))

@@ -6,7 +6,7 @@ upstream="${OOT_UPSTREAM:-$HOME/oot-ps2-tools/oot-upstream}"
 build=build/PS2-ntsc12
 python3 tools/generate_ps2_usb_data.py --image "$build/oot-full-next.z64" --output "$build/generated/usb_data_expected.h"
 make PLATFORM=PS2 OOT_VERSION=NTSC_1_2 BUILD_DIR="$build" OOT_UPSTREAM="$upstream" \
-    PS2_USB_BOOT=1 TARGET=oot_ps2_usb.elf -j2
+    PS2_USB_BOOT=1 PS2_RUNTIME_AUTOMATIC="${PS2_USB_AUTO_LOG:-1}" TARGET=oot_ps2_usb.elf -j2
 make PLATFORM=PS2 OOT_VERSION=NTSC_1_2 BUILD_DIR="$build" OOT_UPSTREAM="$upstream" \
     PS2_USB_BOOT=1 PS2_RUNTIME_DIAGNOSTIC=1 TARGET=oot_ps2_usb_runtime.elf -j2
 make PLATFORM=PS2 OOT_VERSION=NTSC_1_2 BUILD_DIR="$build" OOT_UPSTREAM="$upstream" \

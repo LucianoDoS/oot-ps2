@@ -35,6 +35,7 @@ static inline void ps2_gfx_profile_leave(unsigned category, u32 start) {
 }
 void ps2_gfx_profile_begin(void);
 void ps2_gfx_profile_enable(bool enabled);
+void ps2_gfx_profile_sample_every(unsigned frames);
 void ps2_gfx_profile_end(void);
 void ps2_gfx_profile_texture_miss(u32 source, u32 prim, u32 env,
     unsigned width, unsigned height, unsigned fmt, unsigned siz,

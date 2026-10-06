@@ -13,4 +13,11 @@ void ps2_prim_prepared_textured_triangles(GSGLOBAL* gs, const PS2TriangleTexture
 void ps2_prim_textured_triangles(GSGLOBAL* gs, GSTEXTURE* texture, int count,
     const GSPRIMSTQPOINT* points, bool setFilter);
 void ps2_prim_colored_triangles(GSGLOBAL* gs, int count, const GSPRIMPOINT* points);
+/* Renderer-only fast paths: 8-byte aligned arrays made with gsKit's vertex
+ * constructors, uniform GS_RGBAQ/GS_ST and xyz=GS_XYZ2 or GS_XYZF2 throughout.
+ * External/mixed layouts must use the validated functions above. */
+void ps2_prim_trusted_textured_triangles(GSGLOBAL* gs, const PS2TriangleTextureSetup* setup,
+    int count, const GSPRIMSTQPOINT* points, bool setFilter, unsigned xyz);
+void ps2_prim_trusted_colored_triangles(GSGLOBAL* gs, int count,
+    const GSPRIMPOINT* points, unsigned xyz);
 #endif
