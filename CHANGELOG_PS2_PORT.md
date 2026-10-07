@@ -4,6 +4,36 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Tercera sesión física: coste sostenido del dibujo — 2026-10-06
+
+- Se conserva el nuevo registro antes de modificar el USB en
+  `build/PS2/hardware-runtime/auto-play-physical-20261006-212132`.
+  OOTPS2.ELF coincide con la revisión `ecedd06`: SHA256
+  `4DE2BCAB437C53A9FE7B99B92603CAD9900F124D704055AD61D1F4A31F90BC35`.
+  Hay 270 muestras durante unos 271 segundos, con paso del título a la casa
+  y al bosque Kokiri. No hay errores USB o del logger, registros perdidos,
+  bytes nulos, líneas dañadas, saltos de secuencia ni reloj fallido.
+- El último minuto contiene 51 intervalos sin solicitudes de lectura ni
+  escrituras del logger solapadas: 660 fotogramas, mediana 12,9 FPS,
+  traducción 62,91 ms, envío 1,82 ms y presentación 12,67 ms por fotograma.
+  La escritura más lenta del registro tarda 112 ms; las escrituras suman
+  885 ms en la sesión. La ralentización sostenida persiste fuera de esas
+  escrituras y cargas. La cámara no se registra y estos tiempos incluyen
+  interrupciones y otros hilos: no certifican una regresión ni una mejora
+  comparable frente a los 13,45 FPS de la sesión anterior.
+- Se revisa el contador `clipped`: cuenta triángulos descartados por estar
+  completamente fuera de una misma cara del volumen visible, además de los
+  que desaparecen después del recorte. No cuenta las llamadas al recortador
+  ni mide su coste. Por tanto, los 880 descartes del último resumen no
+  justifican atribuir la ralentización al recorte. El registro automático
+  identifica el camino gráfico como coste principal, pero no separa aún
+  su preparación de vértices, materiales y texturas en esa vista física.
+- No reaparece el sector nulo de la sesión anterior; su causa continúa
+  pendiente y esta comprobación no demuestra que esté corregida. Las colas
+  de audio no muestran sondeos vacíos, lo que tampoco sustituye una prueba
+  auditiva. Se conservan los ejecutables del USB y la tarjeta del jugador;
+  esta revisión del registro no introduce una nueva versión del juego.
+
 ## Segunda sesión física y preparación de los límites de textura — 2026-10-06
 
 - Se conserva el USB antes de modificarlo en
