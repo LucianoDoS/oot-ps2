@@ -43,6 +43,7 @@ void ps2_gfx_profile_begin(void) {
     if (gPS2GfxProfileActive) {
         memset(gPS2GfxProfileCycles, 0, sizeof(gPS2GfxProfileCycles));
         memset(gPS2GfxProfileCalls, 0, sizeof(gPS2GfxProfileCalls));
+        ps2_combiner_analysis_reset_stats();
         sWallStart = ps2_gfx_cycles();
         sStart = ps2_gfx_profile_enter();
         sMissCount = 0;
@@ -68,6 +69,11 @@ void ps2_gfx_profile_end(void) {
         gPS2GfxProfileCalls[6],gPS2GfxProfileCalls[7],gPS2GfxProfileCalls[8],
         gPS2GfxProfileCalls[9],gPS2GfxProfileCalls[10],gPS2GfxProfileCalls[11]);
     ps2_texture_profile_cache();
+    PS2CombinerAnalysisStats analysis;
+    ps2_combiner_analysis_get_stats(&analysis);
+    printf("[PS2 COMBINER ANALYSIS PROFILE] frame=%u timeUs=%u lookups=%u lastHits=%u savedHits=%u rebuilds=%u entries=32 storageBytes=%u (included in state/lookup/submit)\n",
+        sFrame,micros(gPS2GfxProfileCycles[GFX_PROFILE_ANALYSIS]),(unsigned)analysis.lookups,
+        (unsigned)analysis.lastHits,(unsigned)analysis.savedHits,(unsigned)analysis.rebuilds,(unsigned)analysis.storageBytes);
     printf("[PS2 STATE PROFILE] frame=%u timeUs=%u calls=%u writes=%u reused=%u\n", sFrame,
         micros(gPS2GfxProfileCycles[GFX_PROFILE_STATE]),gPS2GfxProfileCalls[GFX_PROFILE_STATE],
         g_rdpState.stats.stateWrites,g_rdpState.stats.stateReuse);

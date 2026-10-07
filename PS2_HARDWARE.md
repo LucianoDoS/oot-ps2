@@ -135,6 +135,11 @@ atribuir cada caída a una fase sin una comparación controlada. Usa una vista
 exterior lenta durante unos 30 segundos, camina un minuto, guarda y espera
 20 segundos antes de apagar. También reemplaza BOOT.LOG y DIAG.LOG al arrancar.
 El juego habitual OOTPS2.ELF conserva el perfilado detallado desactivado.
+La revisión actual añade `[PS2 COMBINER ANALYSIS PROFILE]`: cuenta las
+reconstrucciones y los análisis reutilizados al cambiar de material. Su tiempo
+está incluido en las otras fases y no debe sumarse de nuevo. La caché mantiene
+32 entradas y usa 2.716 bytes; conserva la validación de las claves y los
+colores dinámicos. Su ganancia de FPS debe comprobarse en la misma cámara.
 
 Para una prueba con contador visible abre `mass:/OOTPS2/DIAG.ELF`.
 Ejecuta el mismo juego con tu mando y guardado normal; crea `DIAG.LOG` junto a

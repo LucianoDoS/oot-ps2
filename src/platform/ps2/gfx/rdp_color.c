@@ -236,76 +236,141 @@ static bool lookup_difference_cancels(const CombinerAnalysis* analysis, const u8
            (sources[1]==1 || sources[1]==2);
 }
 
-/* Decode once per material, not once per vertex/channel. Key the words
- * directly so callers which restore an RDPState also invalidate the analysis. */
-static const CombinerAnalysis* combiner_analysis(const RDPState* rdp) {
-    static CombinerAnalysis cache;
-    u32 type = (rdp->otherMode.hi >> 20) & 3;
-    u32 blend = rdp->otherMode.lo & 0x5003;
-    if (cache.valid && cache.w0 == rdp->combiner.w0 && cache.w1 == rdp->combiner.w1 &&
-        cache.type == type && cache.blend == blend) return &cache;
-    memset(&cache, 0, sizeof(cache));
-    cache.w0 = rdp->combiner.w0; cache.w1 = rdp->combiner.w1;
-    cache.type = type; cache.blend = blend; cache.valid = true;
-    cache.pathLerp = type == 1 && cache.w0 == 0xfc262a04u && cache.w1 == 0x1f5893f8u;
+/* Decode selectors independently of primitive/environment color values.
+ * Retain several analyses across material changes; restored RDP snapshots
+ * still validate all four keys. Only the last-entry fast path skips the
+ * four-way set lookup, never the identity checks. */
+#define COMBINER_ANALYSIS_SETS 8u
+#define COMBINER_ANALYSIS_WAYS 4u
+#define COMBINER_ANALYSIS_SLOTS (COMBINER_ANALYSIS_SETS * COMBINER_ANALYSIS_WAYS)
+typedef struct { CombinerAnalysis analysis; u32 used; } CombinerAnalysisEntry;
+static CombinerAnalysisEntry s_analysis[COMBINER_ANALYSIS_SLOTS];
+static CombinerAnalysis* s_lastAnalysis;
+static u32 s_analysisClock;
+static PS2CombinerAnalysisStats s_analysisStats;
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+static bool s_analysisReference;
+static CombinerAnalysis s_referenceAnalysis;
+void ps2_combiner_test_analysis_reference(bool enabled) { s_analysisReference=enabled; }
+void ps2_combiner_test_analysis_clear(void) {
+    memset(s_analysis,0,sizeof(s_analysis));
+    memset(&s_referenceAnalysis,0,sizeof(s_referenceAnalysis));
+    s_lastAnalysis=NULL; s_analysisClock=0;
+    ps2_combiner_analysis_reset_stats();
+}
+#endif
+void ps2_combiner_analysis_reset_stats(void) { memset(&s_analysisStats,0,sizeof(s_analysisStats)); }
+void ps2_combiner_analysis_get_stats(PS2CombinerAnalysisStats* stats) {
+    *stats=s_analysisStats;
+    stats->storageBytes=sizeof(s_analysis)+sizeof(s_lastAnalysis)+sizeof(s_analysisClock)+sizeof(s_analysisStats);
+}
+static bool analysis_matches(const CombinerAnalysis* cache, const RDPState* rdp, u32 type, u32 blend) {
+    return cache->valid && cache->w0==rdp->combiner.w0 && cache->w1==rdp->combiner.w1 &&
+        cache->type==type && cache->blend==blend;
+}
+static void build_combiner_analysis(CombinerAnalysis* cache, const RDPState* rdp, u32 type, u32 blend) {
+    memset(cache, 0, sizeof(*cache));
+    cache->w0 = rdp->combiner.w0; cache->w1 = rdp->combiner.w1;
+    cache->type = type; cache->blend = blend; cache->valid = true;
+    cache->pathLerp = type == 1 && cache->w0 == 0xfc262a04u && cache->w1 == 0x1f5893f8u;
     int cycles = type == 1 ? 2 : 1;
     for (int cycle = 0; cycle < cycles; cycle++) for (int alpha = 0; alpha < 2; alpha++) {
-        u8* sources = cache.sources[cycle][alpha];
+        u8* sources = cache->sources[cycle][alpha];
         combiner_sources(rdp, cycle, alpha, sources);
-        bool cancels=lookup_difference_cancels(&cache,sources);
+        bool cancels=lookup_difference_cancels(cache,sources);
         for (int slot = 0; slot < 4; slot++) {
             u8 source = sources[slot];
-            if (source == 4 || (!alpha && slot == 2 && source == 11)) cache.shade[alpha] = true;
-            if (type == 2 || (!cache.w0 && !cache.w1)) continue;
+            if (source == 4 || (!alpha && slot == 2 && source == 11)) cache->shade[alpha] = true;
+            if (type == 2 || (!cache->w0 && !cache->w1)) continue;
             if (cancels && slot<3) continue;
             u32 mask = alpha ? 255u : 0xffffff00u;
             if (!alpha && slot == 2 && source >= 7 && source <= 12) {
-                if (source == 10) cache.primMask |= 255;
-                if (source == 12) cache.envMask |= 255;
+                if (source == 10) cache->primMask |= 255;
+                if (source == 12) cache->envMask |= 255;
             } else {
-                if (source == 3) cache.primMask |= mask;
-                if (source == 5) cache.envMask |= mask;
+                if (source == 3) cache->primMask |= mask;
+                if (source == 5) cache->envMask |= mask;
             }
         }
     }
     const u8 expected[2][2][4] = {{{2,1,12,1},{7,7,7,6}},{{0,15,4,7},{7,7,7,0}}};
-    cache.textureLerp = type == 1 && !blend && !memcmp(cache.sources, expected, sizeof(expected));
-    if (cache.textureLerp) cache.envMask &= ~255u;
-    const u8* alpha = cache.sources[0][1];
-    cache.dynamicAlpha = type == 0 && (alpha[0] == 1 || alpha[0] == 2) &&
-        alpha[1] == 7 && alpha[2] == 3 && alpha[3] == 7 && cache.sources[0][0][2] != 10;
+    cache->textureLerp = type == 1 && !blend && !memcmp(cache->sources, expected, sizeof(expected));
+    if (cache->textureLerp) cache->envMask &= ~255u;
+    const u8* alpha = cache->sources[0][1];
+    cache->dynamicAlpha = type == 0 && (alpha[0] == 1 || alpha[0] == 2) &&
+        alpha[1] == 7 && alpha[2] == 3 && alpha[3] == 7 && cache->sources[0][0][2] != 10;
     /* Each output channel may depend on an earlier cycle's channel or alpha.
      * Keep conservative unions, except for an exactly zero (A-B). Constants
      * in its factor cannot affect the current evaluator's texture output. */
-    if (type != 2 && (cache.w0 || cache.w1)) {
+    if (type != 2 && (cache->w0 || cache->w1)) {
         for (int cycle = 0; cycle < cycles; cycle++) {
             u32 nextPrim[4] = {0}, nextEnv[4] = {0};
             for (int component = 0; component < 4; component++) {
-                const u8* selectors = cache.sources[cycle][component == 3];
-                bool cancels=lookup_difference_cancels(&cache,selectors);
+                const u8* selectors = cache->sources[cycle][component == 3];
+                bool cancels=lookup_difference_cancels(cache,selectors);
                 for (int slot = cancels?3:0; slot < 4; slot++) {
                     unsigned source = selectors[slot];
                     if (component != 3 && slot == 2 && source >= 7 && source <= 12) {
                         if (source == 7) {
-                            nextPrim[component] |= cache.lookupPrimMask[3];
-                            nextEnv[component] |= cache.lookupEnvMask[3];
+                            nextPrim[component] |= cache->lookupPrimMask[3];
+                            nextEnv[component] |= cache->lookupEnvMask[3];
                         } else if (source == 10) nextPrim[component] |= 255u;
                         else if (source == 12) nextEnv[component] |= 255u;
                     } else if (source == 0 && !(component == 3 && slot == 2)) {
-                        nextPrim[component] |= cache.lookupPrimMask[component];
-                        nextEnv[component] |= cache.lookupEnvMask[component];
+                        nextPrim[component] |= cache->lookupPrimMask[component];
+                        nextEnv[component] |= cache->lookupEnvMask[component];
                     } else if (source == 3) nextPrim[component] |= 255u << ((3-component)*8);
                     else if (source == 5) nextEnv[component] |= 255u << ((3-component)*8);
                 }
             }
-            memcpy(cache.lookupPrimMask, nextPrim, sizeof(nextPrim));
-            memcpy(cache.lookupEnvMask, nextEnv, sizeof(nextEnv));
+            memcpy(cache->lookupPrimMask, nextPrim, sizeof(nextPrim));
+            memcpy(cache->lookupEnvMask, nextEnv, sizeof(nextEnv));
         }
         /* This material defers primitive alpha to the GS vertex; its texture
          * alpha LUT is the identity rather than the scalar alpha equation. */
-        if (cache.dynamicAlpha) cache.lookupPrimMask[3] = cache.lookupEnvMask[3] = 0;
+        if (cache->dynamicAlpha) cache->lookupPrimMask[3] = cache->lookupEnvMask[3] = 0;
     }
-    return &cache;
+}
+static const CombinerAnalysis* combiner_analysis(const RDPState* rdp) {
+    u32 type=(rdp->otherMode.hi>>20)&3, blend=rdp->otherMode.lo&0x5003;
+    if (gPS2GfxProfileActive) s_analysisStats.lookups++;
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+    if (s_analysisReference) {
+        if (analysis_matches(&s_referenceAnalysis,rdp,type,blend)) {
+            if (gPS2GfxProfileActive) s_analysisStats.lastHits++;
+        } else {
+            u32 start=ps2_gfx_profile_enter();
+            build_combiner_analysis(&s_referenceAnalysis,rdp,type,blend);
+            ps2_gfx_profile_leave(GFX_PROFILE_ANALYSIS,start);
+            if (gPS2GfxProfileActive) s_analysisStats.rebuilds++;
+        }
+        return &s_referenceAnalysis;
+    }
+#endif
+    if (s_lastAnalysis && analysis_matches(s_lastAnalysis,rdp,type,blend)) {
+        if (gPS2GfxProfileActive) s_analysisStats.lastHits++;
+        return s_lastAnalysis;
+    }
+    u32 w0=rdp->combiner.w0, w1=rdp->combiner.w1;
+    unsigned set=(w0^(w0>>16)^w1^(w1>>11)^(w1>>21)^type^blend^(blend>>12))&
+        (COMBINER_ANALYSIS_SETS-1);
+    unsigned first=set*COMBINER_ANALYSIS_WAYS, oldest=first;
+    for (unsigned i=first;i<first+COMBINER_ANALYSIS_WAYS;i++) {
+        CombinerAnalysisEntry* entry=&s_analysis[i];
+        if (analysis_matches(&entry->analysis,rdp,type,blend)) {
+            entry->used=++s_analysisClock; s_lastAnalysis=&entry->analysis;
+            if (gPS2GfxProfileActive) s_analysisStats.savedHits++;
+            return s_lastAnalysis;
+        }
+        if (!entry->analysis.valid || (s_analysis[oldest].analysis.valid && entry->used<s_analysis[oldest].used)) oldest=i;
+    }
+    CombinerAnalysisEntry* entry=&s_analysis[oldest];
+    u32 start=ps2_gfx_profile_enter();
+    build_combiner_analysis(&entry->analysis,rdp,type,blend);
+    ps2_gfx_profile_leave(GFX_PROFILE_ANALYSIS,start);
+    if (gPS2GfxProfileActive) s_analysisStats.rebuilds++;
+    entry->used=++s_analysisClock; s_lastAnalysis=&entry->analysis;
+    return s_lastAnalysis;
 }
 
 bool ps2_combiner_uses_shade(const RDPState* rdp, bool alpha) {

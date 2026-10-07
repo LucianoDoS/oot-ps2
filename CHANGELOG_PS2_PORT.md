@@ -4,6 +4,62 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Perfil físico espaciado y caché de análisis de materiales — 2026-10-06
+
+- Se conservan ambos registros y la identidad del paquete en
+  `build/PS2/hardware-runtime/sparse-physical-20261006-232358`, antes de
+  cambiar el USB. PERF coincide con el ejecutable entregado y registra
+  una muestra detallada cada 300 fotogramas. Hay 270 intervalos y 14 perfiles,
+  sin errores USB/logger, bytes nulos, líneas dañadas, saltos, pérdidas ni
+  fallos de las guardas del scratchpad.
+- La sesión contiene una vista de unos 12 FPS y termina con vistas cercanas
+  a 20 FPS. El último minuto sin lecturas ni escrituras del registro solapadas
+  incluye 740 fotogramas y una mediana de 19,9 FPS. No es una comparación
+  de la misma cámara: los perfiles finales dibujan menos geometría. No se
+  confirma aún el objetivo de 20 FPS estables en todas las vistas.
+- Los perfiles lentos 1200/1500/1800 emplean 60–63 ms en traducción, una vez
+  descontada la síntesis de audio medida: 37–38 ms en triángulos y 10–12 ms
+  en vértices. La búsqueda de texturas, incluida en el envío, emplea 11–13 ms;
+  no se deben sumar esas categorías. Otros hilos siguen incluidos. Las
+  solicitudes USB no explican por sí solas este coste sostenido.
+- El renderer conserva 32 análisis de selectores en ocho grupos de cuatro,
+  manteniendo la ruta rápida del último material y comprobando las mismas
+  cuatro claves que antes. Colores de primitiva/entorno y LOD no se guardan
+  como resultados: se siguen evaluando en cada uso. La expulsión o colisión
+  reconstruye el análisis original. El almacenamiento fijo es 2.716 bytes.
+- La prueba EE compara 480 casos con la caché anterior de un análisis,
+  incluyendo presión de 80 materiales, cambios de color/LOD, ciclos,
+  mezclas y restauraciones. Al alternar ocho materiales, las reconstrucciones
+  pasan de 256 a 8; la operación aislada emplea 719.741 frente a 3.440.332
+  ciclos emulados. No equivale a una ganancia del fotograma completo.
+- Pasa la batería del renderer en
+  `build/PS2/floor-production-smoke-20261006-233803`, con 120 fotogramas
+  gráficos/audio, capas, texturas mutables, puntos, recorte y transparencias.
+  Pasan las seis pruebas del analizador. PERF añade el tiempo de
+  reconstrucción y los contadores de último material, análisis reutilizados
+  y fallos de caché; siguen siendo medidas incluidas en las otras fases.
+- Pasan los recorridos nativos USB emulados habitual
+  (`build/PS2/usb-stack-checks/20261006-235133-095`) y PERF
+  (`build/PS2/usb-stack-checks/20261006-235523-706`): logo a 59,9 FPS,
+  opciones en español, diálogo y casa → Kokiri → casa. El menú conserva
+  todos los píxeles; en el diálogo sólo difieren 35 píxeles de los ojos
+  durante el parpadeo aleatorio de Link. No hay errores, pérdidas ni guardas
+  dañadas y las tarjetas del jugador están desactivadas.
+- En el perfil emulado 600 se reutilizan 105 análisis entre cambios de
+  material y sólo se reconstruyen 10; 4.037 usos conservan el último
+  material. Los 4.152 usos quedan contabilizados y el coste de reconstrucción
+  es 35 microsegundos, incluido en las demás fases. Los fotogramas 300 y
+  900 no reconstruyen análisis. El juego habitual no activa estos perfiles.
+- Se recompilan los cuatro ejecutables del juego y BOOTTEST; doce archivos
+  quedan verificados en `D:\OOTPS2`, con respaldo en
+  `D:\OOTPS2-backup-20261006-235954`. OOTPS2 tiene SHA256
+  `7EA6E92ED44D9A4CFA77A7C6BA51AF5E368C9138464B1993F33160BB41205272`.
+  El ELF termina su rango estático en 0x01221d70; esto no certifica el uso
+  dinámico de memoria. El resultado está en
+  `build/PS2/analysis-cache-release-verification.json`. Se conservan los
+  registros físicos, los datos y la tarjeta del jugador. La mejora de FPS
+  de la nueva caché queda pendiente de comparación en la misma vista física.
+
 ## Cuarta sesión física y preparación de triángulos — 2026-10-06
 
 - Se conservan BOOT.LOG, DIAG.LOG y la identidad del paquete antes de copiar

@@ -14,6 +14,7 @@ tMs=1003 [PS2 TEXTURE CONTENT PROFILE] frame=300 timeUs=2000 calls=100
 tMs=1003 [PS2 STATE PROFILE] frame=300 timeUs=200 calls=100 writes=30 reused=70
 tMs=1003 [PS2 VERTEX COLOR PROFILE] frame=300 timeUs=500 calls=300
 tMs=1003 [PS2 MATERIAL POINT PROFILE] frame=300 materialUs=600 materialCalls=4 pointUs=9000 pointCalls=1200
+tMs=1003 [PS2 COMBINER ANALYSIS PROFILE] frame=300 timeUs=80 lookups=100 lastHits=60 savedHits=30 rebuilds=10 entries=32 storageBytes=2716
 tMs=1004 [PS2 GFX PROFILE] frame=600 totalUs=\0
 tMs=1005 [PS2 GFX PROFILE] frame=900 totalUs=1
 '''
@@ -27,6 +28,7 @@ tMs=1005 [PS2 GFX PROFILE] frame=900 totalUs=1
         self.assertEqual(result['state_profiles'][0]['reused'], 70)
         self.assertEqual(result['vertex_color_profiles'][0]['timeUs'], 500)
         self.assertEqual(result['material_point_profiles'][0]['pointCalls'], 1200)
+        self.assertEqual(result['combiner_analysis_profiles'][0]['savedHits'], 30)
         self.assertEqual(len(result['damaged_lines']), 2)
         self.assertIsNone(result['fps_median'])
 

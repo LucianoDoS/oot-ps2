@@ -272,6 +272,15 @@ bool ps2_combiner_path_lerp(const RDPState* rdp);
 bool ps2_combiner_flame(const RDPState* rdp);
 bool ps2_combiner_jewel(const RDPState* rdp);
 bool ps2_combiner_token_flame(const RDPState* rdp);
+typedef struct {
+    u32 lookups, lastHits, savedHits, rebuilds, storageBytes;
+} PS2CombinerAnalysisStats;
+void ps2_combiner_analysis_reset_stats(void);
+void ps2_combiner_analysis_get_stats(PS2CombinerAnalysisStats* stats);
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+void ps2_combiner_test_analysis_reference(bool enabled);
+void ps2_combiner_test_analysis_clear(void);
+#endif
 void rdp_setprimcolor(u32 w0, u32 w1, RDPState* rdp);
 void rdp_setenvcolor(u32 w0, u32 w1, RDPState* rdp);
 void rdp_setfogcolor(u32 w0, u32 w1, RDPState* rdp);

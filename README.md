@@ -71,6 +71,16 @@ cambiar sus bytes. `PERF.ELF` permite separar los costes en la consola con
 una muestra detallada cada 300 fotogramas, sin indicador en pantalla; el
 juego habitual mantiene esos cronómetros desactivados.
 
+El primer perfil físico detallado recoge 270 muestras y 14 fotogramas
+medidos: conserva una vista cercana a 12 FPS y termina con vistas de unos
+20 FPS que dibujan menos geometría. No confirma todavía 20 FPS estables.
+En los fotogramas lentos, preparar/enviar triángulos cuesta unos 37–38 ms,
+incluyendo 11–13 ms de búsqueda de texturas; esos tiempos se solapan.
+La revisión siguiente conserva 32 análisis de los selectores de materiales,
+validados por sus palabras de combinación, ciclo y bits de mezcla. Los
+colores y alfa dinámicos se evalúan como antes. PERF registra reconstrucciones
+y reutilizaciones para medir el efecto en la misma vista física.
+
 El selector incorpora idioma English/Español cuando encuentra el paquete
 privado `ESP.DAT`. Traduce diálogos, fuente y texturas de menús conservando
 los índices y las partidas nativas. Algunos textos de código y los créditos

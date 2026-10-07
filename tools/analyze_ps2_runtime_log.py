@@ -11,7 +11,7 @@ def analyze(text):
     damaged_lines, sequence_gaps = [], []
     texture_content, scratchpad_storage, scratchpad_errors = [], [], []
     profiles = {name: [] for name in ('graphics', 'geometry', 'content', 'preemption',
-                                    'state', 'vertex_color', 'material_point')}
+                                    'state', 'vertex_color', 'material_point', 'analysis')}
     profile_fields = {
         '[PS2 GFX PROFILE]': ('graphics', ('totalUs', 'vtxUs', 'triUs', 'rectUs', 'lookupUs', 'convertUs', 'uploadUs')),
         '[PS2 GEOMETRY PROFILE]': ('geometry', ('matrixUs', 'transformUs', 'lightUs', 'texgenUs', 'clipUs', 'submitUs')),
@@ -20,6 +20,7 @@ def analyze(text):
         '[PS2 STATE PROFILE]': ('state', ('timeUs', 'calls', 'writes', 'reused')),
         '[PS2 VERTEX COLOR PROFILE]': ('vertex_color', ('timeUs', 'calls')),
         '[PS2 MATERIAL POINT PROFILE]': ('material_point', ('materialUs', 'materialCalls', 'pointUs', 'pointCalls')),
+        '[PS2 COMBINER ANALYSIS PROFILE]': ('analysis', ('timeUs', 'lookups', 'lastHits', 'savedHits', 'rebuilds', 'entries', 'storageBytes')),
     }
     sparse_profile_every = None
     previous_sequence = None
@@ -134,6 +135,7 @@ def analyze(text):
         'state_profiles': profiles['state'],
         'vertex_color_profiles': profiles['vertex_color'],
         'material_point_profiles': profiles['material_point'],
+        'combiner_analysis_profiles': profiles['analysis'],
         'progress_snapshots': [line.rstrip() for line in text.splitlines() if any(
             marker in line for marker in (' STALL_SNAPSHOT ', ' GAME_PROGRESS ', ' PLAY_PROGRESS ',
                 ' GFX_WORKER ', ' THREAD ', '[PS2 GFX WAIT]'))],
