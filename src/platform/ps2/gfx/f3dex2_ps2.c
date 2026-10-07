@@ -438,6 +438,17 @@ static bool s_runFilterValid;
 static u32 s_runFilter;
 static bool s_runPacketValid[2];
 static PS2TriangleTextureSetup s_runPacketSetup[2];
+static bool s_runTileSetupValid[2];
+static PS2TextureTileSetup s_runTileSetup[2];
+static void apply_texture_tile(TileDescriptor* tile, RDPState* rdp, bool second) {
+    if (!s_triangleRun) { ps2_texture_apply_tile(tile,rdp); return; }
+    unsigned layer=second?1:0;
+    if (!s_runTileSetupValid[layer]) {
+        ps2_texture_prepare_tile(&s_runTileSetup[layer],tile,rdp);
+        s_runTileSetupValid[layer]=true;
+    }
+    ps2_texture_apply_tile_prepared(tile,rdp,&s_runTileSetup[layer]);
+}
 static void submit_texture_packet(GSGLOBAL* gs, GSTEXTURE* texture, int count,
     const GSPRIMSTQPOINT* points, bool second) {
     /* Only triangle commands execute inside a run. CLAMP/ALPHA changes and
@@ -490,6 +501,7 @@ bool f3dex2_batch_begin(RSPState* rsp, RDPState* rdp) {
     s_runPointSetupValid[0] = s_runPointSetupValid[1] = false;
     s_runFilterValid = false;
     s_runPacketValid[0] = s_runPacketValid[1] = false;
+    s_runTileSetupValid[0] = s_runTileSetupValid[1] = false;
     s_runColored = !rsp->texEnabled;
     s_runRgbShade = rsp->texEnabled && ps2_combiner_uses_shade(rdp,false);
     s_runAlphaShade = rsp->texEnabled && ps2_combiner_uses_shade(rdp,true);
@@ -595,13 +607,14 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
         TileDescriptor* tile = &rdp->tile[rsp->texTile & 7];
         if (!tile->gsTextureLoaded) {
             s_runPacketValid[0] = false;
+            s_runTileSetupValid[0] = false;
             ps2_texture_upload(tile, rdp);
         }
         if (!tile->gsTextureLoaded) { rdp->stats.textureFailed++; return; }
 
         GSPRIMSTQPOINT* points=texturePoints;
         if (!s_triangleRun || !s_runTileBound || s_runGround) {
-            ps2_texture_apply_tile(tile, rdp);
+            apply_texture_tile(tile, rdp, false);
             if (s_triangleRun) s_runTileBound = true;
         }
         if (!pointReady[0]) prepare_texture_point(tile,rsp,rdp,v0,(u32)c0,z0,fog,pointSlots[0],false,&points[0]);
@@ -637,12 +650,13 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
             TileDescriptor* second = &rdp->tile[(rsp->texTile + 1) & 7];
             if (!second->gsTextureLoaded) {
                 s_runPacketValid[1] = false;
+                s_runTileSetupValid[1] = false;
                 ps2_texture_upload(second, rdp);
             }
             if (second->gsTextureLoaded) {
                 u32 depths[3] = {z0,z1,z2};
                 u32 alpha = ((rdp->envColor & 255) * 128 + 127) / 255;
-                ps2_texture_apply_tile(second, rdp);
+                apply_texture_tile(second, rdp, true);
                 for (int i = 0; i < 3; i++) {
                     u32 color = ((u32)*colors[i] & 0xffffffu) | (alpha << 24);
                     prepare_texture_point(second,rsp,rdp,vertices[i],color,depths[i],fog,

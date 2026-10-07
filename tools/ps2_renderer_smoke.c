@@ -624,7 +624,9 @@ int ps2_renderer_smoke(void) {
     fencePixels[1][0]++;
     ps2_texture_upload(&fenceTiles[1], &g_rdpState);
     if (g_rdpState.stats.textureWaits != fenceWaits + 1) failures++;
-    ps2_texture_apply_tile(&fenceTiles[0], &g_rdpState);
+    PS2TextureTileSetup fenceSetup;
+    ps2_texture_prepare_tile(&fenceSetup,&fenceTiles[0],&g_rdpState);
+    ps2_texture_apply_tile_prepared(&fenceTiles[0],&g_rdpState,&fenceSetup);
     gsKit_prim_sprite_texture(g_rdpState.gs, &fenceTiles[0].gsTexture,
         0,0,0,0,2,1,2,1,0,GS_SETREG_RGBAQ(128,128,128,128,1));
     ps2_texture_end_frame(&g_rdpState);

@@ -379,19 +379,11 @@ static unsigned mirrored_dimensions(const TileDescriptor* tile, int w, int h, in
     return (ms ? 1u | (tile->masks << 4) : 0) | (mt ? 2u | (tile->maskt << 8) : 0);
 }
 
-void ps2_texture_apply_tile(TileDescriptor* tile, RDPState* rdp) {
-    GSGLOBAL* gs = rdp->gs;
-    if (!gs) return;
-    /* A still-loaded tile can be drawn again after a different upload has
-     * retired earlier draws. Record each binding, including that reuse. */
-    if (tile->gsTextureLoaded && tile->cacheSlot < TEXTURE_CACHE_SLOTS) {
-        TextureCacheEntry* entry = &s_cache[tile->cacheSlot];
-        if (entry->valid && entry->vram == tile->gsTexture.Vram) entry->used = ++s_cacheClock;
-    }
+void ps2_texture_prepare_tile(PS2TextureTileSetup* setup,
+    const TileDescriptor* tile, const RDPState* rdp) {
     /* Region clamp also excludes uninitialized padding in non-power-of-two
      * strips. Region repeat uses the N64 mask without clamping CPU vertices. */
-    TileDescriptor* boundTile=tile;
-    tile=(TileDescriptor*)coordinate_tile(tile,rdp);
+    tile=coordinate_tile(tile,rdp);
     unsigned modeS = (tile->cms & 2) || !tile->masks ? 2 : 3;
     unsigned modeT = (tile->cmt & 2) || !tile->maskt ? 2 : 3;
     unsigned minS = modeS == 3 ? (1u << (tile->masks > 10 ? 10 : tile->masks)) - 1 : 0;
@@ -404,10 +396,26 @@ void ps2_texture_apply_tile(TileDescriptor* tile, RDPState* rdp) {
         minT = tile->gsTexture.Height - 1;
     unsigned maxS = modeS == 2 && tile->width ? tile->width - 1 : 0;
     unsigned maxT = modeT == 2 && tile->height ? tile->height - 1 : 0;
-    gs->Clamp->WMS = modeS; gs->Clamp->WMT = modeT;
-    gs->Clamp->MINU = minS; gs->Clamp->MAXU = maxS;
-    gs->Clamp->MINV = minT; gs->Clamp->MAXV = maxT;
-    u64 clamp = GS_SETREG_CLAMP(modeS, modeT, minS, maxS, minT, maxT);
+    setup->modeS=modeS; setup->modeT=modeT;
+    setup->minS=minS; setup->maxS=maxS; setup->minT=minT; setup->maxT=maxT;
+    setup->clamp=GS_SETREG_CLAMP(modeS, modeT, minS, maxS, minT, maxT);
+    setup->filter=((rdp->otherMode.hi >> 12) & 3) ? GS_FILTER_LINEAR : GS_FILTER_NEAREST;
+}
+
+void ps2_texture_apply_tile_prepared(TileDescriptor* tile, RDPState* rdp,
+    const PS2TextureTileSetup* setup) {
+    GSGLOBAL* gs = rdp->gs;
+    if (!gs) return;
+    /* Preparation must not memoize this use: a preceding upload/FINISH
+     * may have retired earlier reads of the same still-loaded texture. */
+    if (tile->gsTextureLoaded && tile->cacheSlot < TEXTURE_CACHE_SLOTS) {
+        TextureCacheEntry* entry = &s_cache[tile->cacheSlot];
+        if (entry->valid && entry->vram == tile->gsTexture.Vram) entry->used = ++s_cacheClock;
+    }
+    gs->Clamp->WMS = setup->modeS; gs->Clamp->WMT = setup->modeT;
+    gs->Clamp->MINU = setup->minS; gs->Clamp->MAXU = setup->maxS;
+    gs->Clamp->MINV = setup->minT; gs->Clamp->MAXV = setup->maxT;
+    u64 clamp = setup->clamp;
     if (!rdp->gs_clamp_valid || rdp->gs_clamp != clamp || rdp->gs_clamp_context != gs->PrimContext) {
         u64* packet = gsKit_heap_alloc(gs, 1, 16, GIF_AD);
         packet[0] = GIF_TAG_AD(1); packet[1] = GIF_AD;
@@ -417,7 +425,14 @@ void ps2_texture_apply_tile(TileDescriptor* tile, RDPState* rdp) {
         rdp->gs_clamp_context = gs->PrimContext;
         rdp->gs_clamp_valid = true;
     }
-    boundTile->gsTexture.Filter = ((rdp->otherMode.hi >> 12) & 3) ? GS_FILTER_LINEAR : GS_FILTER_NEAREST;
+    tile->gsTexture.Filter = setup->filter;
+}
+
+void ps2_texture_apply_tile(TileDescriptor* tile, RDPState* rdp) {
+    if (!rdp->gs) return;
+    PS2TextureTileSetup setup;
+    ps2_texture_prepare_tile(&setup,tile,rdp);
+    ps2_texture_apply_tile_prepared(tile,rdp,&setup);
 }
 
 static float texture_shift_scale(u8 shift) {

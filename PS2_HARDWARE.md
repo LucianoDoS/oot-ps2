@@ -89,6 +89,19 @@ los componentes del render cada 60 fotogramas para localizar los costes que
 quedan. Para comparar el rendimiento habitual usa OOTPS2.ELF: el registro
 de diagnóstico añade trabajo y escrituras USB.
 
+La segunda sesión automática de la SCPH-90010, conservada en
+`build/PS2/hardware-runtime/auto-play-physical-20261006-194851`, confirma lotes
+de 4 KiB y una pausa máxima de escritura de 128 ms frente a 949 ms en la
+sesión anterior. El último minuto sin lecturas ni escrituras solapadas registra
+una mediana de 13,45 FPS y 60,55 ms de traducción por fotograma; la cámara no
+está registrada, por lo que no certifica una ganancia comparable de FPS.
+Hay un sector de 512 bytes nulos alrededor del segundo 445, sin error de
+escritura comunicado. El analizador señala ese daño y el salto de las muestras
+443 a 446, y descarta sus líneas; el último minuto usado no contiene ese sector.
+La causa de esa escritura incompleta sigue pendiente. La revisión actual
+prepara envoltura, límites y filtro una vez por capa/material. Conserva el
+registro de cada uso del caché para no omitir una espera posterior del GS.
+
 ## Registro de una partida y optimizaciones USB
 
 La caché de datos del juego retiene 256 KiB y reutiliza también las lecturas
@@ -169,7 +182,9 @@ puede detener también las cargas. No guarda cada instrucción, triángulo o mue
 Una excepción que detenga todos los hilos puede impedir el último volcado.
 El logger puede introducir una pausa: `FLUSH durationMs` mide su propia escritura.
 La primera partida automática física registra un máximo de 949 ms. Agrupar
-sectores reduce llamadas, pero aún hay que medir esa latencia en el USB real.
+sectores reduce llamadas; la segunda sesión con 4 KiB registra un máximo de
+128 ms. Sus sectores incompletos se señalan en el análisis y no se interpretan
+como mediciones válidas.
 
 Prueba unos 20 segundos quieto, otros caminando, y entra/sal de una casa.
 Tras ver un fallo, espera al menos veinte segundos antes de apagar o reiniciar

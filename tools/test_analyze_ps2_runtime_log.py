@@ -34,6 +34,36 @@ tMs=6001 USB reads=0 errors=0
             'OOT PS2 runtime log v3 test\ntMs=1000 SAMPLE intervalMs=1000 frames=20 fps10=200\n'):
             self.assertIsNone(analyze(log)['recent_no_read_render'])
 
+    def test_corrupt_sector_cannot_supply_a_render_sample(self):
+        header = 'OOT PS2 runtime log v3 test\n' + '\n' * 6
+        log = header + '''tMs=1000 SAMPLE seq=1 intervalMs=1000 frames=10 fps10=100 gfxMs=700,20,140
+tMs=1001 USB reads=0 errors=0
+tMs=2000 SAMPLE seq=2 intervalMs=1000 frames=10 fps10=100 gfxMs=700,20,140\0\0
+tMs=2001 USB reads=0 errors=0
+6 SAMPLE seq=3 intervalMs=1000 frames=99 fps10=990 gfxMs=0,0,0
+tMs=3001 USB reads=0 errors=0
+tMs=4000 SAMPLE seq=4 intervalMs=1000 frames=10 fps10=100 gfxMs=700,20,140
+tMs=4001 USB reads=0 errors=0
+'''
+        result = analyze(log)
+        self.assertEqual(result['samples'], 2)
+        self.assertEqual(result['nul_bytes'], 2)
+        self.assertEqual(len(result['damaged_lines']), 2)
+        self.assertEqual(result['sample_sequence_gaps'], [dict(after=1, before=4)])
+        self.assertEqual(result['recent_no_read_render']['frames'], 20)
+
+    def test_usb_after_partial_sample_cannot_overwrite_previous_reads(self):
+        log = '''OOT PS2 runtime log v3 test
+tMs=1000 SAMPLE seq=1 intervalMs=1000 frames=20 fps10=200 gfxMs=600,40,280
+tMs=1001 USB reads=1 errors=0
+tMs=2000 SAMPLE seq=2 intervalMs=1000 fps10=200
+tMs=2001 USB reads=0 errors=0
+'''
+        result = analyze(log)
+        self.assertEqual(result['samples'], 1)
+        self.assertEqual(len(result['damaged_lines']), 1)
+        self.assertIsNone(result['recent_no_read_render'])
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -20,6 +20,17 @@ void ps2_texture_test_combiner_rgba16(const RDPState* rdp, u32 values[4][32]);
 void ps2_texture_load_tlut(const u8* tlut_src, int count);
 void ps2_texture_load_tlut_at(const u8* tlut_src, int first, int count);
 void ps2_texture_apply_tile(TileDescriptor* tile, RDPState* rdp);
+/* Prepare after upload, and discard at the next state command or upload of
+ * this layer. The consecutive triangle run keeps its descriptor unchanged.
+ * Applying still records every GS read of the cache entry for retirement. */
+typedef struct {
+    u64 clamp;
+    u32 modeS, modeT, minS, maxS, minT, maxT, filter;
+} PS2TextureTileSetup;
+void ps2_texture_prepare_tile(PS2TextureTileSetup* setup,
+    const TileDescriptor* tile, const RDPState* rdp);
+void ps2_texture_apply_tile_prepared(TileDescriptor* tile, RDPState* rdp,
+    const PS2TextureTileSetup* setup);
 /* Prepare only after upload resolves the GS dimensions. Valid until the next
  * RSP/RDP state command; vertex coordinates and depth remain independent. */
 typedef struct {

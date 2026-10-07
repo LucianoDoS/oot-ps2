@@ -4,6 +4,58 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Segunda sesión física y preparación de los límites de textura — 2026-10-06
+
+- Se conserva el USB antes de modificarlo en
+  `build/PS2/hardware-runtime/auto-play-physical-20261006-194851`. OOTPS2.ELF
+  coincide con el paquete anterior: SHA256
+  `BC63FC32E85E4B76A9BC117F7043ECCA87949E744BD47A5CF9BF653C36F6C155`.
+  Se registran unos 511 segundos, título, casa y bosque Kokiri. No hay errores
+  USB comunicados, pérdidas del buffer, reloj detenido ni límite del archivo.
+- Las transferencias de 4 KiB reducen la escritura máxima observada de 949
+  a 128 ms. El último minuto contiene 56 intervalos sin lecturas ni escrituras
+  solapadas: 753 fotogramas, mediana 13,45 FPS, traducción 60,55 ms, envío
+  1,83 ms y presentación 11,93 ms por fotograma. Esos tiempos incluyen otros
+  hilos; la cámara no se registra y no permite afirmar una ganancia comparable
+  de FPS frente a la sesión anterior.
+- Hay 512 bytes nulos en el offset 229376, dentro del lote que termina hacia
+  el segundo 451, sin error devuelto por el controlador. El analizador señala
+  esa línea y el salto de secuencia 443 → 446, conserva 508 muestras válidas
+  y descarta los fragmentos dañados. El minuto final medido está fuera del
+  sector afectado. La causa de esa escritura incompleta queda pendiente.
+  Pasan los casos de lecturas, escrituras, reloj fallido, registros parciales
+  y daño de un sector; nunca se reconstruyen FPS desde fragmentos.
+- La prueba aislada del juego separa vértices, triángulos y preparación en
+  `build/PS2/usb-stack-checks/20261006-195335-041`. Conserva ambas capturas
+  de referencia y pasa casa → Kokiri → casa. Los tiempos de ese perfil EE
+  emulado no equivalen al recorrido físico del usuario.
+- Se preparan límites, envoltura, espejo y filtro una vez por capa durante
+  los comandos consecutivos de triángulos. Cada cambio de estado o subida de
+  esa capa invalida la preparación. Cada aplicación sigue registrando el uso del
+  caché para preservar las esperas del GS después de una retirada previa.
+  Se mantiene el orden base → segunda capa de cada triángulo y el centrado
+  que elimina las olas en la consola.
+- La primera prueba EE de esta revisión pasa en
+  `build/PS2/floor-production-smoke-20261006-195955`: contextos, filtros,
+  envoltura, espejo, recorte, alternancia y 4.096 aplicaciones registran
+  1.127.846 ciclos inmediatos frente a 519.187 preparados. Pasan las capas,
+  puntos, Q, niebla, transparencia, recorte y 120 fotogramas gráficos/audio.
+  La medida de una operación no certifica los FPS de la consola.
+- La revisión final pasa en
+  `build/PS2/floor-production-smoke-20261006-200916/report.json`, incluyendo
+  una textura que vuelve a usarse después de una retirada previa del GS.
+  Las 4.096 aplicaciones registran 1.127.826 frente a 519.153 ciclos.
+  Se recompilan los tres ejecutables USB. El recorrido USB nativo automático
+  pasa en `build/PS2/usb-stack-checks/20261006-201033-831`: casa → Kokiri → casa,
+  logo a 59,9 FPS, texto español, cierre del registro, lotes de 15 segundos y
+  transferencias de 4 KiB. Ambas capturas coinciden byte por byte con la
+  revisión anterior y las tarjetas del jugador están desactivadas.
+- El paquete queda copiado y verificado en `D:\OOTPS2`, con respaldo de la
+  versión anterior. BOOT.LOG, DIAG.LOG y la tarjeta del jugador conservan sus
+  SHA256. La prueba conjunta queda en
+  `build/PS2/tile-binding-release-verification.json`. Falta medir la nueva
+  preparación del material en la misma vista lenta de la PS2 real.
+
 ## Primer registro automático en consola y comprobación de texturas — 2026-10-06
 
 - Se conserva la partida física en

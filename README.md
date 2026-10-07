@@ -2,7 +2,7 @@
 
 Port de **The Legend of Zelda: Ocarina of Time** a PlayStation 2, basado en la descompilación [zeldaret/oot](https://github.com/zeldaret/oot).
 
-## Estado comprobado — 5 de octubre de 2026
+## Estado comprobado — 6 de octubre de 2026
 
 **Port en desarrollo, con todos los recursos descritos del juego convertidos.**
 La versión actual de PCSX2 usa el perfil `full`: 101 escenas, 388 salas y
@@ -49,8 +49,13 @@ DIAG.LOG: FPS, escenas, cargas, dibujo y audio. Agrupa las escrituras cada
 15 segundos y conserva tiempos generales sin perfilado de triángulos ni indicador
 en pantalla. El registro se limita a 2 MiB y se reemplaza al arrancar otra sesión.
 El logo inicial elimina el límite de 30 del planificador: se miden 59,9 FPS
-presentados con USB nativo emulado. El selector conserva 30 y el juego 20;
-falta confirmar el logo y el rendimiento de esta revisión en la consola.
+presentados con USB nativo emulado y 59,9–60 FPS en el registro de la PS2 real.
+El selector conserva 30 y el juego 20; falta estabilizar las vistas lentas.
+La segunda sesión física reduce la pausa máxima de escritura del registro
+de 949 a 128 ms, pero aún contiene vistas de unos 13–14 FPS sin lecturas USB.
+La preparación de envoltura/filtro se reutiliza ahora entre los triángulos
+del mismo material, conservando cada aplicación y el orden de ambas capas.
+Su mejora de FPS sigue pendiente de una comparación en consola.
 
 El selector incorpora idioma English/Español cuando encuentra el paquete
 privado `ESP.DAT`. Traduce diálogos, fuente y texturas de menús conservando

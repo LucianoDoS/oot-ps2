@@ -8,10 +8,26 @@ import statistics
 
 def analyze(text):
     samples, reads, rooms, flushes, audio, usb = [], [], [], [], [], []
+    damaged_lines, sequence_gaps = [], []
+    previous_sequence = None
     current_sample = None
-    for line in text.splitlines():
+    for number, line in enumerate(text.splitlines(), 1):
+        if '\0' in line or (line.strip() and number > 7 and not line.startswith('tMs=') and
+            not line.startswith('LOG_LIMIT')):
+            damaged_lines.append(number)
+            current_sample = None
+            continue
         row = {key: int(value) for key, value in re.findall(r'(\w+)=([0-9]+)(?=\s|$)', line)}
-        if ' SAMPLE ' in line and all(key in row for key in ('intervalMs', 'frames', 'fps10')):
+        if (line.startswith('tMs=') and 'tMs' not in row) or (' SAMPLE ' in line and not
+            all(key in row for key in ('tMs', 'intervalMs', 'frames', 'fps10'))):
+            damaged_lines.append(number)
+            current_sample = None
+            continue
+        if ' SAMPLE ' in line:
+            if 'seq' in row:
+                if previous_sequence is not None and row['seq'] != previous_sequence + 1:
+                    sequence_gaps.append(dict(after=previous_sequence, before=row['seq']))
+                previous_sequence = row['seq']
             render = re.search(r'\bgfxMs=(\d+),(\d+),(\d+)(?=\s|$)', line)
             if render:
                 row['gfx_ms'] = [int(value) for value in render.groups()]
@@ -52,6 +68,8 @@ def analyze(text):
     return {
         'invalid_header': not text.startswith('OOT PS2 runtime log v'),
         'nul_bytes': text.count('\0'),
+        'damaged_lines': damaged_lines,
+        'sample_sequence_gaps': sequence_gaps,
         'header_only': not any(line.startswith('tMs=') for line in text.splitlines()),
         'logger_started': ' LOGGER_START ' in text,
         'logger_entered': ' LOGGER_ENTER ' in text,

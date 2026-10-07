@@ -1,6 +1,76 @@
 #include <stdio.h>
 #include <string.h>
 #include "ps2_texture.h"
+#include "ps2_gfx_profile.h"
+
+static u64 bindingArena[4096] __attribute__((aligned(64)));
+static void binding_queue_reset(GSQUEUE* queue) {
+    memset(queue,0,sizeof(*queue));
+    queue->pool[0]=bindingArena; queue->pool_max[0]=bindingArena+4096;
+    queue->dma_tag=bindingArena; queue->pool_cur=bindingArena+2;
+    queue->last_type=GIF_RESERVED;
+}
+
+/* Ground layers can have different clamps. Check every context/filter and
+ * that returning to the first layer restores its register, then benchmark
+ * repeated alternating bindings without submitting the scratch queue. */
+static int tile_binding_smoke(void) {
+    GSGLOBAL gs=*g_rdpState.gs;
+    __typeof__(*gs.Clamp) clamp;
+    GSQUEUE queue;
+    gs.Clamp=&clamp; gs.CurQueue=&queue;
+    RDPState rdp={.gs=&gs};
+    unsigned failures=0;
+    const int modes[6][6]={
+        {3,3,31,0,31,0}, {3,3,63,0,63,0},
+        {2,2,0,23,0,8}, {2,2,0,30,0,0},
+        {3,3,1023,0,1023,0}, {2,2,0,0,0,0}};
+    TileDescriptor tiles[6]={
+        {.width=32,.height=32,.masks=5,.maskt=5},
+        {.width=32,.height=32,.masks=5,.maskt=5,.cms=1,.cmt=1},
+        {.width=24,.height=9,.masks=4,.maskt=3,.cms=2,.cmt=2},
+        {.width=31,.height=1},
+        {.width=32,.height=32,.masks=12,.maskt=12}, {0}};
+    tiles[1].gsTexture.Width=tiles[1].gsTexture.Height=64;
+    for (unsigned context=0;context<2;context++) for (unsigned filter=0;filter<4;filter++) {
+        gs.PrimContext=context; rdp.otherMode.hi=filter<<12;
+        for (unsigned i=0;i<6;i++) {
+            const int* m=modes[i];
+            u64 expected=GS_SETREG_CLAMP(m[0],m[1],m[2],m[3],m[4],m[5]);
+            PS2TextureTileSetup setup;
+            ps2_texture_prepare_tile(&setup,&tiles[i],&rdp);
+            binding_queue_reset(&queue); rdp.gs_clamp_valid=false;
+            ps2_texture_apply_tile_prepared(&tiles[i],&rdp,&setup);
+            if (setup.clamp!=expected || rdp.gs_clamp!=expected ||
+                (unsigned)rdp.gs_clamp_context!=context ||
+                clamp.WMS!=m[0] || clamp.WMT!=m[1] || clamp.MINU!=m[2] ||
+                clamp.MAXU!=m[3] || clamp.MINV!=m[4] || clamp.MAXV!=m[5] ||
+                tiles[i].gsTexture.Filter!=(filter?GS_FILTER_LINEAR:GS_FILTER_NEAREST)) failures++;
+            u64* end=(u64*)queue.pool_cur;
+            if (end[-2]!=expected || end[-1]!=GS_CLAMP_1+context) failures++;
+        }
+    }
+    PS2TextureTileSetup setups[2];
+    for (unsigned i=0;i<2;i++) ps2_texture_prepare_tile(&setups[i],&tiles[i],&rdp);
+    u32 cycles[2], checksums[2];
+    for (unsigned prepared=0;prepared<2;prepared++) {
+        u32 start=ps2_gfx_cycles(),sum=0;
+        for (unsigned batch=0;batch<64;batch++) {
+            binding_queue_reset(&queue); rdp.gs_clamp_valid=false;
+            for (unsigned draw=0;draw<64;draw++) {
+                unsigned layer=draw&1;
+                if (prepared) ps2_texture_apply_tile_prepared(&tiles[layer],&rdp,&setups[layer]);
+                else ps2_texture_apply_tile(&tiles[layer],&rdp);
+                sum+=(u32)rdp.gs_clamp;
+            }
+        }
+        cycles[prepared]=ps2_gfx_cycles()-start; checksums[prepared]=sum;
+    }
+    if (checksums[0]!=checksums[1]) failures++;
+    printf("[PS2 TILE BINDING TEST] contexts, filters, repeat/mirror/clamp, alternating layers and 4096 bindings immediateCycles=%u preparedCycles=%u failures=%u\n",
+        cycles[0],cycles[1],failures);
+    return failures;
+}
 
 /* These tile layouts match Link's hair and tunic: 16 loaded columns,
  * 32 columns in the clamp window. Poison after the image catches decoding
@@ -14,7 +84,7 @@ int ps2_texture_window_smoke(void) {
     memset(&rdp->textureLoads[510], 0, sizeof(rdp->textureLoads[510]));
     rdp_setothermode(2u << 20, 0, rdp);
     rdp_setcombine(0, 0, rdp);
-    unsigned checks = 0, failures = 0;
+    unsigned checks = 0, failures = tile_binding_smoke();
     for (unsigned format=0; format<2; format++) {
         unsigned bytes = format ? 1 : 2, height = format ? 32 : 16;
         for (unsigned mode=2; mode<=3; mode++) for (unsigned extent=24; extent<=32; extent+=8) {
