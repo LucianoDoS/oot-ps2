@@ -9,6 +9,7 @@ int ps2_texture_vertex_smoke(void) {
     static RSPState rsp;
     static RDPState rdp;
     static GSPRIMSTQPOINT reference[32], prepared[32];
+    static u8 unaligned[32 * sizeof(GSPRIMSTQPOINT) + 16] __attribute__((aligned(16)));
     static const float cameraW[] = {-1, 0, 0.00009999f, 0.0001f, 0.00010001f, 0.75f, 2.5f, 1000};
     static const float scales[] = {0, -0.7f, 0.33333f};
     int failures = 0;
@@ -65,6 +66,23 @@ int ps2_texture_vertex_smoke(void) {
     rdp.combiner.w0=0xfc119623; rdp.combiner.w1=0xff2fffff; rdp.primColor=0xffffff80;
     PS2TextureVertexSetup setup;
     ps2_texture_prepare_vertices(&setup, &tile, &rsp, &rdp);
+    /* All destination alignments, XY clamp extremes and all depth bits.
+     * Guard bytes prove that a full-word store never crosses the point. */
+    unsigned alignmentCases = 0;
+    for (unsigned offset = 0; offset < 8; offset++) for (unsigned i = 0; i < 32; i++) {
+        RSPVertex vertex = rsp.vtx[i];
+        vertex.sx = i & 1 ? -8000.125f : 8000.875f;
+        vertex.sy = i & 2 ? -8000.875f : 8000.125f;
+        u32 depth = i & 4 ? 0xffffffffu : 0x80000000u;
+        memset(unaligned, 0xA5, sizeof(unaligned));
+        ps2_texture_build_vertex(&tile, &rsp, &rdp, &vertex, 0xff123456, depth, &reference[0]);
+        ps2_texture_build_vertex_prepared(&setup, &vertex, 0xff123456, depth,
+            (GSPRIMSTQPOINT*)(unaligned + offset));
+        if (memcmp(&reference[0], unaligned + offset, sizeof(reference[0]))) failures++;
+        for (unsigned byte = 0; byte < sizeof(unaligned); byte++)
+            if ((byte < offset || byte >= offset + sizeof(reference[0])) && unaligned[byte] != 0xA5) failures++;
+        alignmentCases++;
+    }
     u32 start=ps2_gfx_cycles();
     for (unsigned i=0; i<32768; i++)
         ps2_texture_build_vertex(&tile, &rsp, &rdp, &rsp.vtx[i&31], 0x801937ed, i, &reference[i&31]);
@@ -74,7 +92,13 @@ int ps2_texture_vertex_smoke(void) {
         ps2_texture_build_vertex_prepared(&setup, &rsp.vtx[i&31], 0x801937ed, i, &prepared[i&31]);
     u32 preparedCycles=ps2_gfx_cycles()-start;
     if (memcmp(reference, prepared, sizeof(reference))) failures++;
-    printf("[PS2 POINT SETUP TEST] %s: cases=%u failures=%d referenceCycles=%u preparedCycles=%u (32768 points)\n",
-        failures ? "FAIL" : "PASS", cases, failures, referenceCycles, preparedCycles);
+    start=ps2_gfx_cycles();
+    for (unsigned i=0; i<32768; i++)
+        ps2_texture_build_vertex_prepared(&setup, &rsp.vtx[i&31], 0x801937ed, i,
+            (GSPRIMSTQPOINT*)(unaligned + 1 + (i&31)*sizeof(GSPRIMSTQPOINT)));
+    u32 packedCycles=ps2_gfx_cycles()-start;
+    if (memcmp(prepared, unaligned + 1, sizeof(prepared))) failures++;
+    printf("[PS2 POINT SETUP TEST] %s: cases=%u alignmentCases=%u failures=%d referenceCycles=%u preparedCycles=%u packedCycles=%u (32768 points)\n",
+        failures ? "FAIL" : "PASS", cases, alignmentCases, failures, referenceCycles, preparedCycles, packedCycles);
     return failures;
 }

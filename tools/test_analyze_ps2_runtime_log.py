@@ -4,6 +4,32 @@ from analyze_ps2_runtime_log import analyze
 
 
 class RuntimeAnalysisTests(unittest.TestCase):
+    def test_sparse_profiles_are_separate_and_damaged_rows_are_rejected(self):
+        log = '''OOT PS2 runtime log v3 test AUTO-PLAY
+tMs=0 [PS2 PERF SAMPLING] every=300 no-HUD automatic logger
+tMs=1000 [PS2 GFX PROFILE] frame=300 totalUs=70000 vtxUs=10000 triUs=30000 rectUs=900 lookupUs=4000 convertUs=2000 uploadUs=1000 calls=12,34,5,6,7,8 (included)
+tMs=1001 [PS2 GEOMETRY PROFILE] frame=300 matrixUs=1000 transformUs=2000 lightUs=3000 texgenUs=4000 clipUs=5000 submitUs=6000 calls=1,2,3,4,5,6
+tMs=1002 [PS2 PROFILE PREEMPTION] frame=300 wallUs=80000 dspExcludedUs=10000
+tMs=1003 [PS2 TEXTURE CONTENT PROFILE] frame=300 timeUs=2000 calls=100
+tMs=1003 [PS2 STATE PROFILE] frame=300 timeUs=200 calls=100 writes=30 reused=70
+tMs=1003 [PS2 VERTEX COLOR PROFILE] frame=300 timeUs=500 calls=300
+tMs=1003 [PS2 MATERIAL POINT PROFILE] frame=300 materialUs=600 materialCalls=4 pointUs=9000 pointCalls=1200
+tMs=1004 [PS2 GFX PROFILE] frame=600 totalUs=\0
+tMs=1005 [PS2 GFX PROFILE] frame=900 totalUs=1
+'''
+        result = analyze(log)
+        self.assertEqual(result['sparse_profile_every'], 300)
+        self.assertEqual(len(result['graphics_profiles']), 1)
+        self.assertEqual(result['graphics_profiles'][0]['calls'], [12, 34, 5, 6, 7, 8])
+        self.assertEqual(result['geometry_profiles'][0]['submitUs'], 6000)
+        self.assertEqual(result['profile_preemption'][0]['dspExcludedUs'], 10000)
+        self.assertEqual(result['texture_content_profiles'][0]['timeUs'], 2000)
+        self.assertEqual(result['state_profiles'][0]['reused'], 70)
+        self.assertEqual(result['vertex_color_profiles'][0]['timeUs'], 500)
+        self.assertEqual(result['material_point_profiles'][0]['pointCalls'], 1200)
+        self.assertEqual(len(result['damaged_lines']), 2)
+        self.assertIsNone(result['fps_median'])
+
     def test_reports_validation_and_storage_without_inventing_fps(self):
         log = '''OOT PS2 runtime log v3 test AUTO-PLAY
 tMs=1000 [PS2 TEXTURE CONTENT] exactHits=91 hashes=12 comparedBytes=130208 hashedBytes=1280

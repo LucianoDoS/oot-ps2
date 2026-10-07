@@ -406,12 +406,17 @@ static void capture_color_points(const GSPRIMPOINT* points) {
 }
 #endif
 
-static int run_vertex_slot(const RSPState* rsp, const RSPVertex* vertex) {
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+static bool s_indexReference;
+void f3dex2_test_index_reference(bool enabled) { s_indexReference = enabled; }
+/* The old pointer/stride calculation is kept only for the EE output oracle. */
+static int reference_vertex_slot(const RSPState* rsp, const RSPVertex* vertex) {
     uintptr_t address=(uintptr_t)vertex, base=(uintptr_t)rsp->vtx;
     if (!s_triangleRun || address<base || address>=base+sizeof(rsp->vtx) ||
         (address-base)%sizeof(*vertex)) return -1;
     return (address-base)/sizeof(*vertex);
 }
+#endif
 
 static void prepare_texture_point(const TileDescriptor* tile, const RSPState* rsp,
     RDPState* rdp, const RSPVertex* vertex, u32 color, u32 depth, bool fog,
@@ -525,7 +530,7 @@ void f3dex2_batch_end(RDPState* rdp) {
 }
 
 static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
-                            RSPState* rsp, RDPState* rdp) {
+                            RSPState* rsp, RDPState* rdp, int i0, int i1, int i2) {
     GSGLOBAL* gs = rdp->gs;
     if (!gs) return;
 
@@ -548,6 +553,16 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
     u64 c0, c1, c2;
     u64* colors[3] = {&c0, &c1, &c2};
     RSPVertex* vertices[3] = {v0, v1, v2};
+    /* TRI already validated these indices. Avoid recovering them from
+     * pointers with a range check, remainder and division for every corner.
+     * Clipping supplies -1: interpolated vertices must never reuse a slot. */
+    int cacheSlots[3] = {s_triangleRun ? i0 : -1,
+                        s_triangleRun ? i1 : -1,
+                        s_triangleRun ? i2 : -1};
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+    if (s_indexReference) for (unsigned i = 0; i < 3; i++)
+        cacheSlots[i] = reference_vertex_slot(rsp, vertices[i]);
+#endif
     bool decal = (rdp->otherMode.lo & 0xc30) == 0xc10;
     bool pointReady[3] = {false,false,false};
     int pointSlots[3] = {-1,-1,-1};
@@ -557,7 +572,7 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
      * per-triangle decal slopes still use the complete preparation path. */
     if (rsp->texEnabled && s_triangleRun && !decal) {
         for (unsigned i=0;i<3;i++) {
-            int slot=pointSlots[i]=run_vertex_slot(rsp,vertices[i]);
+            int slot=pointSlots[i]=cacheSlots[i];
             if (slot>=0 && (s_runVertexValid & (1ull<<slot))) {
                 texturePoints[i]=s_runVertices[slot]; pointReady[i]=true;
                 if (s_runGround) *colors[i]=s_runGroundColors[slot];
@@ -572,7 +587,7 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
     for (int i = 0; i < 3; i++) {
         if (pointReady[i]) continue;
         RSPVertex* v = vertices[i];
-        int colorSlot = rsp->texEnabled ? -1 : run_vertex_slot(rsp,v);
+        int colorSlot = rsp->texEnabled ? -1 : cacheSlots[i];
         if (colorSlot>=0 && (s_runColorValid & (1ull<<colorSlot))) {
             *colors[i]=s_runColors[colorSlot];
             rdp->stats.colorVertexHits++;
@@ -772,9 +787,9 @@ static inline __attribute__((always_inline)) float clip_distance(const RSPVertex
 }
 
 static void profiled_submit(RSPVertex* a, RSPVertex* b, RSPVertex* c,
-                            RSPState* rsp, RDPState* rdp) {
+                            RSPState* rsp, RDPState* rdp, int i0, int i1, int i2) {
     u32 start = ps2_gfx_profile_enter();
-    submit_vertices(a,b,c,rsp,rdp);
+    submit_vertices(a,b,c,rsp,rdp,i0,i1,i2);
     ps2_gfx_profile_leave(GFX_PROFILE_SUBMIT,start);
 }
 
@@ -834,7 +849,7 @@ static void submit_triangle(int i0, int i1, int i2, RSPState* rsp, RDPState* rdp
     if (!a->valid || !b->valid || !c->valid) { rdp->stats.invalid++; return; }
     if (a->clipFlags & b->clipFlags & c->clipFlags) { rdp->stats.clipped++; return; }
     if (!(a->clipFlags | b->clipFlags | c->clipFlags)) {
-        profiled_submit(a, b, c, rsp, rdp); return;
+        profiled_submit(a, b, c, rsp, rdp, i0, i1, i2); return;
     }
     RSPVertex polygon[12];
     u32 start = ps2_gfx_profile_enter();
@@ -843,7 +858,7 @@ static void submit_triangle(int i0, int i1, int i2, RSPState* rsp, RDPState* rdp
     if (count < 3) { rdp->stats.clipped++; return; }
     for (int i = 0; i < count; i++) project_vertex(&polygon[i], rsp);
     for (int i = 1; i + 1 < count; i++)
-        profiled_submit(&polygon[0], &polygon[i], &polygon[i + 1], rsp, rdp);
+        profiled_submit(&polygon[0], &polygon[i], &polygon[i + 1], rsp, rdp, -1, -1, -1);
 }
 
 /* ───────────────────────────────────────────────────────────────── *

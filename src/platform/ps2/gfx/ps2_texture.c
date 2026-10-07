@@ -508,9 +508,28 @@ void ps2_texture_build_vertex_prepared(const PS2TextureVertexSetup* setup,
         u32 alpha = (color >> 24) * setup->primAlpha / 255;
         color = (color & 0xffffffu) | (alpha << 24);
     }
-    output->rgbaq = rgba_to_RGBAQ(color, q);
-    output->stq = vertex_to_STQ(u * q * setup->invWidth, v * q * setup->invHeight);
-    output->xyz2 = vertex_to_XYZ2(setup->gs, vertex->sx, vertex->sy, depth);
+    float s = u * q * setup->invWidth, t = v * q * setup->invHeight;
+    /* gsKit's packed unions have alignment one. The renderer's actual
+     * arrays are aligned, so write the identical six GS words with SD
+     * instead of byte and unaligned stores. Preserve the SDK's XY clamp,
+     * conversion rounding, float bits and register tags. */
+    if (!((uintptr_t)output & 7)) {
+        typedef u64 PointWord __attribute__((may_alias));
+        union { float f; u32 bits; } qb = {.f=q}, sb = {.f=s}, tb = {.f=t};
+        u32 x = gsKit_float_to_int_x(setup->gs, vertex->sx);
+        u32 y = gsKit_float_to_int_y(setup->gs, vertex->sy);
+        PointWord* words = (PointWord*)output;
+        words[0] = color | ((u64)qb.bits << 32);
+        words[1] = GS_RGBAQ;
+        words[2] = sb.bits | ((u64)tb.bits << 32);
+        words[3] = GS_ST;
+        words[4] = (u64)(u16)x | ((u64)(u16)y << 16) | ((u64)depth << 32);
+        words[5] = GS_XYZ2;
+    } else {
+        output->rgbaq = rgba_to_RGBAQ(color, q);
+        output->stq = vertex_to_STQ(s, t);
+        output->xyz2 = vertex_to_XYZ2(setup->gs, vertex->sx, vertex->sy, depth);
+    }
 }
 
 static unsigned texture_repeat_period(unsigned mode, unsigned mask, unsigned extent) {

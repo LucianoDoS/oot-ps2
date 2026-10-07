@@ -304,6 +304,10 @@ USB_TRACE_OBJS += $(BUILD_DIR)/src/platform/ps2/ps2_main_diag.o $(BUILD_DIR)/src
 ifeq ($(PS2_RUNTIME_AUTOMATIC),1)
 USB_TRACE_OBJS := $(filter-out $(BUILD_DIR)/src/platform/ps2/libultra_stub/osTask_diag.o $(BUILD_DIR)/src/platform/ps2/ps2_runtime_trace_diag.o,$(USB_TRACE_OBJS))
 USB_TRACE_OBJS += $(BUILD_DIR)/src/platform/ps2/libultra_stub/osTask_auto.o $(BUILD_DIR)/src/platform/ps2/ps2_runtime_trace_auto.o
+ifeq ($(PS2_RUNTIME_GFX_SPARSE),1)
+USB_TRACE_OBJS := $(filter-out $(BUILD_DIR)/src/platform/ps2/libultra_stub/osTask_auto.o,$(USB_TRACE_OBJS))
+USB_TRACE_OBJS += $(BUILD_DIR)/src/platform/ps2/libultra_stub/osTask_sparse.o
+endif
 endif
 ROM_LDFLAGS_EXTRA := -Wl,--wrap=printf,--wrap=GameState_Init,--wrap=Room_SetupFirstRoom,--wrap=Room_RequestNewRoom,--wrap=Room_ProcessRoomRequest,--wrap=GameState_Update,--wrap=GameState_Destroy
 ifeq ($(PS2_USB_VIDEO_224),1)
@@ -453,6 +457,12 @@ $(BUILD_DIR)/src/platform/ps2/%_diag.o: src/platform/ps2/%.c
 $(BUILD_DIR)/src/platform/ps2/%_auto.o: src/platform/ps2/%.c
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) $(CFLAGS) -DPS2_USB_BOOT=1 -DPS2_RUNTIME_DIAGNOSTIC=1 -DPS2_RUNTIME_AUTOMATIC=1 -Iinclude -Isrc $(PLATFORM_INCLUDES) $(DEPFLAGS) -c $< -o $@
+
+# PERF has the ordinary automatic logger and no HUD. Sample one frame in
+# 300; use a distinct object so these flags cannot leak into OOTPS2.ELF.
+$(BUILD_DIR)/src/platform/ps2/libultra_stub/osTask_sparse.o: src/platform/ps2/libultra_stub/osTask.c
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CFLAGS) -DPS2_USB_BOOT=1 -DPS2_RUNTIME_DIAGNOSTIC=1 -DPS2_RUNTIME_AUTOMATIC=1 -DPS2_RUNTIME_GFX_SPARSE=1 -Iinclude -Isrc $(PLATFORM_INCLUDES) $(DEPFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/src/platform/ps2/ps2_main_diag224.o: src/platform/ps2/ps2_main.c
 	@mkdir -p $(dir $@)

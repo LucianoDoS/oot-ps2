@@ -28,6 +28,7 @@ void f3dex2_test_capture(bool enabled);
 const GSPRIMSTQPOINT* f3dex2_test_points(unsigned* count);
 /* Force the original initial viewport calculation for differential tests. */
 void f3dex2_test_geometry_reference(bool enabled);
+void f3dex2_test_index_reference(bool enabled);
 #endif
 void f3dex2_mtx(u32 w0, u32 w1, RSPState* rsp);
 void f3dex2_popmtx(u32 w0, u32 w1, RSPState* rsp);

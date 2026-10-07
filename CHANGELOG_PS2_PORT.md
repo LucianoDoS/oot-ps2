@@ -4,6 +4,68 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Cuarta sesión física y preparación de triángulos — 2026-10-06
+
+- Se conservan BOOT.LOG, DIAG.LOG y la identidad del paquete antes de copiar
+  nada al USB en
+  `build/PS2/hardware-runtime/auto-play-physical-20261006-223349`.
+  El ELF jugado coincide con la revisión anterior: SHA256
+  `91044823E7D56C5BFD7333A8BE4D297366498617BE6E7FA359570724B8ED29CD`.
+  Hay 225 muestras en unos 226 segundos, título, casa y Kokiri. Las copias
+  de texturas y el scratchpad están activos; no hay errores USB/logger,
+  registros perdidos, bytes nulos, saltos de secuencia ni guardas dañadas.
+- El último minuto contiene 41 intervalos sin solicitudes de lectura ni
+  escrituras del logger solapadas: 484 fotogramas, mediana 12 FPS,
+  traducción 70,74 ms, envío 1,82 ms y presentación 12,36 ms por fotograma.
+  La pausa máxima de escritura es 54 ms y las escrituras suman 532 ms.
+  La sesión no confirma una mejora sostenida de FPS. La cámara y la carga
+  de juego varían entre sesiones y los tiempos incluyen otros hilos;
+  tampoco permiten certificar una regresión frente a la sesión previa.
+- TRI ya valida los índices de sus tres vértices. Se pasan directamente
+  al envío en lugar de recuperarlos por rangos, resto y división del tamaño
+  del vértice. Los polígonos recortados pasan -1 y mantienen la preparación
+  completa para sus vértices temporales. No cambia la reutilización por
+  material, el color, la niebla ni el orden de ambas capas del suelo.
+- Los puntos GS alineados usan seis escrituras de 64 bits con los mismos
+  bits de RGBAQ, ST y XYZ2. Se mantienen el orden de operaciones de coma
+  flotante, el Q, la conversión y límites XY del SDK, la profundidad y los
+  registros GS. Los destinos sin alineación conservan la ruta original.
+- La batería EE pasa en
+  `build/PS2/floor-production-smoke-20261006-225328`: 27.648 casos de puntos,
+  256 destinos/alineaciones y límites XY/profundidad, 612 puntos comparados
+  contra los índices calculados por la ruta anterior, esperas de descriptores,
+  texturas mutables, capas, niebla, transparencia y 120 fotogramas gráficos/audio.
+  En operaciones aisladas emuladas, los puntos alineados emplean 6.478.808
+  frente a 7.000.818 ciclos de la ruta preparada sin alinear; el envío por
+  índices directos emplea 397.750 frente a 426.591 ciclos. Estos resultados
+  no equivalen a la mejora del fotograma completo ni de la consola física.
+- PERF.ELF conserva el juego y registro automático con lotes de 15 segundos,
+  transferencias de 4 KiB y sin HUD. Sólo un fotograma de cada 300 activa los
+  cronómetros detallados. OOTPS2.ELF mantiene esos cronómetros desactivados.
+  El analizador separa dibujo, geometría, contenido de texturas, estado,
+  color, puntos/material e interrupciones; descarta registros incompletos.
+  Pasan sus seis pruebas. Las fases se solapan y no deben sumarse como costes
+  independientes. Falta recoger este perfil en la misma vista lenta física.
+- Pasan ambos recorridos con USB nativo emulado:
+  `build/PS2/usb-stack-checks/20261006-230240-257` (automático habitual) y
+  `build/PS2/usb-stack-checks/20261006-230538-291` (PERF). Comprueban el logo
+  a 59,9 FPS, opciones en español, diálogo y casa → Kokiri → casa. El modo
+  habitual no registra perfiles detallados; PERF registra los fotogramas
+  300 y 600, con todas las categorías previstas. El menú y el diálogo del
+  modo habitual coinciden byte por byte con la referencia. En PERF sólo
+  cambian 35 píxeles de los ojos de Link durante su parpadeo aleatorio.
+  Las tarjetas del jugador están desactivadas y ambas sesiones cierran sus
+  escrituras sin errores, pérdidas ni datos dañados.
+- Se recompilan los cuatro ejecutables del juego y BOOTTEST, y se copian
+  doce archivos verificados a `D:\OOTPS2`, con respaldo en
+  `D:\OOTPS2-backup-20261006-230834`. OOTPS2.ELF tiene SHA256
+  `BC968B2353F2D674C824C4FC5945D38DF10AFB0480E75F822FAFBFDE23A01EBE`.
+  El resultado conjunto queda en
+  `build/PS2/index-aligned-release-verification.json`. Se conservan los
+  registros físicos, los datos, el idioma y la tarjeta del jugador. Las
+  nuevas optimizaciones y el perfil espaciado quedan pendientes de prueba
+  física; no se da por cumplido el objetivo de 20 FPS estables.
+
 ## Validación de texturas y memoria interna del EE — 2026-10-06
 
 - El registro físico anterior sigue señalando el dibujo como coste sostenido,

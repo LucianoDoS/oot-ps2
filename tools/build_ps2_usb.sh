@@ -11,6 +11,8 @@ make PLATFORM=PS2 OOT_VERSION=NTSC_1_2 BUILD_DIR="$build" OOT_UPSTREAM="$upstrea
     PS2_USB_BOOT=1 PS2_RUNTIME_DIAGNOSTIC=1 TARGET=oot_ps2_usb_runtime.elf -j2
 make PLATFORM=PS2 OOT_VERSION=NTSC_1_2 BUILD_DIR="$build" OOT_UPSTREAM="$upstream" \
     PS2_USB_BOOT=1 PS2_RUNTIME_DIAGNOSTIC=1 PS2_USB_VIDEO_224=1 TARGET=oot_ps2_usb_runtime224.elf -j2
+make PLATFORM=PS2 OOT_VERSION=NTSC_1_2 BUILD_DIR="$build" OOT_UPSTREAM="$upstream" \
+    PS2_USB_BOOT=1 PS2_RUNTIME_AUTOMATIC=1 PS2_RUNTIME_GFX_SPARSE=1 TARGET=oot_ps2_usb_perf.elf -j2
 "$PS2DEV/ee/bin/mips64r5900el-ps2-elf-gcc" -D_EE -G0 -O2 -std=gnu11 -Wall -Wextra \
     -Iinclude/ps2 -I"$build/generated" -I"$PS2SDK/ee/include" -I"$PS2SDK/common/include" \
     -T"$PS2SDK/ee/startup/linkfile" -Wl,-zmax-page-size=128 \

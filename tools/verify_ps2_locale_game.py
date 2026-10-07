@@ -7,7 +7,7 @@ import re
 from PIL import Image
 
 
-def verify(root):
+def verify(root, sparse_profile=False):
     usb=json.loads((root/'report.json').read_text(encoding='utf-8-sig'))
     image_check=json.loads((root/'image-check.json').read_text())
     log=(root/'runtime.log').read_text(encoding='utf-8',errors='replace')
@@ -20,12 +20,19 @@ def verify(root):
     assert '[PS2 RUNTIME LOG] CLOSED final flush completed' in log
     runtime=(root/'DIAG.LOG').read_text(encoding='utf-8',errors='replace')
     automatic='AUTO-PLAY' in runtime.splitlines()[0]
+    if sparse_profile:
+        assert automatic, 'Sparse profiling must use the automatic logger without HUD'
     transfer=re.search(r'LOGGER_START .*\btransferBytes=(\d+)',runtime)
     if automatic:
         assert re.search(r'LOGGER_START .*batchSeconds=15 .*reserveRamBytes=',runtime)
         assert 'FPS-HUD' not in runtime.splitlines()[0]
         profiles=[int(frame) for frame in re.findall(r'\[PS2 GFX PROFILE\] frame=(\d+)',runtime)]
-        assert not profiles, 'Automatic logging must not profile individual triangle work'
+        if sparse_profile:
+            assert '[PS2 PERF SAMPLING] every=300 no-HUD automatic logger' in runtime
+            assert profiles and all(frame % 300 == 0 for frame in profiles)
+        else:
+            assert not profiles, 'Automatic logging must not profile individual triangle work'
+            assert '[PS2 PERF SAMPLING]' not in runtime
     assert not re.search(r'\[PS2 (?:LOGO CADENCE|LANGUAGE[^\]]*)\] FAIL',log)
     counts=[]
     captures={}
@@ -45,6 +52,7 @@ def verify(root):
         r'\[PS2 LOGO CADENCE\] PASS .*fps10=(\d+)',log)[1]),
         english_save_slots_unchanged=True,locale_text_pixels=counts,captures=captures,
         automatic_runtime_log=automatic,log_flush_seconds=15 if automatic else 5,
+        sparse_graphics_profile=sparse_profile,
         log_transfer_bytes=int(transfer[1]) if transfer else 512,
         real_ps2_validated=False,physical_language_persistence_validated=False)
     (root/'language-game-check.json').write_text(json.dumps(report,indent=2)+'\n')
@@ -54,4 +62,6 @@ def verify(root):
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('root',type=Path)
-    verify(parser.parse_args().root)
+    parser.add_argument('--sparse-profile',action='store_true')
+    args=parser.parse_args()
+    verify(args.root,args.sparse_profile)

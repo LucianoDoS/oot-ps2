@@ -99,9 +99,13 @@ void ps2_runtime_gfx_snapshot(void) {
 static void graphics_worker(void* arg) {
     (void)arg;
 #ifdef PS2_RUNTIME_DIAGNOSTIC
-    /* Detailed per-vertex timers are reserved for DIAG. Ordinary sessions
-     * keep the frame/USB/audio aggregates without profiling triangle work. */
-#ifdef PS2_RUNTIME_AUTOMATIC
+    /* Ordinary automatic sessions have no per-vertex timer reads. PERF
+     * isolates one frame per 300, retaining AUTO batching and no HUD. */
+#ifdef PS2_RUNTIME_GFX_SPARSE
+    ps2_gfx_profile_sample_every(300);
+    ps2_gfx_profile_enable(true);
+    printf("[PS2 PERF SAMPLING] every=300 no-HUD automatic logger\n");
+#elif defined(PS2_RUNTIME_AUTOMATIC)
     ps2_gfx_profile_enable(false);
 #else
     ps2_gfx_profile_enable(true);

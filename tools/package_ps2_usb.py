@@ -44,6 +44,7 @@ def main():
     image_hash = hashlib.sha256(image.read_bytes()).hexdigest()
     assert image_hash == manifest['output_sha256'] == expected['image_sha256']
     files = {'OOTPS2.ELF': a.build_dir / 'oot_ps2_usb.elf',
+             'PERF.ELF': a.build_dir / 'oot_ps2_usb_perf.elf',
              'DIAG.ELF': a.build_dir / 'oot_ps2_usb_runtime.elf',
              'DIAG224.ELF': a.build_dir / 'oot_ps2_usb_runtime224.elf',
              'BOOTTEST.ELF': a.build_dir / 'oot_ps2_usb_diagnostic.elf', 'OOT.Z64': image}

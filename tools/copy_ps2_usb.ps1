@@ -10,10 +10,10 @@ $driveRoot = $DriveLetter.ToUpperInvariant()+':\'
 $destination = Join-Path $driveRoot 'OOTPS2'
 $package = Get-Content -LiteralPath (Join-Path $source 'package.json') -Raw | ConvertFrom-Json
 foreach ($entry in $package.files.PSObject.Properties) {
-    if ($entry.Name -notin 'OOTPS2.ELF','DIAG.ELF','DIAG224.ELF','BOOTTEST.ELF','OOT.Z64','ESP.DAT') { throw 'Unexpected package payload.' }
+    if ($entry.Name -notin 'OOTPS2.ELF','PERF.ELF','DIAG.ELF','DIAG224.ELF','BOOTTEST.ELF','OOT.Z64','ESP.DAT') { throw 'Unexpected package payload.' }
     if ((Get-FileHash -LiteralPath (Join-Path $source $entry.Name)).Hash.ToLowerInvariant() -ne $entry.Value) { throw 'Package payload hash mismatch.' }
 }
-$ownedNames = @('OOTPS2.ELF','DIAG.ELF','DIAG224.ELF','BOOTTEST.ELF','OOT.Z64','package.json','HASHES.sha256','LEEME.txt','BUGS.txt')
+$ownedNames = @('OOTPS2.ELF','PERF.ELF','DIAG.ELF','DIAG224.ELF','BOOTTEST.ELF','OOT.Z64','package.json','HASHES.sha256','LEEME.txt','BUGS.txt')
 if ($package.files.PSObject.Properties.Name -contains 'ESP.DAT') { $ownedNames += 'ESP.DAT','PS2_LANGUAGE.md' }
 $files = @($ownedNames | ForEach-Object { Get-Item -LiteralPath (Join-Path $source $_) })
 if (($files | Measure-Object Length -Sum).Sum -gt $volume.SizeRemaining) { throw 'USB does not have enough free space.' }

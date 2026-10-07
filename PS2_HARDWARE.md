@@ -124,6 +124,18 @@ Para recoger una caída basta con jugar en esa zona un minuto, guardar tu
 progreso y esperar al menos 20 segundos antes de apagar. Después conecta
 el USB al PC. El archivo se reemplaza al iniciar otra sesión; consérvalo primero.
 
+Para separar los costes del dibujo sin el indicador ni el muestreo frecuente
+de DIAG, abre `mass:/OOTPS2/PERF.ELF`. Incorpora las mismas optimizaciones y
+el registro automático, con una medición detallada sólo cada 300 fotogramas.
+Los otros 299 no leen los cronómetros por vértice/triángulo. La marca
+`[PS2 PERF SAMPLING] every=300` distingue esta sesión; los tiempos del fotograma
+muestreado incluyen el coste de los cronómetros y otras interrupciones,
+excluyendo la síntesis DSP registrada. Sirve para localizar costes, no para
+atribuir cada caída a una fase sin una comparación controlada. Usa una vista
+exterior lenta durante unos 30 segundos, camina un minuto, guarda y espera
+20 segundos antes de apagar. También reemplaza BOOT.LOG y DIAG.LOG al arrancar.
+El juego habitual OOTPS2.ELF conserva el perfilado detallado desactivado.
+
 Para una prueba con contador visible abre `mass:/OOTPS2/DIAG.ELF`.
 Ejecuta el mismo juego con tu mando y guardado normal; crea `DIAG.LOG` junto a
 los archivos del juego. Desde la revisión FPS-HUD muestra también `FPS 20.0`

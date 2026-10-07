@@ -10,6 +10,18 @@ def analyze(text):
     samples, reads, rooms, flushes, audio, usb = [], [], [], [], [], []
     damaged_lines, sequence_gaps = [], []
     texture_content, scratchpad_storage, scratchpad_errors = [], [], []
+    profiles = {name: [] for name in ('graphics', 'geometry', 'content', 'preemption',
+                                    'state', 'vertex_color', 'material_point')}
+    profile_fields = {
+        '[PS2 GFX PROFILE]': ('graphics', ('totalUs', 'vtxUs', 'triUs', 'rectUs', 'lookupUs', 'convertUs', 'uploadUs')),
+        '[PS2 GEOMETRY PROFILE]': ('geometry', ('matrixUs', 'transformUs', 'lightUs', 'texgenUs', 'clipUs', 'submitUs')),
+        '[PS2 TEXTURE CONTENT PROFILE]': ('content', ('timeUs', 'calls')),
+        '[PS2 PROFILE PREEMPTION]': ('preemption', ('wallUs', 'dspExcludedUs')),
+        '[PS2 STATE PROFILE]': ('state', ('timeUs', 'calls', 'writes', 'reused')),
+        '[PS2 VERTEX COLOR PROFILE]': ('vertex_color', ('timeUs', 'calls')),
+        '[PS2 MATERIAL POINT PROFILE]': ('material_point', ('materialUs', 'materialCalls', 'pointUs', 'pointCalls')),
+    }
+    sparse_profile_every = None
     previous_sequence = None
     current_sample = None
     for number, line in enumerate(text.splitlines(), 1):
@@ -58,6 +70,21 @@ def analyze(text):
                 scratchpad_errors.append(line)
             elif all(key in row for key in ('frame', 'scratchpadBytes', 'capacity')):
                 scratchpad_storage.append(row)
+        elif '[PS2 PERF SAMPLING]' in line:
+            sparse_profile_every = row.get('every')
+        else:
+            for marker, (category, fields) in profile_fields.items():
+                if marker not in line:
+                    continue
+                if all(key in row for key in ('tMs', 'frame', *fields)):
+                    calls = re.search(r'\bcalls=(\d+(?:,\d+)+)(?=\s|$)', line)
+                    if calls:
+                        row['calls'] = [int(value) for value in calls[1].split(',')]
+                    profiles[category].append(row)
+                else:
+                    damaged_lines.append(number)
+                    current_sample = None
+                break
     fps = [row['fps10'] / 10 for row in samples]
     # Inspect the final minute separately from startup/menus/loads. Only use
     # intervals with zero read requests and no overlap with a measured flush.
@@ -99,6 +126,14 @@ def analyze(text):
         'texture_content_snapshots': texture_content,
         'scratchpad_storage': scratchpad_storage,
         'scratchpad_errors': scratchpad_errors,
+        'sparse_profile_every': sparse_profile_every,
+        'graphics_profiles': profiles['graphics'],
+        'geometry_profiles': profiles['geometry'],
+        'texture_content_profiles': profiles['content'],
+        'profile_preemption': profiles['preemption'],
+        'state_profiles': profiles['state'],
+        'vertex_color_profiles': profiles['vertex_color'],
+        'material_point_profiles': profiles['material_point'],
         'progress_snapshots': [line.rstrip() for line in text.splitlines() if any(
             marker in line for marker in (' STALL_SNAPSHOT ', ' GAME_PROGRESS ', ' PLAY_PROGRESS ',
                 ' GFX_WORKER ', ' THREAD ', '[PS2 GFX WAIT]'))],

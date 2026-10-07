@@ -31,6 +31,7 @@ extern int ps2_jewel_smoke(void);
 extern int ps2_triangle_packet_smoke(void);
 extern int ps2_fps_smoke(void);
 extern int ps2_texture_content_smoke(void);
+extern int ps2_vertex_index_smoke(void);
 
 static void matrix(short* out, float scale, float translate) {
     memset(out, 0, 64);
@@ -1311,6 +1312,7 @@ int ps2_renderer_smoke(void) {
     failures += ps2_flame_smoke();
     failures += ps2_token_flame_smoke();
     failures += ps2_jewel_smoke();
+    failures += ps2_vertex_index_smoke();
     printf("[PS2 RENDER TEST] %s: matrices, viewport, othermode, textures and palettes (%d)\n",
            failures ? "FAIL" : "PASS", failures);
     return failures;

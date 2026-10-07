@@ -62,8 +62,14 @@ comparar todo el contenido cargado, incluyendo ambas fuentes de las mezclas.
 El estado de vértices y los puntos reutilizados usan 10.704 bytes de la memoria
 interna rápida del EE, con límites comprobados y sin transferencias DMA desde
 esa memoria. Pasan las pruebas del renderer y casa → Kokiri → casa mediante
-USB nativo emulado. Estas mejoras todavía necesitan una medición en consola;
-no certifican 20 FPS estables en las vistas grandes.
+USB nativo emulado. La nueva sesión física contiene vistas de unos 12 FPS
+sin lecturas USB ni escrituras del registro solapadas: no confirma todavía
+una mejora sostenida ni 20 FPS estables. La preparación del dibujo sigue
+siendo el coste principal observado. El renderer ahora aprovecha los índices
+de vértices que trae cada comando y escribe los puntos GS alineados sin
+cambiar sus bytes. `PERF.ELF` permite separar los costes en la consola con
+una muestra detallada cada 300 fotogramas, sin indicador en pantalla; el
+juego habitual mantiene esos cronómetros desactivados.
 
 El selector incorpora idioma English/Español cuando encuentra el paquete
 privado `ESP.DAT`. Traduce diálogos, fuente y texturas de menús conservando
