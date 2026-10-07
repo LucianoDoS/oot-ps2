@@ -211,7 +211,34 @@ typedef struct {
  *  Global state (extern, defined in rdp_to_gs.c)
  * ─────────────────────────────────────────────────────────── */
 extern RDPState g_rdpState;
+#ifndef PS2_GFX_SCRATCHPAD
+#ifdef _EE
+#define PS2_GFX_SCRATCHPAD 1
+#else
+#define PS2_GFX_SCRATCHPAD 0
+#endif
+#endif
+
+#if PS2_GFX_SCRATCHPAD
+/* One CPU graphics worker owns this workspace. gsKit does not use SPR:
+ * https://github.com/ps2dev/gsKit#readme
+ * Never pass these arrays to a DMA/IOP transfer: packets are copied to
+ * gsKit's ordinary RAM queue before submission. All arithmetic is unchanged. */
+typedef struct {
+    u32 guardBegin[16];
+    RSPState rsp;
+    GSPRIMSTQPOINT vertices[RSP_VTX_CACHE_SIZE] __attribute__((aligned(16)));
+    GSPRIMSTQPOINT groundVertices[RSP_VTX_CACHE_SIZE] __attribute__((aligned(16)));
+    u32 guardEnd[16];
+} PS2GfxWorkspace;
+_Static_assert(sizeof(PS2GfxWorkspace) <= 16384, "Renderer SPR workspace must fit");
+_Static_assert(!(offsetof(PS2GfxWorkspace, vertices) & 15), "GS point alignment");
+_Static_assert(!(offsetof(PS2GfxWorkspace, groundVertices) & 15), "Ground point alignment");
+#define PS2_GFX_WORKSPACE (*(PS2GfxWorkspace*)(uintptr_t)0x70000000u)
+#define g_rspState (PS2_GFX_WORKSPACE.rsp)
+#else
 extern RSPState g_rspState;
+#endif
 
 /* ─────────────────────────────────────────────────────────── *
  *  Public API

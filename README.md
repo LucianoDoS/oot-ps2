@@ -56,6 +56,14 @@ de 949 a 128 ms, pero aún contiene vistas de unos 13–14 FPS sin lecturas USB.
 La preparación de envoltura/filtro se reutiliza ahora entre los triángulos
 del mismo material, conservando cada aplicación y el orden de ambas capas.
 Su mejora de FPS sigue pendiente de una comparación en consola.
+La versión siguiente acelera la validación de texturas sin saltarse bytes:
+conserva copias limitadas a 128 KiB y sólo reutiliza una huella después de
+comparar todo el contenido cargado, incluyendo ambas fuentes de las mezclas.
+El estado de vértices y los puntos reutilizados usan 10.704 bytes de la memoria
+interna rápida del EE, con límites comprobados y sin transferencias DMA desde
+esa memoria. Pasan las pruebas del renderer y casa → Kokiri → casa mediante
+USB nativo emulado. Estas mejoras todavía necesitan una medición en consola;
+no certifican 20 FPS estables en las vistas grandes.
 
 El selector incorpora idioma English/Español cuando encuentra el paquete
 privado `ESP.DAT`. Traduce diálogos, fuente y texturas de menús conservando

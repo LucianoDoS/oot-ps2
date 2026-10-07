@@ -43,6 +43,7 @@
 #include "rdp_to_gs.h"
 #include "f3dex2_ps2.h"
 #include "ps2_texture.h"
+#include "ps2_texture_content.h"
 #include "ps2_background.h"
 #include "ps2_offscreen.h"
 extern void ps2_offscreen_init(GSGLOBAL*);
@@ -132,7 +133,9 @@ void PS2Gfx_DumpTrace(void) {
  *  Estado global del renderer
  * ═══════════════════════════════════════════════════════════════════ */
 RDPState g_rdpState;
+#if !PS2_GFX_SCRATCHPAD
 RSPState g_rspState;
+#endif
 
 /* Profundidad máxima de anidamiento de display lists.
  * OoT llega a anidar bastante (escena → habitación → actor → parte del
@@ -149,6 +152,16 @@ void rdp_to_gs_init(GSGLOBAL* gs) {
     memset(gRspSegments, 0, sizeof(gRspSegments));
     memset(&g_rdpState, 0, sizeof(g_rdpState));
     memset(&g_rspState, 0, sizeof(g_rspState));
+#if PS2_GFX_SCRATCHPAD
+    for (unsigned i = 0; i < 16; i++) {
+        PS2_GFX_WORKSPACE.guardBegin[i] = 0x53505230u ^ i;
+        PS2_GFX_WORKSPACE.guardEnd[i] = 0x53505231u ^ i;
+    }
+    printf("[PS2 GFX STORAGE] scratchpad=%p bytes=%u capacity=16384 CPU-only\n",
+        &PS2_GFX_WORKSPACE, (unsigned)sizeof(PS2GfxWorkspace));
+#else
+    printf("[PS2 GFX STORAGE] main RAM\n");
+#endif
 
     g_rdpState.gs = gs;
     ps2_offscreen_init(gs);
@@ -469,9 +482,24 @@ void rdp_to_gs_exec(const Gfx* dl) {
 void rdp_to_gs_submit(void) {
     GSGLOBAL* gs = g_rdpState.gs;
     if (!gs) return;          /* antes esto reventaba con NULL */
+#if PS2_GFX_SCRATCHPAD
+    static bool guardReported;
+    for (unsigned i = 0; i < 16; i++) {
+        if ((PS2_GFX_WORKSPACE.guardBegin[i] != (0x53505230u ^ i) ||
+             PS2_GFX_WORKSPACE.guardEnd[i] != (0x53505231u ^ i)) && !guardReported) {
+            printf("[PS2 GFX STORAGE] ERROR scratchpad guard changed index=%u\n", i);
+            guardReported = true;
+        }
+    }
+#endif
     ps2_gfx_profile_end();
+    PS2TextureContentStats content = ps2_texture_content_stats(true);
     static u32 frames;
     if (++frames <= 3 || frames % 300 == 0) {
+#if PS2_GFX_SCRATCHPAD
+        printf("[PS2 GFX STORAGE] frame=%u scratchpadBytes=%u capacity=16384\n",
+            frames, (unsigned)sizeof(PS2GfxWorkspace));
+#endif
         printf("[PS2 GEOMETRY] frame=%u tri=%u clipped=%u culled=%u invalid=%u textureFail=%u draw=%u bg=%u mode=%08x,%08x\n",
             frames, g_rdpState.stats.triangles, g_rdpState.stats.clipped,
             g_rdpState.stats.culled, g_rdpState.stats.invalid,
@@ -482,6 +510,8 @@ void rdp_to_gs_submit(void) {
             g_rdpState.stats.textureWaits, g_rdpState.stats.texturePackets,
             g_rdpState.stats.textureVertexBuilds, g_rdpState.stats.textureVertexHits);
         printf("[PS2 STATE PERF] writes=%u reused=%u\n", g_rdpState.stats.stateWrites, g_rdpState.stats.stateReuse);
+        printf("[PS2 TEXTURE CONTENT] exactHits=%u hashes=%u comparedBytes=%u hashedBytes=%u\n",
+            content.hits, content.hashes, content.comparedBytes, content.hashedBytes);
         printf("[PS2 COLOR PERF] packets=%u vertexBuilds=%u vertexHits=%u\n",
             g_rdpState.stats.colorPackets,g_rdpState.stats.colorVertexBuilds,g_rdpState.stats.colorVertexHits);
     }

@@ -71,6 +71,8 @@ void ps2_gfx_profile_end(void) {
     printf("[PS2 STATE PROFILE] frame=%u timeUs=%u calls=%u writes=%u reused=%u\n", sFrame,
         micros(gPS2GfxProfileCycles[GFX_PROFILE_STATE]),gPS2GfxProfileCalls[GFX_PROFILE_STATE],
         g_rdpState.stats.stateWrites,g_rdpState.stats.stateReuse);
+    printf("[PS2 TEXTURE CONTENT PROFILE] frame=%u timeUs=%u calls=%u (included in lookup)\n",
+        sFrame,micros(gPS2GfxProfileCycles[GFX_PROFILE_CONTENT]),gPS2GfxProfileCalls[GFX_PROFILE_CONTENT]);
     printf("[PS2 VERTEX COLOR PROFILE] frame=%u timeUs=%u calls=%u (included in submit)\n",
         sFrame,micros(gPS2GfxProfileCycles[GFX_PROFILE_VERTEX_COLOR]),
         gPS2GfxProfileCalls[GFX_PROFILE_VERTEX_COLOR]);

@@ -37,6 +37,7 @@
 #include "ps2_segment.h"
 #include "rdp_to_gs.h"
 #include "ps2_texture.h"
+#include "ps2_texture_content.h"
 #include "ps2_gfx_profile.h"
 
 /* ─────────────────────────────────────────────────────────── *
@@ -891,19 +892,24 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         key.paletteHash = 2166136261u;
         for (unsigned i = 0; i < count; i++) key.paletteHash = (key.paletteHash ^ s_clut[first + i]) * 16777619u;
     }
-    /* Still inspect all texel bytes on every binding: pause backgrounds,
-     * animated textures and either input of a ground blend may change in RAM. */
-    u32 hash = 0;
-    if (!sourceStride || sourceStride == rowBytes) hash = ps2_texture_hash(src, rowBytes*sourceHeight, hash);
-    else for (int y = 0; y < sourceHeight; y++) hash = ps2_texture_hash(src+y*sourceStride, rowBytes, hash);
+    /* Validate every loaded byte against a bounded source copy before reusing
+     * its fingerprint. Mutations, uncached/large windows and both pair inputs
+     * retain the original XXH32 row/seed order. */
+    PS2TextureSourceSpan spans[2] = {
+        {src, rowBytes, sourceStride, sourceHeight, false}, {0}
+    };
+    unsigned spanCount = 1;
     if (pathPair) {
-        if (!key.stride2 || key.stride2 == rowBytes) hash = ps2_texture_hash(secondSrc, rowBytes*h, hash);
-        else for (int y = 0; y < h; y++) hash = ps2_texture_hash(secondSrc+y*key.stride2, rowBytes, hash);
+        spans[1] = (PS2TextureSourceSpan){secondSrc, rowBytes, key.stride2, h, false};
+        spanCount = 2;
     }
-    if (flamePair) for (int y=0;y<32;y++) hash=ps2_texture_hash(secondSrc+y*key.stride2,32,hash);
-    if (emeraldPair) for (int y=0;y<32;y++) hash=ps2_texture_hash(secondSrc+y*key.stride2,32,hash);
-    if (tokenPair) for (int y=0;y<64;y++) hash=ps2_texture_hash(secondSrc+y*key.stride2,32,hash);
-    key.contentHash = hash;
+    if (flamePair || emeraldPair || tokenPair) {
+        spans[1] = (PS2TextureSourceSpan){secondSrc, 32, key.stride2, tokenPair ? 64 : 32, true};
+        spanCount = 2;
+    }
+    u32 contentStart = ps2_gfx_profile_enter();
+    key.contentHash = ps2_texture_content_hash(spans, spanCount);
+    ps2_gfx_profile_leave(GFX_PROFILE_CONTENT, contentStart);
     if (!s_cacheIndexReady) {
         memset(s_cacheHeads, 0xff, sizeof(s_cacheHeads));
         s_cacheIndexReady = true;

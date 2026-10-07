@@ -30,6 +30,7 @@ extern int ps2_token_flame_smoke(void);
 extern int ps2_jewel_smoke(void);
 extern int ps2_triangle_packet_smoke(void);
 extern int ps2_fps_smoke(void);
+extern int ps2_texture_content_smoke(void);
 
 static void matrix(short* out, float scale, float translate) {
     memset(out, 0, 64);
@@ -137,6 +138,7 @@ int ps2_renderer_smoke(void) {
     failures += ps2_memcpy_smoke();
     failures += ps2_triangle_packet_smoke();
     failures += ps2_fps_smoke();
+    failures += ps2_texture_content_smoke();
     failures += ps2_combiner_channel_smoke();
     static u8 readInputs[4112] __attribute__((aligned(128)));
     for (unsigned i=0;i<sizeof(readInputs);i++) readInputs[i]=(i*73+159)&255;

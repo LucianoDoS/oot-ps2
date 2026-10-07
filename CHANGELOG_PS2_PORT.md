@@ -4,6 +4,58 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Validación de texturas y memoria interna del EE — 2026-10-06
+
+- El registro físico anterior sigue señalando el dibujo como coste sostenido,
+  incluso sin lecturas USB. Esta revisión introduce dos optimizaciones del
+  renderer; no cambia el límite de 20 FPS del juego ni reduce detalle visual.
+- Un buffer fijo de 128 KiB conserva hasta 64 ventanas de texels. Cada uso
+  compara todos los bytes cargados, sin incluir el relleno de las filas;
+  sólo después de una igualdad completa reutiliza la huella XXH32 anterior.
+  Los cambios, ventanas grandes y expulsiones ejecutan el hash original.
+  Se conservan el orden de semillas/filas, las dos fuentes de las mezclas,
+  las paletas y las esperas de retirada del GS. La comparación del EE procesa
+  bloques de 64 bytes, con rutas alineadas y sin alinear y cola escalar.
+- En la prueba EE aislada de 1.000 usos sin cambios, fuentes de 2–8 KiB
+  consumen aproximadamente un 53–68 % menos de ciclos que volver a calcular
+  el hash. Esta medida es de la operación emulada, no del fotograma completo
+  ni de la PS2 física. El perfil separado del juego reduce la búsqueda de
+  texturas, pero no demuestra por sí solo una ganancia comparable de FPS.
+- El estado RSP, su caché de vértices y los puntos GS reutilizados de ambas
+  capas pasan a un bloque de 10.704 bytes en el scratchpad de 16 KiB del EE.
+  Un solo hilo gráfico lo utiliza; los paquetes se copian a la cola normal
+  de gsKit antes del DMA. No cambian los cálculos, la geometría, el centrado
+  del suelo ni el orden de capas. Hay aserciones de tamaño/alineación y
+  guardas revisadas por fotograma. `PS2_GFX_SCRATCHPAD=0` conserva la ruta RAM.
+- La batería EE pasa en `build/PS2/floor-production-smoke-20261006-220856`:
+  233.216 comparaciones, 40.816 casos de hashes/ventanas y 120 fotogramas
+  gráficos/audio, sin fallos ni guardas dañadas. Comprueba mutaciones en
+  cualquier byte, diferencias que podrían cancelarse, filas, fuentes dobles,
+  alineaciones, límites, reutilización de RAM y expulsiones del buffer.
+- El juego automático pasa en
+  `build/PS2/usb-stack-checks/20261006-221607-826`: logo a 59,9 FPS, selección
+  de idioma, diálogos y casa → Kokiri → casa. No habilita perfilado de
+  triángulos ni HUD; conserva lotes de 15 segundos y transferencias de 4 KiB.
+  El menú coincide byte por byte con la referencia. La captura del diálogo
+  difiere en 35 píxeles de los ojos de Link durante el parpadeo; el escenario,
+  el texto y el resto del jugador coinciden. La semilla aleatoria de Play_Init
+  depende del reloj, por lo que ese parpadeo no es una referencia determinista.
+  No hay errores USB/logger, bytes nulos, saltos de secuencia ni errores del
+  scratchpad. Las tarjetas del jugador están desactivadas durante las pruebas.
+- El registro periódico incluye usos exactos, hashes y tamaño del bloque
+  interno. El analizador los separa del perfil detallado y descarta líneas
+  dañadas; pasan sus cinco pruebas. Los contadores de comparación expresan
+  rangos solicitados, no lecturas de bus exactas cuando hay salida temprana.
+  Falta medir ambas optimizaciones en la misma vista de la consola real
+  para comprobar cuánto queda del presupuesto de 50 ms por fotograma.
+- Los tres ejecutables del juego se recompilan y el paquete queda copiado,
+  con respaldo, en `D:\OOTPS2`. OOTPS2.ELF tiene SHA256
+  `91044823E7D56C5BFD7333A8BE4D297366498617BE6E7FA359570724B8ED29CD`.
+  BOOT.LOG, DIAG.LOG, datos, idioma y tarjeta del jugador conservan sus hashes.
+  El resultado conjunto está en
+  `build/PS2/texture-scratchpad-release-verification.json`; la mejora de FPS
+  físicos permanece pendiente de una nueva sesión con OOTPS2.ELF.
+
 ## Tercera sesión física: coste sostenido del dibujo — 2026-10-06
 
 - Se conserva el nuevo registro antes de modificar el USB en

@@ -4,6 +4,24 @@ from analyze_ps2_runtime_log import analyze
 
 
 class RuntimeAnalysisTests(unittest.TestCase):
+    def test_reports_validation_and_storage_without_inventing_fps(self):
+        log = '''OOT PS2 runtime log v3 test AUTO-PLAY
+tMs=1000 [PS2 TEXTURE CONTENT] exactHits=91 hashes=12 comparedBytes=130208 hashedBytes=1280
+tMs=1001 [PS2 GFX STORAGE] frame=600 scratchpadBytes=10704 capacity=16384
+tMs=1002 [PS2 TEXTURE CONTENT PROFILE] frame=600 timeUs=485 calls=103
+tMs=1003 [PS2 GFX STORAGE] ERROR scratchpad guard changed index=4
+tMs=1004 [PS2 TEXTURE CONTENT] exactHits=99 hashes=\0
+'''
+        result = analyze(log)
+        self.assertEqual(result['texture_content_snapshots'], [dict(
+            tMs=1000, exactHits=91, hashes=12, comparedBytes=130208, hashedBytes=1280)])
+        self.assertEqual(result['scratchpad_storage'], [dict(
+            tMs=1001, frame=600, scratchpadBytes=10704, capacity=16384)])
+        self.assertEqual(len(result['scratchpad_errors']), 1)
+        self.assertEqual(result['samples'], 0)
+        self.assertIsNone(result['fps_median'])
+        self.assertIsNone(result['recent_no_read_render'])
+
     def test_excludes_reads_flushes_stalls_and_failed_clock(self):
         log = '''OOT PS2 runtime log v3 test AUTO-PLAY
 tMs=1000 SAMPLE intervalMs=1000 frames=20 fps10=200 gfxMs=600,40,280

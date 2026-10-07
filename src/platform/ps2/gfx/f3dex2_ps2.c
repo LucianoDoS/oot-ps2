@@ -325,7 +325,11 @@ static bool s_tri2Fog;
 static bool s_runTileBound;
 static bool s_runRgbShade, s_runAlphaShade, s_runFog;
 static u64 s_runVertexValid;
+#if PS2_GFX_SCRATCHPAD
+#define s_runVertices (PS2_GFX_WORKSPACE.vertices)
+#else
 static GSPRIMSTQPOINT s_runVertices[RSP_VTX_CACHE_SIZE] __attribute__((aligned(8)));
+#endif
 static bool s_runGround;
 #ifdef PS2_FLOOR_DIAGNOSTIC
 static volatile unsigned s_floorRequested;
@@ -370,7 +374,11 @@ static bool floor_trace(const RSPState* rsp, const RDPState* rdp,
 }
 #endif
 static u64 s_runGroundVertexValid;
+#if PS2_GFX_SCRATCHPAD
+#define s_runGroundVertices (PS2_GFX_WORKSPACE.groundVertices)
+#else
 static GSPRIMSTQPOINT s_runGroundVertices[RSP_VTX_CACHE_SIZE] __attribute__((aligned(8)));
+#endif
 static u32 s_runGroundColors[RSP_VTX_CACHE_SIZE], s_runGroundDepths[RSP_VTX_CACHE_SIZE];
 static PS2TextureVertexSetup s_runPointSetup[2];
 static bool s_runPointSetupValid[2];

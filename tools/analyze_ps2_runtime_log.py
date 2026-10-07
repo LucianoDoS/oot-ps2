@@ -9,6 +9,7 @@ import statistics
 def analyze(text):
     samples, reads, rooms, flushes, audio, usb = [], [], [], [], [], []
     damaged_lines, sequence_gaps = [], []
+    texture_content, scratchpad_storage, scratchpad_errors = [], [], []
     previous_sequence = None
     current_sample = None
     for number, line in enumerate(text.splitlines(), 1):
@@ -45,6 +46,18 @@ def analyze(text):
             usb.append(row)
             if current_sample is not None:
                 current_sample['usb'] = row
+        elif '[PS2 TEXTURE CONTENT]' in line:
+            required = ('tMs', 'exactHits', 'hashes', 'comparedBytes', 'hashedBytes')
+            if all(key in row for key in required):
+                texture_content.append(row)
+            else:
+                damaged_lines.append(number)
+                current_sample = None
+        elif '[PS2 GFX STORAGE]' in line:
+            if ' ERROR ' in line:
+                scratchpad_errors.append(line)
+            elif all(key in row for key in ('frame', 'scratchpadBytes', 'capacity')):
+                scratchpad_storage.append(row)
     fps = [row['fps10'] / 10 for row in samples]
     # Inspect the final minute separately from startup/menus/loads. Only use
     # intervals with zero read requests and no overlap with a measured flush.
@@ -83,6 +96,9 @@ def analyze(text):
         'audio_zero_queue_intervals': [row for row in audio if row.get('zeroPolls', 0)],
         'last_audio': audio[-1] if audio else None,
         'usb_errors': sum(row.get('errors', 0) for row in usb),
+        'texture_content_snapshots': texture_content,
+        'scratchpad_storage': scratchpad_storage,
+        'scratchpad_errors': scratchpad_errors,
         'progress_snapshots': [line.rstrip() for line in text.splitlines() if any(
             marker in line for marker in (' STALL_SNAPSHOT ', ' GAME_PROGRESS ', ' PLAY_PROGRESS ',
                 ' GFX_WORKER ', ' THREAD ', '[PS2 GFX WAIT]'))],
