@@ -110,6 +110,37 @@ tMs=2001 USB reads=0 errors=0
         self.assertEqual(len(result['damaged_lines']), 1)
         self.assertIsNone(result['recent_no_read_render'])
 
+    def test_duplicate_and_backwards_intervals_cannot_supply_steady_fps(self):
+        log = """OOT PS2 runtime log v3 test
+tMs=1000 SAMPLE seq=1 intervalMs=1000 frames=20 fps10=200 gfxMs=600,40,280
+tMs=1001 USB reads=0 errors=0
+tMs=3000 SAMPLE seq=3 intervalMs=1000 frames=99 fps10=990 gfxMs=0,0,0
+tMs=3001 USB reads=0 errors=0
+tMs=2000 SAMPLE seq=2 intervalMs=1000 frames=99 fps10=990 gfxMs=0,0,0
+tMs=2001 USB reads=0 errors=0
+tMs=3100 SAMPLE seq=3 intervalMs=1000 frames=99 fps10=990 gfxMs=0,0,0
+tMs=3101 USB reads=0 errors=0
+tMs=4100 SAMPLE seq=4 intervalMs=1000 frames=10 fps10=100 gfxMs=700,20,140
+tMs=4101 USB reads=0 errors=0
+"""
+        report = analyze(log)
+        self.assertEqual(report['samples'], 5)
+        self.assertEqual(report['usable_samples'], 2)
+        self.assertEqual([row['seq'] for row in report['rejected_sample_intervals']], [3,2,3])
+        self.assertEqual(report['recent_no_read_render']['frames'], 30)
+        self.assertEqual(report['fps_max'], 20)
+        self.assertEqual(report['fps_median'], 15)
+
+    def test_draw_detail_requires_complete_fields(self):
+        log = """OOT PS2 runtime log v3 test
+tMs=1000 [PS2 DRAW DETAIL PROFILE] frame=300 keyUs=12 keyCalls=3 packetUs=70 packetCalls=20 wrapUs=40 wrapCalls=15
+tMs=2000 [PS2 DRAW DETAIL PROFILE] frame=600 keyUs=12 keyCalls=3 packetUs=70 packetCalls=20 wrapUs=40
+"""
+        report = analyze(log)
+        self.assertEqual(len(report['draw_detail_profiles']), 1)
+        self.assertEqual(report['draw_detail_profiles'][0]['packetUs'], 70)
+        self.assertEqual(len(report['damaged_lines']), 1)
+
 
 if __name__ == '__main__':
     unittest.main()

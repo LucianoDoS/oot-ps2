@@ -4,6 +4,68 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Segunda medición PERF y búsqueda de claves compartida — 2026-10-07
+
+- Antes de cambiar el USB se conservan los registros, el paquete y las
+  identidades de los ejecutables en
+  `build/PS2/hardware-runtime/analysis-cache-physical-20261007-000954`.
+  PERF coincide con la versión entregada, SHA256
+  `1980B60778A3862F5E0DE48B6A6F60E1CCD8B24810F510C367A01222C76126E9`.
+  Se leen 283 muestras completas y 14 fotogramas perfilados.
+- Las vistas lentas siguen alrededor de 11–12 FPS. En los fotogramas
+  1200/1500/1800 se reutilizan 131 análisis de materiales y sólo se
+  reconstruyen ocho, con 64–115 microsegundos de reconstrucción. El ahorro
+  existe, pero no confirma una ganancia sostenida de FPS. Los triángulos
+  siguen costando 38–42 ms, incluida la búsqueda de texturas de 11–12 ms.
+  La traducción sin el DSP medido ocupa 63–68 ms; otros hilos siguen incluidos.
+- El último minuto limpio de lecturas y escrituras solapadas recoge 580
+  fotogramas y mediana 19,9 FPS. La geometría visible es menor en esos
+  perfiles finales; no se presenta como una comparación de la misma cámara.
+  Sigue pendiente el objetivo de 20 FPS estables en las vistas grandes.
+- El archivo contiene dos muestras con secuencia 80, una línea incompleta
+  y saltos de secuencia. No hay errores USB/logger declarados ni pérdidas
+  declaradas, lo que no certifica la integridad. Los fragmentos fuera de
+  orden aparecen cerca de límites de 32 KiB; la causa aún no está resuelta.
+  No se da por corregido el controlador ni se reescribe el registro original.
+- El analizador conserva todas las muestras completas para la auditoría,
+  pero excluye todas las copias de una secuencia repetida y los tiempos de
+  muestra que no avanzan de las estadísticas FPS y las ventanas limpias.
+  En esta sesión quedan 281 intervalos utilizables. Pasan ocho pruebas,
+  incluyendo la corrupción observada y perfiles parciales.
+- La búsqueda del descriptor de textura compara una sola vez los campos
+  comunes del material. Sólo un acierto completo usa VRAM anterior: también
+  exige contenido, paleta, LOD, origen de ventanas y colores. En un fallo,
+  mantiene los criterios de reutilización y selección del candidato.
+  Se siguen leyendo y validando todos los bytes de ambas fuentes.
+- La prueba EE compara ambas clasificaciones en 5.640 casos, cambiando
+  todos los bits de los descriptores, incluidos datos auxiliares y relleno
+  que no forman parte de la clave. La operación aislada de 8.192 aciertos
+  pasa de 1.983.902 a 1.374.749 ciclos emulados. No mide el fotograma completo.
+  Pasa la batería del renderer con 120 fotogramas gráficos/audio en
+  `build/PS2/floor-production-smoke-20261007-002545`.
+- PERF añade `[PS2 DRAW DETAIL PROFILE]`: búsqueda de claves, construcción
+  de paquetes GS y reajuste de coordenadas del suelo. Son tiempos incluidos
+  en búsqueda/envío, no categorías para sumar. Se conserva el muestreo
+  de un fotograma cada 300; el juego habitual no activa esos cronómetros.
+- Pasan ambos recorridos con USB nativo emulado:
+  `build/PS2/usb-stack-checks/20261007-004040-963` (habitual) y
+  `build/PS2/usb-stack-checks/20261007-004401-082` (PERF). Comprueban el
+  logo a 59,9 FPS, opciones en español, diálogo y casa → Kokiri → casa.
+  El menú conserva todos sus píxeles. Las diferencias del diálogo quedan
+  limitadas a los ojos durante el parpadeo, inspeccionadas visualmente.
+  Ambos registros emulados son íntegros; el habitual no activa perfiles
+  y PERF incluye las tres medidas nuevas en sus fotogramas muestreados.
+  Las tarjetas del jugador están desactivadas durante estas pruebas.
+- Se compilan los cuatro ejecutables del juego y BOOTTEST; doce archivos
+  quedan verificados en `D:\OOTPS2`, con respaldo en
+  `D:\OOTPS2-backup-20261007-004727`. OOTPS2 tiene SHA256
+  `653A2C494E4E1CDDD845102A1DC4ADD42ED36F19D007037AE4026BE6C88797B6`.
+  Su rango estático termina en 0x01222170; no certifica el uso dinámico de
+  memoria. Se verifican la conservación de los registros físicos originales,
+  los datos y la tarjeta del jugador. La prueba conjunta queda en
+  `build/PS2/shared-key-release-verification.json`. La mejora física de
+  esta búsqueda y los tiempos de las tres fases nuevas siguen pendientes.
+
 ## Perfil físico espaciado y caché de análisis de materiales — 2026-10-06
 
 - Se conservan ambos registros y la identidad del paquete en

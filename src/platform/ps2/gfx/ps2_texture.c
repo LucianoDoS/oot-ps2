@@ -60,6 +60,76 @@ typedef struct TextureCacheEntry {
     u8 fmt, siz, palette, valid;
     u16 mirror;
 } TextureCacheEntry;
+/* Shared material fields are checked once. A complete hit needs all
+ * dynamic/content fields too; source validation still precedes this lookup. */
+static unsigned cache_match(const TextureCacheEntry* cached, const TextureCacheEntry* key) {
+    bool sameMaterial = cached->valid && cached->source == key->source &&
+            cached->source2 == key->source2 && cached->stride2 == key->stride2 &&
+            cached->stride == key->stride && cached->width == key->width && cached->height == key->height &&
+            cached->uploadWidth == key->uploadWidth && cached->uploadHeight == key->uploadHeight &&
+            cached->fmt == key->fmt && cached->siz == key->siz && cached->palette == key->palette && cached->mirror == key->mirror &&
+            cached->combine0 == key->combine0 && cached->combine1 == key->combine1 && cached->cycle == key->cycle;
+    if (!sameMaterial) return 0;
+    bool full = cached->lodFrac == key->lodFrac &&
+        cached->uls2 == key->uls2 && cached->ult2 == key->ult2 &&
+        cached->uls0 == key->uls0 && cached->ult0 == key->ult0 &&
+        cached->prim == key->prim && cached->env == key->env &&
+        cached->paletteHash == key->paletteHash && cached->contentHash == key->contentHash;
+    return 1u | (full ? 2u : 0u);
+}
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+static __attribute__((noinline)) unsigned cache_match_reference(const TextureCacheEntry* cached, const TextureCacheEntry* key) {
+    bool sameMaterial = cached->valid && cached->source == key->source &&
+            cached->source2 == key->source2 && cached->stride2 == key->stride2 &&
+            cached->stride == key->stride && cached->width == key->width && cached->height == key->height &&
+            cached->uploadWidth == key->uploadWidth && cached->uploadHeight == key->uploadHeight &&
+            cached->fmt == key->fmt && cached->siz == key->siz && cached->palette == key->palette && cached->mirror == key->mirror &&
+            cached->combine0 == key->combine0 && cached->combine1 == key->combine1 && cached->cycle == key->cycle;
+    bool full = cached->valid && cached->source == key->source &&
+            cached->source2 == key->source2 && cached->stride2 == key->stride2 && cached->lodFrac == key->lodFrac &&
+            cached->uls2 == key->uls2 && cached->ult2 == key->ult2 &&
+            cached->uls0 == key->uls0 && cached->ult0 == key->ult0 &&
+            cached->stride == key->stride && cached->width == key->width && cached->height == key->height &&
+            cached->uploadWidth == key->uploadWidth && cached->uploadHeight == key->uploadHeight &&
+            cached->fmt == key->fmt && cached->siz == key->siz && cached->palette == key->palette && cached->mirror == key->mirror &&
+            cached->combine0 == key->combine0 && cached->combine1 == key->combine1 &&
+            cached->prim == key->prim && cached->env == key->env && cached->cycle == key->cycle &&
+            cached->paletteHash == key->paletteHash && cached->contentHash == key->contentHash;
+    return (sameMaterial ? 1u : 0u) | (full ? 2u : 0u);
+}
+static __attribute__((noinline)) unsigned cache_match_test(const TextureCacheEntry* cached, const TextureCacheEntry* key) {
+    return cache_match(cached,key);
+}
+int ps2_texture_cache_key_smoke(void) {
+    static TextureCacheEntry fixtures[8];
+    unsigned failures=0,cases=0; u32 random=0x982cb497u;
+    for (unsigned i=0;i<8;i++) {
+        u8* data=(u8*)&fixtures[i];
+        for (unsigned j=0;j<sizeof(fixtures[i]);j++) {
+            random=random*1664525u+1013904223u; data[j]=random>>24;
+        }
+        fixtures[i].valid=1;
+        for (unsigned j=0;j<sizeof(fixtures[i]);j++) for (unsigned bit=0;bit<8;bit++) {
+            TextureCacheEntry candidate=fixtures[i]; ((u8*)&candidate)[j]^=1u<<bit;
+            failures+=cache_match_reference(&candidate,&fixtures[i])!=cache_match_test(&candidate,&fixtures[i]); cases++;
+        }
+        failures+=cache_match_test(&fixtures[i],&fixtures[i])!=3; cases++;
+    }
+    u32 cycles[2],checksum[2]={0};
+    for (unsigned path=0;path<2;path++) {
+        u32 start=ps2_gfx_cycles();
+        for (unsigned i=0;i<8192;i++) {
+            const TextureCacheEntry* key=&fixtures[i&7];
+            checksum[path]+=path ? cache_match_test(key,key) : cache_match_reference(key,key);
+        }
+        cycles[path]=ps2_gfx_cycles()-start;
+    }
+    failures+=checksum[0]!=checksum[1];
+    printf("[PS2 CACHE KEY TEST] cases=%u failures=%u referenceCycles=%u sharedCycles=%u\n",
+        cases,failures,(unsigned)cycles[0],(unsigned)cycles[1]);
+    return failures;
+}
+#endif
 /* Share the available VRAM budget between actual texture sizes. Fixed size
  * classes stranded most of VRAM while menu strips evicted one another. */
 #define TEXTURE_CACHE_SLOTS 512
@@ -563,6 +633,7 @@ void ps2_texture_vertex_coordinates(const PS2TextureVertexSetup* setup,
 
 void ps2_texture_rebase_prepared_triangle(const PS2TextureVertexSetup* setup,
     const float uv[2][3], GSPRIMSTQPOINT points[3], bool apply, PS2TextureWrapResult* result) {
+    u32 wrapStart = ps2_gfx_profile_enter();
     const unsigned periods[2] = {setup->repeatS,setup->repeatT};
     float offsets[2] = {0};
     if (result) memset(result,0,sizeof(*result));
@@ -595,6 +666,7 @@ void ps2_texture_rebase_prepared_triangle(const PS2TextureVertexSetup* setup,
         points[i].stq = vertex_to_STQ((uv[0][i] - offsets[0]) * q * setup->invWidth,
                                      (uv[1][i] - offsets[1]) * q * setup->invHeight);
     }
+    ps2_gfx_profile_leave(GFX_PROFILE_WRAP,wrapStart);
 }
 
 void ps2_texture_end_frame(RDPState* rdp) {
@@ -933,6 +1005,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         memset(s_cacheHeads, 0xff, sizeof(s_cacheHeads));
         s_cacheIndexReady = true;
     }
+    u32 keyStart = ps2_gfx_profile_enter();
     int reusable = -1;
     int profileCandidate = -1;
     for (unsigned i = s_cacheHeads[cache_bucket(key.source)]; i != TEXTURE_CACHE_END; i = s_cacheNext[i]) {
@@ -940,26 +1013,9 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         /* Retain variants used together in this frame, but replace an older
          * frame's version of the same source/material instead of filling
          * VRAM with historical animation/tint values. Retire GS reads below. */
-        bool sameMaterial = cached->valid && cached->source == key.source &&
-            cached->source2 == key.source2 && cached->stride2 == key.stride2 &&
-            cached->stride == key.stride && cached->width == w && cached->height == h &&
-            cached->uploadWidth == uploadW && cached->uploadHeight == uploadH &&
-            cached->fmt == key.fmt && cached->siz == key.siz && cached->palette == key.palette && cached->mirror == key.mirror &&
-            cached->combine0 == key.combine0 && cached->combine1 == key.combine1 && cached->cycle == key.cycle;
-        if (sameMaterial && cached->frame != s_textureFrame &&
-            (reusable < 0 || cached->used < s_cache[reusable].used)) reusable = i;
-        if (gPS2GfxProfileActive && sameMaterial &&
-            (profileCandidate < 0 || cached->used > s_cache[profileCandidate].used)) profileCandidate = i;
-        if (cached->valid && cached->source == key.source &&
-            cached->source2 == key.source2 && cached->stride2 == key.stride2 && cached->lodFrac == key.lodFrac &&
-            cached->uls2 == key.uls2 && cached->ult2 == key.ult2 &&
-            cached->uls0 == key.uls0 && cached->ult0 == key.ult0 &&
-            cached->stride == key.stride && cached->width == w && cached->height == h &&
-            cached->uploadWidth == uploadW && cached->uploadHeight == uploadH &&
-            cached->fmt == key.fmt && cached->siz == key.siz && cached->palette == key.palette && cached->mirror == key.mirror &&
-            cached->combine0 == key.combine0 && cached->combine1 == key.combine1 &&
-            cached->prim == key.prim && cached->env == key.env && cached->cycle == key.cycle &&
-            cached->paletteHash == key.paletteHash && cached->contentHash == key.contentHash) {
+        unsigned match=cache_match(cached,&key);
+        if (match & 2u) {
+            ps2_gfx_profile_leave(GFX_PROFILE_KEY,keyStart);
             cached->used = ++s_cacheClock;
             cached->frame = s_textureFrame;
             texture_descriptor(tile, uploadW, uploadH, cached->vram);
@@ -969,7 +1025,12 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
             ps2_gfx_profile_leave(GFX_PROFILE_LOOKUP, lookupStart);
             return;
         }
+        if ((match & 1u) && cached->frame != s_textureFrame &&
+            (reusable < 0 || cached->used < s_cache[reusable].used)) reusable = i;
+        if (gPS2GfxProfileActive && (match & 1u) &&
+            (profileCandidate < 0 || cached->used > s_cache[profileCandidate].used)) profileCandidate = i;
     }
+    ps2_gfx_profile_leave(GFX_PROFILE_KEY,keyStart);
     ps2_gfx_profile_leave(GFX_PROFILE_LOOKUP, lookupStart);
     if (gPS2GfxProfileActive) {
         unsigned reason = profileCandidate < 0 ? 0 :

@@ -140,6 +140,12 @@ reconstrucciones y los análisis reutilizados al cambiar de material. Su tiempo
 está incluido en las otras fases y no debe sumarse de nuevo. La caché mantiene
 32 entradas y usa 2.716 bytes; conserva la validación de las claves y los
 colores dinámicos. Su ganancia de FPS debe comprobarse en la misma cámara.
+`[PS2 DRAW DETAIL PROFILE]` separa la búsqueda de claves, los paquetes GS
+y el reajuste del suelo; sus tiempos ya están incluidos en las otras fases.
+La última sesión aún contiene una línea dañada y dos muestras duplicadas.
+Se conservan los originales y el analizador excluye los intervalos duplicados;
+la causa de esa escritura sigue pendiente. No se interpreta la ausencia de
+un error del controlador como garantía de que el registro esté íntegro.
 
 Para una prueba con contador visible abre `mass:/OOTPS2/DIAG.ELF`.
 Ejecuta el mismo juego con tu mando y guardado normal; crea `DIAG.LOG` junto a

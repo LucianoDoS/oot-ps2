@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Summarize DIAG.LOG; observations do not certify a hardware root cause."""
+from collections import Counter
 import argparse
 import json
 from pathlib import Path
@@ -8,10 +9,11 @@ import statistics
 
 def analyze(text):
     samples, reads, rooms, flushes, audio, usb = [], [], [], [], [], []
+    sample_lines = []
     damaged_lines, sequence_gaps = [], []
     texture_content, scratchpad_storage, scratchpad_errors = [], [], []
     profiles = {name: [] for name in ('graphics', 'geometry', 'content', 'preemption',
-                                    'state', 'vertex_color', 'material_point', 'analysis')}
+                                    'state', 'vertex_color', 'material_point', 'analysis', 'draw_detail')}
     profile_fields = {
         '[PS2 GFX PROFILE]': ('graphics', ('totalUs', 'vtxUs', 'triUs', 'rectUs', 'lookupUs', 'convertUs', 'uploadUs')),
         '[PS2 GEOMETRY PROFILE]': ('geometry', ('matrixUs', 'transformUs', 'lightUs', 'texgenUs', 'clipUs', 'submitUs')),
@@ -21,6 +23,7 @@ def analyze(text):
         '[PS2 VERTEX COLOR PROFILE]': ('vertex_color', ('timeUs', 'calls')),
         '[PS2 MATERIAL POINT PROFILE]': ('material_point', ('materialUs', 'materialCalls', 'pointUs', 'pointCalls')),
         '[PS2 COMBINER ANALYSIS PROFILE]': ('analysis', ('timeUs', 'lookups', 'lastHits', 'savedHits', 'rebuilds', 'entries', 'storageBytes')),
+        '[PS2 DRAW DETAIL PROFILE]': ('draw_detail', ('keyUs', 'keyCalls', 'packetUs', 'packetCalls', 'wrapUs', 'wrapCalls')),
     }
     sparse_profile_every = None
     previous_sequence = None
@@ -46,6 +49,7 @@ def analyze(text):
             if render:
                 row['gfx_ms'] = [int(value) for value in render.groups()]
             samples.append(row)
+            sample_lines.append(number)
             current_sample = row
         elif ' ROM_READ ' in line:
             reads.append(row)
@@ -86,12 +90,28 @@ def analyze(text):
                     damaged_lines.append(number)
                     current_sample = None
                 break
-    fps = [row['fps10'] / 10 for row in samples]
+    # An overwritten sector may contain plausible rows with a repeated
+    # sequence. Reject every copy, rather than trusting the first; timestamps which go back
+    # also cannot describe a fresh interval. Keep original rows for auditing.
+    counts = Counter(row['seq'] for row in samples if 'seq' in row)
+    rejected, usable, high_time = [], [], None
+    for number, row in zip(sample_lines, samples):
+        reasons = []
+        if 'seq' in row and counts[row['seq']] > 1:
+            reasons.append('duplicate_sequence')
+        if high_time is not None and row['tMs'] <= high_time:
+            reasons.append('nonincreasing_sample_time')
+        high_time = max(high_time if high_time is not None else row['tMs'], row['tMs'])
+        if reasons:
+            rejected.append(dict(line=number, tMs=row['tMs'], seq=row.get('seq'), reasons=reasons))
+        else:
+            usable.append(row)
+    fps = [row['fps10'] / 10 for row in usable]
     # Inspect the final minute separately from startup/menus/loads. Only use
     # intervals with zero read requests and no overlap with a measured flush.
     # Render times still include audio and other thread preemption.
-    final_ms = samples[-1].get('tMs', 0) if samples else 0
-    steady = [row for row in samples if row.get('tMs', 0) >= final_ms - 60000 and
+    final_ms = usable[-1].get('tMs', 0) if usable else 0
+    steady = [row for row in usable if row.get('tMs', 0) >= final_ms - 60000 and
         row['frames'] and row.get('gfx_ms') is not None and not row.get('clockFallback', 0) and
         row.get('usb', {}).get('reads') == 0 and not any(
             row['tMs'] > flush.get('tMs', 0) - flush.get('durationMs', 0) and
@@ -105,7 +125,7 @@ def analyze(text):
             translate_ms_per_frame=round(sum(row['gfx_ms'][0] for row in steady) / frames, 2),
             submit_ms_per_frame=round(sum(row['gfx_ms'][1] for row in steady) / frames, 2),
             present_ms_per_frame=round(sum(row['gfx_ms'][2] for row in steady) / frames, 2),
-            limitation='Final-minute intervals only; render phases include thread preemption. No read requests or overlapping measured logger flushes.')
+            limitation='Final-minute intervals only; render phases include thread preemption. No read requests or overlapping measured logger flushes. Duplicate/nonincreasing sample intervals excluded.')
     return {
         'invalid_header': not text.startswith('OOT PS2 runtime log v'),
         'nul_bytes': text.count('\0'),
@@ -115,7 +135,8 @@ def analyze(text):
         'logger_started': ' LOGGER_START ' in text,
         'logger_entered': ' LOGGER_ENTER ' in text,
         'logger_errors': [line for line in text.splitlines() if 'ERROR logger' in line],
-        'samples': len(samples), 'fps_min': min(fps) if fps else None,
+        'samples': len(samples), 'usable_samples': len(usable),
+        'rejected_sample_intervals': rejected, 'fps_min': min(fps) if fps else None,
         'fps_median': statistics.median(fps) if fps else None,
         'fps_max': max(fps) if fps else None,
         'zero_frame_intervals': [row for row in samples if row['frames'] == 0],
@@ -136,6 +157,7 @@ def analyze(text):
         'vertex_color_profiles': profiles['vertex_color'],
         'material_point_profiles': profiles['material_point'],
         'combiner_analysis_profiles': profiles['analysis'],
+        'draw_detail_profiles': profiles['draw_detail'],
         'progress_snapshots': [line.rstrip() for line in text.splitlines() if any(
             marker in line for marker in (' STALL_SNAPSHOT ', ' GAME_PROGRESS ', ' PLAY_PROGRESS ',
                 ' GFX_WORKER ', ' THREAD ', '[PS2 GFX WAIT]'))],

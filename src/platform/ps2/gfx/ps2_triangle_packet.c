@@ -8,6 +8,7 @@
 #include <gsKit.h>
 #include <gsInline.h>
 #include "ps2_triangle_packet.h"
+#include "ps2_gfx_profile.h"
 
 _Static_assert(sizeof(GSPRIMSTQPOINT) == 48, "gsKit A_D textured vertex layout");
 _Static_assert(sizeof(GSPRIMPOINT) == 32, "gsKit A_D colored vertex layout");
@@ -84,6 +85,7 @@ void ps2_prim_prepared_textured_triangles(GSGLOBAL* gs, const PS2TriangleTexture
 void ps2_prim_trusted_textured_triangles(GSGLOBAL* gs, const PS2TriangleTextureSetup* setup,
     int count, const GSPRIMSTQPOINT* points, bool setFilter, unsigned xyz) {
     if (count <= 0) return;
+    u32 start = ps2_gfx_profile_enter();
     const PacketWord* input = (const PacketWord*)points;
     if (setFilter) gsKit_set_texfilter(gs, setup->filter);
     u64* output = vertex_packet(gs, count, 3,
@@ -95,6 +97,7 @@ void ps2_prim_trusted_textured_triangles(GSGLOBAL* gs, const PS2TriangleTextureS
         input += 6;
         output += 3;
     }
+    ps2_gfx_profile_leave(GFX_PROFILE_PACKET,start);
 }
 
 void ps2_prim_colored_triangles(GSGLOBAL* gs, int count, const GSPRIMPOINT* points) {
@@ -118,6 +121,7 @@ void ps2_prim_colored_triangles(GSGLOBAL* gs, int count, const GSPRIMPOINT* poin
 void ps2_prim_trusted_colored_triangles(GSGLOBAL* gs, int count,
     const GSPRIMPOINT* points, unsigned xyz) {
     if (count <= 0) return;
+    u32 start = ps2_gfx_profile_enter();
     const PacketWord* input = (const PacketWord*)points;
     u64 prim = GS_SETREG_PRIM(GS_PRIM_PRIM_TRIANGLE, 1, 0, gs->PrimFogEnable,
         gs->PrimAlphaEnable, gs->PrimAAEnable, 0, gs->PrimContext, 0);
@@ -128,4 +132,5 @@ void ps2_prim_trusted_colored_triangles(GSGLOBAL* gs, int count,
         input += 4;
         output += 2;
     }
+    ps2_gfx_profile_leave(GFX_PROFILE_PACKET,start);
 }

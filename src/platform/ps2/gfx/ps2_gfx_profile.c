@@ -85,6 +85,10 @@ void ps2_gfx_profile_end(void) {
     printf("[PS2 MATERIAL POINT PROFILE] frame=%u materialUs=%u materialCalls=%u pointUs=%u pointCalls=%u (material included in convert, points in submit)\n",
         sFrame,micros(gPS2GfxProfileCycles[GFX_PROFILE_MATERIAL]),gPS2GfxProfileCalls[GFX_PROFILE_MATERIAL],
         micros(gPS2GfxProfileCycles[GFX_PROFILE_POINT]),gPS2GfxProfileCalls[GFX_PROFILE_POINT]);
+    printf("[PS2 DRAW DETAIL PROFILE] frame=%u keyUs=%u keyCalls=%u packetUs=%u packetCalls=%u wrapUs=%u wrapCalls=%u (keys included in lookup; packets and wrap in submit)\n",
+        (unsigned)sFrame,(unsigned)micros(gPS2GfxProfileCycles[GFX_PROFILE_KEY]),(unsigned)gPS2GfxProfileCalls[GFX_PROFILE_KEY],
+        (unsigned)micros(gPS2GfxProfileCycles[GFX_PROFILE_PACKET]),(unsigned)gPS2GfxProfileCalls[GFX_PROFILE_PACKET],
+        (unsigned)micros(gPS2GfxProfileCycles[GFX_PROFILE_WRAP]),(unsigned)gPS2GfxProfileCalls[GFX_PROFILE_WRAP]);
     for (unsigned i=0;i<sMissCount;i++) {
         const TextureMiss* miss=&sMisses[i];
         printf("[PS2 TEXTURE MISS] frame=%u source=%08x size=%ux%u fmt=%u siz=%u reason=%u paired=%u prim=%08x env=%08x\n",

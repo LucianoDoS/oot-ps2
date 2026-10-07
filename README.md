@@ -2,7 +2,7 @@
 
 Port de **The Legend of Zelda: Ocarina of Time** a PlayStation 2, basado en la descompilación [zeldaret/oot](https://github.com/zeldaret/oot).
 
-## Estado comprobado — 6 de octubre de 2026
+## Estado comprobado — 7 de octubre de 2026
 
 **Port en desarrollo, con todos los recursos descritos del juego convertidos.**
 La versión actual de PCSX2 usa el perfil `full`: 101 escenas, 388 salas y
@@ -80,6 +80,14 @@ La revisión siguiente conserva 32 análisis de los selectores de materiales,
 validados por sus palabras de combinación, ciclo y bits de mezcla. Los
 colores y alfa dinámicos se evalúan como antes. PERF registra reconstrucciones
 y reutilizaciones para medir el efecto en la misma vista física.
+La segunda sesión con PERF confirma las reutilizaciones, pero las vistas
+lentas siguen cerca de 11–12 FPS: ese ahorro todavía no estabiliza el juego.
+La búsqueda de texturas comparte ahora sus comparaciones de material y
+conserva todos los campos de contenido. El siguiente perfil separa esa
+búsqueda, los paquetes GS y el ajuste de las coordenadas del suelo. Se han
+detectado dos muestras duplicadas y una línea dañada en el registro físico;
+el analizador excluye los intervalos duplicados y con tiempo regresivo.
+La causa de la escritura dañada sigue sin resolver.
 
 El selector incorpora idioma English/Español cuando encuentra el paquete
 privado `ESP.DAT`. Traduce diálogos, fuente y texturas de menús conservando
