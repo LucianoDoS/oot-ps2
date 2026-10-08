@@ -1,9 +1,99 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <stddef.h>
 #include "f3dex2_ps2.h"
 #include "ps2_texture.h"
 #include "ps2_gfx_profile.h"
+#include "ps2_segment.h"
+
+/* Execute the real interpreter twice. The reference keeps every historical
+ * fence; compare copied GS points, final transformed vertices and draw order.
+ * Nested calls/branches and matrix changes bracket partial/full vertex loads. */
+static int traversal_smoke(unsigned* cases, u32* referenceCycles, u32* reusedCycles) {
+    static struct {
+        u32 root[8][2], child[7][2], leaf[10][2], tail[2][2];
+        u16 matrix[32], vertices[64][8];
+    } data __attribute__((aligned(16)));
+    static RSPState savedRsp, initialRsp, finalRsp;
+    static RDPState savedRdp, initialRdp;
+    static GSPRIMSTQPOINT reference[600];
+    savedRsp = g_rspState; savedRdp = g_rdpState;
+    uintptr_t oldSegment = gRspSegments[14], oldMissing = gRspSegments[15];
+    gRspSegments[14] = (uintptr_t)&data; gRspSegments[15] = 0;
+#define ADDRESS(member) (0x0e000000u | (u32)offsetof(__typeof__(data), member))
+    memset(&data, 0, sizeof(data));
+    for (unsigned i=0; i<64; i++) {
+        data.vertices[i][0] = i%3 == 0 ? -1 : i%3 == 1 ? 1 : 0;
+        data.vertices[i][1] = i%3 == 2 ? 1 : -1;
+        data.vertices[i][4] = i*37; data.vertices[i][5] = i*91;
+        u8* color = (u8*)data.vertices[i]+12;
+        color[0]=31+i*3; color[1]=229-i*2; color[2]=53+i; color[3]=83+i*2;
+    }
+    data.matrix[0]=data.matrix[5]=data.matrix[10]=data.matrix[15]=1;
+    data.matrix[12]=1;
+    const u32 root[][2] = {
+        {0x05000204,0},{0xde000000,ADDRESS(child)},{0x05000204,0},
+        {0xde000000,0x0f000001},{0xfb000000,64},{0x05000204,0},
+        {0xdf000000,0}};
+    const u32 child[][2] = {
+        {0xda000002,ADDRESS(matrix)},{0x05000204,0},
+        {0xde000000,ADDRESS(leaf)},{0xd8380002,64},
+        {0x05000204,0},{0xdf000000,0}};
+    const u32 leaf[][2] = {
+        {0x01003006,ADDRESS(vertices)},{0x05000204,0},
+        {0x01001004,ADDRESS(vertices)+16*4},{0x05000204,0},
+        {0x01001080,ADDRESS(vertices)+16*63},{0x057e0204,0},
+        {0x01040080,ADDRESS(vertices)},{0x05000204,0},
+        {0xde010000,ADDRESS(tail)}};
+    const u32 tail[][2] = {{0x05000204,0},{0xdf000000,0}};
+    memcpy(data.root,root,sizeof(root)); memcpy(data.child,child,sizeof(child));
+    memcpy(data.leaf,leaf,sizeof(leaf)); memcpy(data.tail,tail,sizeof(tail));
+    unsigned failures=0;
+    for (unsigned variant=0; variant<3; variant++) {
+        g_rspState=savedRsp; g_rdpState=savedRdp;
+        if (variant==1) g_rspState.texEnabled=false;
+        if (variant==2) rdp_setcombine(0xfcffffff,0xfffdf6fb,&g_rdpState);
+        initialRsp=g_rspState; initialRdp=g_rdpState;
+        unsigned referenceCount=0; u32 draws=0,packets=0,builds=0;
+        for (unsigned path=0; path<2; path++) {
+            g_rspState=initialRsp; g_rdpState=initialRdp;
+            ps2_gs_state_reset(); rdp_apply_othermode(&g_rdpState);
+            rdp_to_gs_test_run_reference(path==0);
+            f3dex2_test_capture(true);
+            u32 start=ps2_gfx_cycles();
+            rdp_to_gs_exec((const Gfx*)data.root);
+            u32 cycles=ps2_gfx_cycles()-start;
+            unsigned count; const GSPRIMSTQPOINT* points=f3dex2_test_points(&count);
+            u32 actualPackets=(g_rdpState.stats.texturePackets-initialRdp.stats.texturePackets)+
+                              (g_rdpState.stats.colorPackets-initialRdp.stats.colorPackets);
+            u32 actualBuilds=g_rdpState.stats.textureVertexBuilds-initialRdp.stats.textureVertexBuilds;
+            u32 actualDraws=g_rdpState.stats.submitted-initialRdp.stats.submitted;
+            if (!path) {
+                *referenceCycles+=cycles; referenceCount=count;
+                memcpy(reference,points,count*sizeof(*points)); finalRsp=g_rspState;
+                draws=actualDraws; packets=actualPackets; builds=actualBuilds;
+            } else {
+                *reusedCycles+=cycles;
+                /* The cull-both fixture intentionally emits no points. */
+                failures+=referenceCount!=count || memcmp(reference,points,count*sizeof(*points));
+                if ((initialRsp.geometryMode & 0x600u)!=0x600u) failures+=!referenceCount;
+                failures+=memcmp(finalRsp.vtx,g_rspState.vtx,sizeof(finalRsp.vtx))!=0;
+                failures+=actualDraws!=draws || g_rspState.mtxStackDepth!=finalRsp.mtxStackDepth;
+                if (variant==0) failures+=actualPackets!=packets;
+                else failures+=actualPackets>packets;
+                if (variant!=1) failures+=actualBuilds>builds;
+                (*cases)++;
+            }
+        }
+    }
+    rdp_to_gs_test_run_reference(false); f3dex2_test_capture(false);
+    g_rspState=savedRsp; g_rdpState=savedRdp;
+    gRspSegments[14]=oldSegment; gRspSegments[15]=oldMissing;
+    ps2_gs_state_reset(); rdp_apply_othermode(&g_rdpState);
+#undef ADDRESS
+    return failures;
+}
 
 static float gs_texture_precision(float value) {
     union { float f; u32 bits; } number = {.f=value};
@@ -106,6 +196,7 @@ int ps2_ground_run_smoke(void) {
     savedRsp=g_rspState; savedRdp=g_rdpState;
     int failures=texture_wrap_smoke();
     u32 immediateCycles=0, reusedCycles=0;
+    u32 traversalReference=0, traversalReused=0; unsigned traversalCases=0;
     for (unsigned fixture=0;fixture<8;fixture++) {
         g_rspState=savedRsp;
         g_rspState.texEnabled=true; g_rspState.texTile=0;
@@ -190,6 +281,7 @@ int ps2_ground_run_smoke(void) {
         points=f3dex2_test_points(&actualCount);
         if (referenceCount!=actualCount || memcmp(reference,points,actualCount*sizeof(*points))) failures++;
         f3dex2_test_capture(false);
+        failures+=traversal_smoke(&traversalCases,&traversalReference,&traversalReused);
     }
 #ifdef PS2_FLOOR_DIAGNOSTIC
     /* The laboratory must change exactly the selected material, and a pad
@@ -267,6 +359,8 @@ int ps2_ground_run_smoke(void) {
     g_rspState=savedRsp; g_rdpState=savedRdp;
     ps2_gs_state_reset(); rdp_apply_othermode(&g_rdpState);
     printf("[PS2 GROUND RUN TEST] points, layer order, packets, fog, perspective, alpha, decals, clipping and state fences failures=%d\n",failures);
+    printf("[PS2 TRAVERSAL RUN TEST] cases=%u referenceCycles=%u reusedCycles=%u nested calls, branches, matrices, partial/full/last-slot loads, material fences and copied points failures=%d\n",
+        traversalCases,traversalReference,traversalReused,failures);
     printf("[PS2 GROUND RUN BENCH] immediateCycles=%u reusedCycles=%u\n",
         (unsigned)immediateCycles,(unsigned)reusedCycles);
     return failures;

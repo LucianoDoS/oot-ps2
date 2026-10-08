@@ -176,7 +176,15 @@ casa → Kokiri → casa. Las capturas conservan el menú; el diálogo sólo cam
 se verifican intactos. Las pruebas usan tarjetas desactivadas. Sus ciclos
 emulados no establecen una ganancia de FPS físicos ni del fotograma completo.
 Detalles: [CHANGELOG_PS2_PORT.md](CHANGELOG_PS2_PORT.md). La mejora en consola
-y los 20 FPS estables de esta candidata siguen pendientes.
+y los 20 FPS estables siguen pendientes. La sesión posterior de 255 muestras
+confirma cero expulsiones de descriptor en los perfiles grandes; su tramo
+sin lecturas registra 13 FPS y 60,83 ms de traducción. No se ha verificado
+idéntica cámara entre pruebas. La nueva candidata conserva el grupo al
+recorrer piezas y cargar vértices, invalidando sólo los slots sobrescritos.
+Sus 24 comparaciones de puntos/vértices y ambos recorridos con USB nativo
+emulado pasan; conserva las capturas, el logo a 59,9 FPS y las transiciones.
+Necesita una nueva medición física en la misma vista. PERF mide los límites
+que realmente cierran los grupos.
 
 Para una prueba con contador visible abre `mass:/OOTPS2/DIAG.ELF`.
 Ejecuta el mismo juego con tu mando y guardado normal; crea `DIAG.LOG` junto a

@@ -207,6 +207,20 @@ void rdp_to_gs_init(GSGLOBAL* gs) {
 /* ═══════════════════════════════════════════════════════════════════ *
  *  rdp_to_gs_exec — recorre y ejecuta una display list
  * ═══════════════════════════════════════════════════════════════════ */
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+static bool s_runReference;
+void rdp_to_gs_test_run_reference(bool enabled) { s_runReference = enabled; }
+#endif
+static bool preserves_triangle_run(u8 op, int depth) {
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+    if (s_runReference) return false;
+#endif
+    /* Matrices affect the next vertex load, not vertices already transformed.
+     * Loads invalidate their exact slots; queued packets contain copied points.
+     * Material, viewport, fog, targets and all other states remain fences. */
+    return op == G_VTX || op == G_MTX || op == G_POPMTX || op == G_DL ||
+           (op == G_ENDDL && depth > 0);
+}
 void rdp_to_gs_exec(const Gfx* dl) {
     if (!dl) return;
 #ifdef PS2_FLOOR_DIAGNOSTIC
@@ -240,7 +254,7 @@ void rdp_to_gs_exec(const Gfx* dl) {
         gfx_read_words(pc, &w0, &w1);
         u8  op = (u8)(w0 >> 24);
         bool triangle = op == G_TRI1 || op == G_TRI2 || op == G_QUAD;
-        if (triangleRun && !triangle) {
+        if (triangleRun && !triangle && !preserves_triangle_run(op, depth)) {
             if (gPS2GfxProfileActive) ps2_gfx_profile_run_fence(op);
             u32 start = ps2_gfx_profile_enter();
             f3dex2_batch_end(&g_rdpState);

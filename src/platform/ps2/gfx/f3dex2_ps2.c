@@ -236,6 +236,7 @@ static void generate_texture_coordinates(RSPVertex* v, const RSPState* rsp) {
  *    w0[ 7: 1] = índice final + 1 (o sea: v0 = ese valor - n)
  *    w1        = dirección SEGMENTADA del array
  * ───────────────────────────────────────────────────────────────── */
+static void invalidate_run_vertices(unsigned first, unsigned count);
 void f3dex2_vtx(u32 w0, u32 w1, RSPState* rsp) {
     int count = (int)((w0 >> 12) & 0xFF);
     int vend  = (int)((w0 >>  1) & 0x7F);
@@ -251,6 +252,7 @@ void f3dex2_vtx(u32 w0, u32 w1, RSPState* rsp) {
         if (count <= 0) return;
     }
 
+    invalidate_run_vertices(v0, count);
     /* Assets and runtime vertices live in EE user RAM. A corrupt inventory
      * pointer must not trigger TLB misses or reuse the preceding vertices. */
     if ((uintptr_t)src < 0x100000u || (uintptr_t)src > 0x2000000u - count*16u) {
@@ -385,6 +387,17 @@ static PS2TextureVertexSetup s_runPointSetup[2];
 static bool s_runPointSetupValid[2];
 static u64 s_runGroundUvValid;
 static float s_runGroundUv[RSP_VTX_CACHE_SIZE][2];
+static void invalidate_run_vertices(unsigned first, unsigned count) {
+    if (!s_triangleRun) return;
+    /* Full-cache loads must not shift by 64. Keep unaffected slots, material
+     * setup and copied queued points; invalidate both ground layers and UVs. */
+    u64 mask = count == RSP_VTX_CACHE_SIZE ? ~(u64)0 :
+               (((1ull << count) - 1) << first);
+    s_runVertexValid &= ~mask;
+    s_runGroundVertexValid &= ~mask;
+    s_runGroundUvValid &= ~mask;
+    s_runColorValid &= ~mask;
+}
 #ifdef PS2_RENDERER_SMOKE_CAPTURE
 static bool s_captureEnabled;
 static unsigned s_captureCount;
@@ -471,7 +484,8 @@ static void apply_texture_tile(TileDescriptor* tile, RDPState* rdp, bool second)
 }
 static void submit_texture_packet(GSGLOBAL* gs, GSTEXTURE* texture, int count,
     const GSPRIMSTQPOINT* points, bool second) {
-    /* Only triangle commands execute inside a run. CLAMP/ALPHA changes and
+    /* Only primitives and draw-state-preserving traversal execute in a run.
+     * CLAMP/ALPHA changes and
      * texture uploads don't change TEX1. Every state command ends the run. */
     bool setFilter = !s_triangleRun || !s_runFilterValid || s_runFilter != texture->Filter;
     if (s_triangleRun) {

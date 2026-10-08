@@ -88,7 +88,7 @@ búsqueda, los paquetes GS y el ajuste de las coordenadas del suelo. Se han
 detectado dos muestras duplicadas y una línea dañada en el registro físico;
 el analizador excluye los intervalos duplicados y con tiempo regresivo.
 La causa de la escritura dañada sigue sin resolver.
-La última sesión física contiene 285 muestras íntegras y 13 perfiles,
+La sesión física anterior contiene 285 muestras íntegras y 13 perfiles,
 conservados en `build/PS2/hardware-runtime/setup-physical-20261007-205251`.
 Una vista lenta mantiene 11,9 FPS sin lecturas ni colas de audio vacías;
 14 intervalos sin escrituras solapadas recogen 169 fotogramas, con 68,02 ms
@@ -102,7 +102,14 @@ entradas decodificadas; cada carga TLUT sigue leyendo RAM. Pasan las pruebas
 aisladas EE y once pruebas del analizador; PERF separa ahora la huella de
 paleta y los límites de grupos de material. Los resultados y costes de
 memoria están en [CHANGELOG_PS2_PORT.md](CHANGELOG_PS2_PORT.md).
-La ganancia física de esta candidata y los 20 FPS estables siguen pendientes.
+La prueba física posterior conserva 255 muestras íntegras y confirma que
+desaparecen las expulsiones de descriptor en los perfiles grandes. Un tramo
+sin lecturas registra 13 FPS y 60,83 ms de traducción; la cámara no está
+verificada idéntica a la anterior. Los 20 FPS estables siguen pendientes.
+La siguiente candidata reutiliza el grupo de dibujo al recorrer modelos,
+matrices y cargas de vértices, invalidando sólo los slots sobrescritos.
+Pasan 24 comparaciones del intérprete con el recorrido anterior y ambos
+recorridos con USB nativo emulado; la ganancia física aún debe medirse.
 Un registro íntegro tampoco certifica la corrección de la escritura
 intermitente anterior.
 

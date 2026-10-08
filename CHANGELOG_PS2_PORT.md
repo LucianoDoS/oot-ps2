@@ -4,6 +4,64 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Reutilización al recorrer modelos y comprobación física de la caché — 2026-10-08
+
+- Se conserva la sesión en
+  `build/PS2/hardware-runtime/retention-physical-20261007-214734`: 255 muestras
+  utilizables y 13 perfiles, sin daño, duplicados, pérdidas ni errores USB.
+  PERF coincide con el paquete anterior, SHA256
+  `8DA83A36DC6A5F724EEFC8687163D54F88463B7E25C43F4DA4E4D7E25573319B`.
+  Entre 111 y 126 segundos, excluyendo una escritura solapada, quedan
+  14 intervalos y 186 fotogramas: mediana 13 FPS, traducción 60,83 ms,
+  envío final 2,85 y presentación 12,01 por fotograma. No hay lecturas,
+  colas de audio vacías ni aumento de su contador de retrasos en ese tramo.
+  La cámara no está verificada idéntica: no se afirma una ganancia exacta
+  frente a los 11,9 FPS/68,02 ms anteriores ni 20 FPS estables.
+- En los perfiles grandes 1500/1800/2100 desaparecen las nuevas copias,
+  expulsiones de descriptor y solapamientos. Las 46/45/45 huellas restantes
+  pertenecen sólo al límite pequeño de admisión: 3.456/3.392/3.392 bytes,
+  frente a unos 117 KiB anteriores. La validación completa compara ahora
+  380–403 KiB y ocupa 3,66/3,82/4,92 ms; ampliar más la capacidad no elimina
+  ese trabajo. La paleta usa 166–168 µs, dentro de los metadatos; la lectura
+  y decodificación TLUT quedan fuera de esa medida. El coste mayor sigue
+  en los triángulos: 31,37–33,31 ms, incluido su envío de 25,84–27,80 ms.
+- Los tres perfiles grandes tienen 45 límites por VTX, tres por DL,
+  178 por ENDDL y 201 por otros estados. Son oportunidades de reutilización,
+  no una predicción del número de lotes que se ahorrará. La candidata conserva
+  un grupo al recorrer llamadas/saltos, matrices y cargas de vértices;
+  invalida exactamente los slots sobrescritos de color, puntos de ambas capas
+  y UV. Las cargas de 64 slots evitan desplazar una máscara por 64 bits.
+  Los paquetes pendientes contienen puntos copiados. Material, viewport,
+  niebla, objetivos de render, recorte de listas y fin raíz siguen cerrando
+  el grupo; se conserva también el cierre al abortar por la guardia.
+  Las dos capas del suelo siguen dibujándose por triángulo y en su orden.
+- Pasa la batería EE en `build/PS2/floor-production-smoke-20261008-142415`.
+  Veinticuatro casos comparan el intérprete anterior y el nuevo: llamadas
+  anidadas, saltos, matrices, cargas parciales/completas/slot 63, colores,
+  texturas, suelo, niebla, profundidad, decals, recorte y cambios de material.
+  Los puntos, vértices finales, orden y contadores de dibujo coinciden.
+  Se miden 1.778.485 ciclos de referencia y 1.258.149 reutilizados: es un
+  ensayo aislado emulado, no un aumento de FPS físicos. La mejora del juego
+  en consola sigue pendiente.
+- Pasan ambos recorridos con USB nativo emulado:
+  `build/PS2/usb-stack-checks/20261008-143259-045` (habitual) y
+  `build/PS2/usb-stack-checks/20261008-143554-364` (PERF). Conservan el logo
+  a 59,9 FPS, opciones/diálogo en español y casa → Kokiri → casa. Ambas
+  capturas coinciden con la versión entregada anterior; frente a la referencia
+  antigua sólo hay 35 píxeles de parpadeo en los ojos. Los registros son
+  íntegros y los perfiles nuevos aparecen completos sólo en PERF. Datos,
+  idioma y tarjeta del jugador conservan sus hashes; las tarjetas permanecen
+  desactivadas en las pruebas. El rango estático de OOTPS2 termina en
+  0x01223C70: no certifica el uso dinámico de memoria. La comprobación queda
+  en `build/PS2/traversal-release-verification.json`. Los ejecutables de
+  producción no contienen el helper que fuerza las barreras anteriores.
+- Paquete copiado y verificado en `D:\OOTPS2`, con 12 archivos y respaldo
+  de los sustituidos en `D:\OOTPS2-backup-20261008-143944`. BOOT.LOG y
+  DIAG.LOG conservan los hashes de la sesión archivada. OOTPS2 SHA256:
+  `1DBDE26C6570175E38D4CE0C4A56632D8F6C452CF465D7D17C9BC9C1DAD10894`.
+  El siguiente ensayo físico debe usar PERF.ELF, quieto y caminando en la
+  misma vista lenta; los 20 FPS sostenidos siguen sin confirmar.
+
 ## Límite de descriptores y reutilización de huellas de paleta — 2026-10-07
 
 - La sesión física se conserva en

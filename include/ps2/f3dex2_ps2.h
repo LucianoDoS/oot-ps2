@@ -12,8 +12,8 @@
 void f3dex2_vtx(u32 w0, u32 w1, RSPState* rsp);
 void f3dex2_tri1(u32 w0, u32 w1, RSPState* rsp, RDPState* rdp);
 void f3dex2_tri2(u32 w0, u32 w1, RSPState* rsp, RDPState* rdp);
-/* Only consecutive primitive commands may share a batch. Flush before any
- * state change, vertex load, display-list branch or end command. */
+/* Draw-state-preserving traversal/vertex loads may share a batch. Loads
+ * invalidate the slots they overwrite; other state and root end are fences. */
 bool f3dex2_batch_begin(RSPState* rsp, RDPState* rdp);
 void f3dex2_batch_end(RDPState* rdp);
 #ifdef PS2_FLOOR_DIAGNOSTIC
@@ -29,6 +29,7 @@ const GSPRIMSTQPOINT* f3dex2_test_points(unsigned* count);
 /* Force the original initial viewport calculation for differential tests. */
 void f3dex2_test_geometry_reference(bool enabled);
 void f3dex2_test_index_reference(bool enabled);
+void rdp_to_gs_test_run_reference(bool enabled);
 #endif
 void f3dex2_mtx(u32 w0, u32 w1, RSPState* rsp);
 void f3dex2_popmtx(u32 w0, u32 w1, RSPState* rsp);
