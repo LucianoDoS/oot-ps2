@@ -4,6 +4,73 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Coste físico de las vistas grandes y renovación de copias — 2026-10-07
+
+- Se conservan BOOT.LOG, DIAG.LOG, el manifiesto y las identidades de los
+  ejecutables en `build/PS2/hardware-runtime/draw-detail-physical-20261007-200623`.
+  PERF coincide con el paquete entregado, SHA256
+  `691F99E5CEAF5475BDE26F2DED272C8FEFB19A73634C13FD805C8525DC3D7D86`.
+  Esta sesión tiene 225 muestras utilizables y 11 perfiles detallados, sin
+  líneas dañadas, duplicados, errores USB ni pérdidas declaradas. No prueba
+  que la corrupción intermitente de la sesión anterior esté corregida.
+- Entre 75 y 103 segundos hay una mediana de 12 FPS. Excluyendo intervalos
+  con lecturas y escrituras del registro solapadas, quedan 24 intervalos y
+  285 fotogramas: 68,01 ms de traducción, 2,43 de envío final y 13,47 de
+  presentación por fotograma. Sólo hay dos lecturas, 15 ms en todo ese tramo,
+  sin cola de audio vacía ni aumento de su contador de retrasos. La espera
+  del juego por gráficos es de 76–78 ms; su actualización ocupa 6–7 ms.
+  Las caídas sostenidas de esa vista no se explican por cargar desde el USB.
+- En los perfiles 1200 y 1500 la traducción ocupa 58,96/59,30 ms después
+  de descontar el DSP medido. Otros hilos e interrupciones siguen incluidos.
+  La preparación/envío de triángulos ocupa 30,26/28,54 ms, incluidos búsqueda
+  de texturas y puntos. El perfil 1500 dibuja 1.720 primitivas, prepara 3.240
+  puntos y no convierte ni sube ninguna textura. Claves, paquetes y ajuste
+  del suelo ocupan 1,41/1,61/0,16 ms; no son el coste principal pendiente.
+  Estas categorías están anidadas: no deben sumarse como fases independientes.
+- La validación de contenido aún ocupa 5,66/6,11 ms y calcula 121/122 huellas
+  pese a reutilizar casi todas las texturas en VRAM. Los contadores anteriores
+  no distinguen límites, expulsiones y cambios; no se atribuye todo ese coste
+  a un único motivo sin medirlo. El último tramo con menos geometría vuelve
+  a 19,9 FPS; no se compara como si fuera la misma cámara de la vista lenta.
+- Una copia de textura cuyos límites no cambian se renueva ahora en su
+  mismo espacio al cambiar sus bytes. Antes cada cambio avanzaba el anillo
+  y podía expulsar copias estables, aunque el conjunto vivo sólo ocupara
+  8 KiB. Se siguen comparando todos los bytes de ambas fuentes y calculando
+  la huella original con el mismo orden de filas y semillas. La capacidad
+  permanece en 128 KiB y 64 descriptores; no se reserva más memoria.
+- Se añaden motivos de validación/expulsión en `[PS2 TEXTURE CONTENT]` y
+  `[PS2 DRAW SETUP PROFILE]` separa preparación inicial del triángulo,
+  aplicación de tile y metadatos anteriores a la búsqueda. PERF conserva
+  una muestra cada 300 fotogramas; el juego habitual no lee esos cronómetros.
+- La conversión de cada canal de ocho bits a escala GS usa una identidad
+  exacta, conservando el extremo 255 → 128. Pasan los 256 valores y las
+  comparaciones de puntos del renderer. En 8.192 conversiones aisladas se
+  miden 133.178 ciclos de referencia y 100.537 del helper en PCSX2. Esto no
+  representa una ganancia del fotograma completo ni una medición física.
+- Pasa la batería EE con 233.216 comparaciones de contenido, 41.694 huellas,
+  cambios repetidos/filas/paletas/límites/expulsiones, suelo, profundidad,
+  niebla, recorte y 120 fotogramas gráficos/audio en
+  `build/PS2/floor-production-smoke-20261007-201638`. Pasan nueve pruebas del
+  analizador, incluida la captura parcial de los nuevos perfiles. La mejora
+  de esta versión en consola y los 20 FPS estables siguen pendientes.
+- Pasan ambos recorridos con USB nativo emulado:
+  `build/PS2/usb-stack-checks/20261007-202701-703` (habitual) y
+  `build/PS2/usb-stack-checks/20261007-203004-217` (PERF). Verifican logo a
+  59,9 FPS, menú/dialogo en español, casa → Kokiri → casa y registros íntegros.
+  El menú conserva todos sus píxeles. Las 35 diferencias del diálogo quedan
+  limitadas al parpadeo de los ojos, inspeccionadas; ambas variantes producen
+  las mismas capturas. PERF incorpora las medidas y motivos nuevos; el juego
+  habitual conserva el perfilado desactivado. Las tarjetas del jugador están
+  desactivadas durante las pruebas. El rango estático de OOTPS2 termina en
+  0x012226F0; no certifica el uso dinámico de memoria. La comprobación del
+  paquete está en `build/PS2/mutation-reuse-release-verification.json`.
+- Se copian y verifican los doce archivos del paquete en `D:\OOTPS2`, con
+  respaldo en `D:\OOTPS2-backup-20261007-203554`. OOTPS2 tiene SHA256
+  `82CD14F27DC614964AE9E6D3000B280842F5E596D8864EFD1C1ACCB3E09E83E3`.
+  Se verifica que BOOT.LOG y DIAG.LOG físicos, los datos convertidos y la
+  tarjeta del jugador no cambian. La verificación conjunta pasa con la copia
+  comprobada; esta versión aún no se ha probado en la consola física.
+
 ## Segunda medición PERF y búsqueda de claves compartida — 2026-10-07
 
 - Antes de cambiar el USB se conservan los registros, el paquete y las

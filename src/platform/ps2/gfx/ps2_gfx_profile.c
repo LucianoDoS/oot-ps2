@@ -89,6 +89,10 @@ void ps2_gfx_profile_end(void) {
         (unsigned)sFrame,(unsigned)micros(gPS2GfxProfileCycles[GFX_PROFILE_KEY]),(unsigned)gPS2GfxProfileCalls[GFX_PROFILE_KEY],
         (unsigned)micros(gPS2GfxProfileCycles[GFX_PROFILE_PACKET]),(unsigned)gPS2GfxProfileCalls[GFX_PROFILE_PACKET],
         (unsigned)micros(gPS2GfxProfileCycles[GFX_PROFILE_WRAP]),(unsigned)gPS2GfxProfileCalls[GFX_PROFILE_WRAP]);
+    printf("[PS2 DRAW SETUP PROFILE] frame=%u setupUs=%u setupCalls=%u tileUs=%u tileCalls=%u metadataUs=%u metadataCalls=%u (setup and tiles in submit; metadata in lookup)\n",
+        (unsigned)sFrame,(unsigned)micros(gPS2GfxProfileCycles[GFX_PROFILE_DRAW_SETUP]),(unsigned)gPS2GfxProfileCalls[GFX_PROFILE_DRAW_SETUP],
+        (unsigned)micros(gPS2GfxProfileCycles[GFX_PROFILE_TILE]),(unsigned)gPS2GfxProfileCalls[GFX_PROFILE_TILE],
+        (unsigned)micros(gPS2GfxProfileCycles[GFX_PROFILE_METADATA]),(unsigned)gPS2GfxProfileCalls[GFX_PROFILE_METADATA]);
     for (unsigned i=0;i<sMissCount;i++) {
         const TextureMiss* miss=&sMisses[i];
         printf("[PS2 TEXTURE MISS] frame=%u source=%08x size=%ux%u fmt=%u siz=%u reason=%u paired=%u prim=%08x env=%08x\n",

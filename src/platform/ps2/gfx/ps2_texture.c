@@ -999,6 +999,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         spanCount = 2;
     }
     u32 contentStart = ps2_gfx_profile_enter();
+    ps2_gfx_profile_leave(GFX_PROFILE_METADATA, lookupStart);
     key.contentHash = ps2_texture_content_hash(spans, spanCount);
     ps2_gfx_profile_leave(GFX_PROFILE_CONTENT, contentStart);
     if (!s_cacheIndexReady) {

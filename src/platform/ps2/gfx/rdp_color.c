@@ -32,6 +32,7 @@
 #include "rdp_to_gs.h"
 #include "ps2_texture.h"
 #include "ps2_gfx_profile.h"
+#include "ps2_color_scale.h"
 
 /* These are the last values emitted, rather than the desired RDP values.
  * Temporary depth clears and ground blend passes must use the same helpers.
@@ -586,9 +587,7 @@ static void build_first_cycle_row(const LookupEquation* equation, u8 row[256], b
         int result=direct;
         if (equation->operation==0) result+=numerator/255;
         if (result<0) result=0; else if (result>255) result=255;
-        /* For the clamped 0..255 range, floor(value*128/255) is half
-         * the value, except for the fully opaque endpoint. */
-        row[value]=alpha?(result>>1)+(result==255):result;
+        row[value]=alpha?ps2_color_scale_byte((u8)result):result;
         direct+=directStep; numerator+=delta; delta+=deltaStep;
     }
 }

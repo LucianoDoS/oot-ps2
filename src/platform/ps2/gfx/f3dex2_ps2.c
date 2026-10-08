@@ -58,6 +58,7 @@
 #include "ps2_gfx_profile.h"
 #include "ps2_texture.h"
 #include "ps2_triangle_packet.h"
+#include "ps2_color_scale.h"
 
 /* ───────────────────────────────────────────────────────────────── *
  *  Bits de geometry mode (F3DEX2)
@@ -454,13 +455,19 @@ static PS2TriangleTextureSetup s_runPacketSetup[2];
 static bool s_runTileSetupValid[2];
 static PS2TextureTileSetup s_runTileSetup[2];
 static void apply_texture_tile(TileDescriptor* tile, RDPState* rdp, bool second) {
-    if (!s_triangleRun) { ps2_texture_apply_tile(tile,rdp); return; }
+    u32 start = ps2_gfx_profile_enter();
+    if (!s_triangleRun) {
+        ps2_texture_apply_tile(tile,rdp);
+        ps2_gfx_profile_leave(GFX_PROFILE_TILE,start);
+        return;
+    }
     unsigned layer=second?1:0;
     if (!s_runTileSetupValid[layer]) {
         ps2_texture_prepare_tile(&s_runTileSetup[layer],tile,rdp);
         s_runTileSetupValid[layer]=true;
     }
     ps2_texture_apply_tile_prepared(tile,rdp,&s_runTileSetup[layer]);
+    ps2_gfx_profile_leave(GFX_PROFILE_TILE,start);
 }
 static void submit_texture_packet(GSGLOBAL* gs, GSTEXTURE* texture, int count,
     const GSPRIMSTQPOINT* points, bool second) {
@@ -533,6 +540,7 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
                             RSPState* rsp, RDPState* rdp, int i0, int i1, int i2) {
     GSGLOBAL* gs = rdp->gs;
     if (!gs) return;
+    u32 setupStart = ps2_gfx_profile_enter();
 
     /* ── Culling ──────────────────────────────────────────────────
      * Antes sólo se miraba G_CULL_BACK y con el signo fijo. El signo
@@ -544,10 +552,18 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
     float area = ex * fy - ey * fx;
 
     u32 cull = rsp->geometryMode & G_CULL_BOTH;
-    if (cull == G_CULL_BOTH) { rdp->stats.culled++; return; }
+    if (cull == G_CULL_BOTH) {
+        rdp->stats.culled++;
+        ps2_gfx_profile_leave(GFX_PROFILE_DRAW_SETUP,setupStart);
+        return;
+    }
     /* N64 front faces are CCW before the viewport's Y inversion. */
     if ((cull == G_CULL_BACK && area >= 0.0f) ||
-        (cull == G_CULL_FRONT && area <= 0.0f)) { rdp->stats.culled++; return; }
+        (cull == G_CULL_FRONT && area <= 0.0f)) {
+        rdp->stats.culled++;
+        ps2_gfx_profile_leave(GFX_PROFILE_DRAW_SETUP,setupStart);
+        return;
+    }
 
     /* ── Color ────────────────────────────────────────────────────── */
     u64 c0, c1, c2;
@@ -595,15 +611,15 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
         }
         u8 shade[4] = {v->cr, v->cg, v->cb, v->ca}, color[4];
         if (rsp->texEnabled) {
-            color[0] = rgbShade ? (shade[0] * 128u / 255) : 128;
-            color[1] = rgbShade ? (shade[1] * 128u / 255) : 128;
-            color[2] = rgbShade ? (shade[2] * 128u / 255) : 128;
-            color[3] = alphaShade ? (shade[3] * 128u / 255) : 128;
+            color[0] = rgbShade ? ps2_color_scale_byte(shade[0]) : 128;
+            color[1] = rgbShade ? ps2_color_scale_byte(shade[1]) : 128;
+            color[2] = rgbShade ? ps2_color_scale_byte(shade[2]) : 128;
+            color[3] = alphaShade ? ps2_color_scale_byte(shade[3]) : 128;
         } else {
             u32 start = ps2_gfx_profile_enter();
             ps2_combiner_vertex_color(rdp, shade, color);
             ps2_gfx_profile_leave(GFX_PROFILE_VERTEX_COLOR, start);
-            color[3] = color[3] * 128u / 255;
+            color[3] = ps2_color_scale_byte(color[3]);
             rdp->stats.colorVertexBuilds++;
         }
         *colors[i] = GS_SETREG_RGBAQ(color[0], color[1], color[2], color[3], 1.0f);
@@ -625,6 +641,7 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
         z0 = depthsDecal[0]; z1 = depthsDecal[1]; z2 = depthsDecal[2];
     }
     bool fog = s_triangleRun ? s_runFog : ps2_fog_enabled(rdp, rsp);
+    ps2_gfx_profile_leave(GFX_PROFILE_DRAW_SETUP,setupStart);
 
     if (rsp->texEnabled) {
         TileDescriptor* tile = &rdp->tile[rsp->texTile & 7];

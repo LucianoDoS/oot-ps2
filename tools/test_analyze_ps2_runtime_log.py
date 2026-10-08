@@ -141,6 +141,19 @@ tMs=2000 [PS2 DRAW DETAIL PROFILE] frame=600 keyUs=12 keyCalls=3 packetUs=70 pac
         self.assertEqual(report['draw_detail_profiles'][0]['packetUs'], 70)
         self.assertEqual(len(report['damaged_lines']), 1)
 
+    def test_draw_setup_requires_complete_fields_and_preserves_snapshot_reasons(self):
+        log = """OOT PS2 runtime log v3 test
+tMs=1000 [PS2 DRAW SETUP PROFILE] frame=300 setupUs=12 setupCalls=3 tileUs=70 tileCalls=20 metadataUs=40 metadataCalls=15
+tMs=1001 [PS2 TEXTURE CONTENT] exactHits=91 hashes=12 comparedBytes=130208 hashedBytes=1280 smallBypass=1 largeBypass=2 mutations=3 newSnapshots=6 descriptorEvictions=4 overlapEvictions=5
+tMs=2000 [PS2 DRAW SETUP PROFILE] frame=600 setupUs=12 setupCalls=3 tileUs=70 tileCalls=20 metadataUs=40
+"""
+        report = analyze(log)
+        self.assertEqual(len(report['draw_setup_profiles']), 1)
+        self.assertEqual(report['draw_setup_profiles'][0]['metadataUs'], 40)
+        self.assertEqual(report['texture_content_snapshots'][0]['mutations'], 3)
+        self.assertEqual(report['texture_content_snapshots'][0]['overlapEvictions'], 5)
+        self.assertEqual(len(report['damaged_lines']), 1)
+
 
 if __name__ == '__main__':
     unittest.main()

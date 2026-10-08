@@ -142,10 +142,20 @@ está incluido en las otras fases y no debe sumarse de nuevo. La caché mantiene
 colores dinámicos. Su ganancia de FPS debe comprobarse en la misma cámara.
 `[PS2 DRAW DETAIL PROFILE]` separa la búsqueda de claves, los paquetes GS
 y el reajuste del suelo; sus tiempos ya están incluidos en las otras fases.
-La última sesión aún contiene una línea dañada y dos muestras duplicadas.
+La sesión anterior contiene una línea dañada y dos muestras duplicadas.
 Se conservan los originales y el analizador excluye los intervalos duplicados;
-la causa de esa escritura sigue pendiente. No se interpreta la ausencia de
-un error del controlador como garantía de que el registro esté íntegro.
+la causa de esa escritura sigue pendiente. La siguiente sesión contiene 225
+muestras íntegras, pero no certifica que el fallo intermitente esté corregido.
+Una vista grande mantiene unos 12 FPS sin lecturas ni escrituras solapadas;
+su traducción ocupa unos 68 ms por fotograma. Esta revisión renueva las
+copias de texturas animadas en su mismo espacio y conserva todos sus bytes
+de validación. No aumenta el tamaño de la caché ni modifica las capas del suelo.
+`[PS2 TEXTURE CONTENT]` distingue `smallBypass`, `largeBypass`, `mutations`,
+`newSnapshots`, `descriptorEvictions` y `overlapEvictions`: límites pequeños
+o grandes, cambios renovados, nuevas copias y expulsiones por descriptores
+o por espacio del anillo. `[PS2 DRAW SETUP PROFILE]` mide preparación inicial,
+aplicación de tiles y metadatos anteriores a la búsqueda. Sus tiempos están
+incluidos en envío/búsqueda. La mejora de FPS debe comprobarse en consola.
 
 Para una prueba con contador visible abre `mass:/OOTPS2/DIAG.ELF`.
 Ejecuta el mismo juego con tu mando y guardado normal; crea `DIAG.LOG` junto a

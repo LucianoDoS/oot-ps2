@@ -88,6 +88,16 @@ búsqueda, los paquetes GS y el ajuste de las coordenadas del suelo. Se han
 detectado dos muestras duplicadas y una línea dañada en el registro físico;
 el analizador excluye los intervalos duplicados y con tiempo regresivo.
 La causa de la escritura dañada sigue sin resolver.
+La sesión física siguiente contiene 225 muestras íntegras. Una vista lenta
+mantiene unos 12 FPS incluso sin lecturas ni escrituras del registro solapadas:
+la traducción de gráficos ocupa unos 68 ms por fotograma. Los tiempos nuevos
+descartan claves, paquetes y reajuste del suelo como coste principal. La copia
+de una textura animada se renueva ahora en su mismo espacio, conservando las
+copias estables y la validación completa. Se simplifica además la escala de
+color sin cambiar sus valores. PERF mide ahora la preparación del triángulo,
+los tiles, los metadatos y los motivos de expulsión; su mejora física sigue
+pendiente. Un registro íntegro no certifica la corrección de la escritura
+intermitente anterior ni el objetivo de 20 FPS en todas las vistas.
 
 El selector incorpora idioma English/Español cuando encuentra el paquete
 privado `ESP.DAT`. Traduce diálogos, fuente y texturas de menús conservando

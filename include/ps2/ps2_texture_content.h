@@ -13,6 +13,10 @@ typedef struct {
 
 typedef struct {
     u32 hits, hashes, comparedBytes, hashedBytes;
+    /* Size bypasses count bindings; mutations refresh an existing layout.
+     * New admissions can lose descriptors or overwrite ring copy regions. */
+    u32 smallBypass, largeBypass, mutations, newSnapshots;
+    u32 descriptorEvictions, overlapEvictions;
 } PS2TextureContentStats;
 
 /* An old fingerprint is reused only after comparing every loaded byte

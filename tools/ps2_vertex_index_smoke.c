@@ -4,6 +4,52 @@
 #include "f3dex2_ps2.h"
 #include "ps2_texture.h"
 #include "ps2_gfx_profile.h"
+#include "ps2_color_scale.h"
+
+static volatile u8 s_colorScaleInput[256];
+static volatile u32 s_colorScaleSink;
+
+/* Volatile runtime inputs keep both isolated kernels from constant folding.
+ * The same loads, loop count and checksum work surround each conversion. */
+static __attribute__((noinline)) u32 color_scale_reference_cycles(unsigned repeats) {
+    u32 checksum=0;
+    for (unsigned repeat=0;repeat<repeats;repeat++)
+        for (unsigned i=0;i<256;i++) {
+            u8 value=s_colorScaleInput[i];
+            checksum+=(u32)value*128u/255;
+        }
+    return checksum;
+}
+static __attribute__((noinline)) u32 color_scale_byte_cycles(unsigned repeats) {
+    u32 checksum=0;
+    for (unsigned repeat=0;repeat<repeats;repeat++)
+        for (unsigned i=0;i<256;i++) {
+            u8 value=s_colorScaleInput[i];
+            checksum+=ps2_color_scale_byte(value);
+        }
+    return checksum;
+}
+static unsigned color_scale_smoke(void) {
+    unsigned failures=0;
+    unsigned offset=ps2_gfx_cycles()&255u;
+    for (unsigned i=0;i<256;i++) s_colorScaleInput[i]=(u8)(i+offset);
+    for (unsigned i=0;i<256;i++) {
+        u8 value=s_colorScaleInput[i];
+        failures+=ps2_color_scale_byte(value)!=(u32)value*128u/255;
+    }
+    u32 start=ps2_gfx_cycles();
+    u32 referenceChecksum=color_scale_reference_cycles(32);
+    u32 referenceCycles=ps2_gfx_cycles()-start;
+    s_colorScaleSink=referenceChecksum;
+    start=ps2_gfx_cycles();
+    u32 byteChecksum=color_scale_byte_cycles(32);
+    u32 byteCycles=ps2_gfx_cycles()-start;
+    s_colorScaleSink=byteChecksum;
+    failures+=referenceChecksum!=byteChecksum;
+    printf("[PS2 COLOR SCALE TEST] bytes=256 failures=%u referenceCycles=%u byteCycles=%u checksum=%u operations=8192 (isolated byte scaling, not frame time)\n",
+        failures,referenceCycles,byteCycles,(unsigned)s_colorScaleSink);
+    return failures;
+}
 
 static u32 triangle_word(unsigned a, unsigned b, unsigned c) {
     return 0x05000000u | (a << 17) | (b << 9) | (c << 1);
@@ -16,7 +62,7 @@ int ps2_vertex_index_smoke(void) {
     static const unsigned indices[][3] = {{63,37,2},{2,37,63},{37,37,2},
         {0,31,62},{62,31,0},{63,2,0},{63,64,2},{37,2,31}};
     savedRsp = g_rspState; savedRdp = g_rdpState;
-    unsigned failures = 0, pointsCompared = 0, referenceCycles = 0, directCycles = 0;
+    unsigned failures = color_scale_smoke(), pointsCompared = 0, referenceCycles = 0, directCycles = 0;
     for (unsigned fixture = 0; fixture < 8; fixture++) {
         g_rspState = savedRsp;
         g_rspState.texEnabled = !(fixture & 1); g_rspState.texTile = 0;

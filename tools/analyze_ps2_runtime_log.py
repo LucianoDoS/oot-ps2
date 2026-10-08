@@ -13,7 +13,7 @@ def analyze(text):
     damaged_lines, sequence_gaps = [], []
     texture_content, scratchpad_storage, scratchpad_errors = [], [], []
     profiles = {name: [] for name in ('graphics', 'geometry', 'content', 'preemption',
-                                    'state', 'vertex_color', 'material_point', 'analysis', 'draw_detail')}
+                                    'state', 'vertex_color', 'material_point', 'analysis', 'draw_detail', 'draw_setup')}
     profile_fields = {
         '[PS2 GFX PROFILE]': ('graphics', ('totalUs', 'vtxUs', 'triUs', 'rectUs', 'lookupUs', 'convertUs', 'uploadUs')),
         '[PS2 GEOMETRY PROFILE]': ('geometry', ('matrixUs', 'transformUs', 'lightUs', 'texgenUs', 'clipUs', 'submitUs')),
@@ -24,6 +24,7 @@ def analyze(text):
         '[PS2 MATERIAL POINT PROFILE]': ('material_point', ('materialUs', 'materialCalls', 'pointUs', 'pointCalls')),
         '[PS2 COMBINER ANALYSIS PROFILE]': ('analysis', ('timeUs', 'lookups', 'lastHits', 'savedHits', 'rebuilds', 'entries', 'storageBytes')),
         '[PS2 DRAW DETAIL PROFILE]': ('draw_detail', ('keyUs', 'keyCalls', 'packetUs', 'packetCalls', 'wrapUs', 'wrapCalls')),
+        '[PS2 DRAW SETUP PROFILE]': ('draw_setup', ('setupUs', 'setupCalls', 'tileUs', 'tileCalls', 'metadataUs', 'metadataCalls')),
     }
     sparse_profile_every = None
     previous_sequence = None
@@ -158,6 +159,7 @@ def analyze(text):
         'material_point_profiles': profiles['material_point'],
         'combiner_analysis_profiles': profiles['analysis'],
         'draw_detail_profiles': profiles['draw_detail'],
+        'draw_setup_profiles': profiles['draw_setup'],
         'progress_snapshots': [line.rstrip() for line in text.splitlines() if any(
             marker in line for marker in (' STALL_SNAPSHOT ', ' GAME_PROGRESS ', ' PLAY_PROGRESS ',
                 ' GFX_WORKER ', ' THREAD ', '[PS2 GFX WAIT]'))],

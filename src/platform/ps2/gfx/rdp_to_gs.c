@@ -510,8 +510,10 @@ void rdp_to_gs_submit(void) {
             g_rdpState.stats.textureWaits, g_rdpState.stats.texturePackets,
             g_rdpState.stats.textureVertexBuilds, g_rdpState.stats.textureVertexHits);
         printf("[PS2 STATE PERF] writes=%u reused=%u\n", g_rdpState.stats.stateWrites, g_rdpState.stats.stateReuse);
-        printf("[PS2 TEXTURE CONTENT] exactHits=%u hashes=%u comparedBytes=%u hashedBytes=%u\n",
-            content.hits, content.hashes, content.comparedBytes, content.hashedBytes);
+        printf("[PS2 TEXTURE CONTENT] exactHits=%u hashes=%u comparedBytes=%u hashedBytes=%u smallBypass=%u largeBypass=%u mutations=%u newSnapshots=%u descriptorEvictions=%u overlapEvictions=%u\n",
+            content.hits, content.hashes, content.comparedBytes, content.hashedBytes,
+            content.smallBypass,content.largeBypass,content.mutations,content.newSnapshots,
+            content.descriptorEvictions,content.overlapEvictions);
         printf("[PS2 COLOR PERF] packets=%u vertexBuilds=%u vertexHits=%u\n",
             g_rdpState.stats.colorPackets,g_rdpState.stats.colorVertexBuilds,g_rdpState.stats.colorVertexHits);
     }

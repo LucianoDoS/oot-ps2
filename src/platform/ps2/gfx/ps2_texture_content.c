@@ -244,54 +244,7 @@ static u32 hash_spans(const PS2TextureSourceSpan* spans, unsigned count) {
     }
     return hash;
 }
-
-u32 ps2_texture_content_hash(const PS2TextureSourceSpan* spans, unsigned count) {
-    u32 loadedBytes = 0;
-    u64 copyBytes = 0;
-    for (unsigned i = 0; i < count; i++) {
-        loadedBytes += spans[i].rowBytes * spans[i].rows;
-        copyBytes += (u64)((spans[i].rowBytes + 15u) & ~15u) * spans[i].rows;
-    }
-    if (!count || count > 2 || loadedBytes < SNAPSHOT_MIN_BYTES || copyBytes > SNAPSHOT_MAX_BYTES
-#ifdef PS2_RENDERER_SMOKE_CAPTURE
-        || sDisabled
-#endif
-    ) return hash_spans(spans, count);
-    if (!sReady) { memset(sHeads, 0xff, sizeof(sHeads)); sReady = true; }
-    unsigned selectedBucket = bucket(spans[0].source);
-    for (unsigned slot = sHeads[selectedBucket]; slot != SNAPSHOT_END; slot = sSnapshots[slot].next) {
-        Snapshot* saved = &sSnapshots[slot];
-        if (!same_spans(saved, spans, count)) continue;
-        if (unchanged(saved, spans, count)) {
-            saved->used = ++sClock;
-            sStats.hits++;
-            return saved->hash;
-        }
-        unlink_snapshot(slot); saved->valid = 0;
-        break;
-    }
-    u32 hash = hash_spans(spans, count);
-    u32 bytes = copyBytes;
-    if (sCursor + bytes > SNAPSHOT_BYTES) sCursor = 0;
-    unsigned slot = SNAPSHOT_SLOTS;
-    for (unsigned i = 0; i < SNAPSHOT_SLOTS; i++) {
-        Snapshot* saved = &sSnapshots[i];
-        if (saved->valid && saved->offset < sCursor + bytes && sCursor < saved->offset + saved->bytes) {
-            unlink_snapshot(i); saved->valid = 0;
-        }
-        if (!saved->valid) slot = i;
-    }
-    if (slot == SNAPSHOT_SLOTS) {
-        slot = 0;
-        for (unsigned i = 1; i < SNAPSHOT_SLOTS; i++)
-            if (sSnapshots[i].used < sSnapshots[slot].used) slot = i;
-        unlink_snapshot(slot);
-    }
-    Snapshot* saved = &sSnapshots[slot];
-    saved->offset = sCursor; saved->bytes = bytes; saved->hash = hash;
-    saved->used = ++sClock; saved->count = count; saved->valid = 1;
-    memcpy(saved->spans, spans, count * sizeof(*spans));
-    u8* destination = sCopies + sCursor;
+static void copy_spans(u8* destination, const PS2TextureSourceSpan* spans, unsigned count) {
     for (unsigned i = 0; i < count; i++) {
         const PS2TextureSourceSpan* span = &spans[i];
         unsigned stride = span->stride ? span->stride : span->rowBytes;
@@ -304,8 +257,75 @@ u32 ps2_texture_content_hash(const PS2TextureSourceSpan* spans, unsigned count) 
             destination += savedStride;
         }
     }
+}
+
+u32 ps2_texture_content_hash(const PS2TextureSourceSpan* spans, unsigned count) {
+    u32 loadedBytes = 0;
+    u64 copyBytes = 0;
+    for (unsigned i = 0; i < count; i++) {
+        loadedBytes += spans[i].rowBytes * spans[i].rows;
+        copyBytes += (u64)((spans[i].rowBytes + 15u) & ~15u) * spans[i].rows;
+    }
+    if (!count || count > 2
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+        || sDisabled
+#endif
+    ) return hash_spans(spans, count);
+    if (loadedBytes < SNAPSHOT_MIN_BYTES) {
+        sStats.smallBypass++;
+        return hash_spans(spans, count);
+    }
+    if (copyBytes > SNAPSHOT_MAX_BYTES) {
+        sStats.largeBypass++;
+        return hash_spans(spans, count);
+    }
+    if (!sReady) { memset(sHeads, 0xff, sizeof(sHeads)); sReady = true; }
+    unsigned selectedBucket = bucket(spans[0].source);
+    for (unsigned slot = sHeads[selectedBucket]; slot != SNAPSHOT_END; slot = sSnapshots[slot].next) {
+        Snapshot* saved = &sSnapshots[slot];
+        if (!same_spans(saved, spans, count)) continue;
+        if (unchanged(saved, spans, count)) {
+            saved->used = ++sClock;
+            sStats.hits++;
+            return saved->hash;
+        }
+        /* Identical spans keep the same bounded, aligned copy layout. A
+         * mutation replaces its bytes in place so animation cannot advance
+         * the ring over unrelated snapshots on every update. Hash both inputs
+         * in the original row/seed order before replacing the saved copy. */
+        saved->hash = hash_spans(spans, count);
+        copy_spans(sCopies + saved->offset, spans, count);
+        saved->used = ++sClock;
+        sStats.mutations++;
+        return saved->hash;
+    }
+    u32 hash = hash_spans(spans, count);
+    u32 bytes = copyBytes;
+    if (sCursor + bytes > SNAPSHOT_BYTES) sCursor = 0;
+    unsigned slot = SNAPSHOT_SLOTS;
+    for (unsigned i = 0; i < SNAPSHOT_SLOTS; i++) {
+        Snapshot* saved = &sSnapshots[i];
+        if (saved->valid && saved->offset < sCursor + bytes && sCursor < saved->offset + saved->bytes) {
+            unlink_snapshot(i); saved->valid = 0;
+            sStats.overlapEvictions++;
+        }
+        if (!saved->valid) slot = i;
+    }
+    if (slot == SNAPSHOT_SLOTS) {
+        slot = 0;
+        for (unsigned i = 1; i < SNAPSHOT_SLOTS; i++)
+            if (sSnapshots[i].used < sSnapshots[slot].used) slot = i;
+        unlink_snapshot(slot);
+        sStats.descriptorEvictions++;
+    }
+    Snapshot* saved = &sSnapshots[slot];
+    saved->offset = sCursor; saved->bytes = bytes; saved->hash = hash;
+    saved->used = ++sClock; saved->count = count; saved->valid = 1;
+    memcpy(saved->spans, spans, count * sizeof(*spans));
+    copy_spans(sCopies + sCursor, spans, count);
     sCursor += bytes;
     saved->next = sHeads[selectedBucket]; sHeads[selectedBucket] = slot;
+    sStats.newSnapshots++;
     return hash;
 }
 
