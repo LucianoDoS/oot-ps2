@@ -144,18 +144,39 @@ colores dinámicos. Su ganancia de FPS debe comprobarse en la misma cámara.
 y el reajuste del suelo; sus tiempos ya están incluidos en las otras fases.
 La sesión anterior contiene una línea dañada y dos muestras duplicadas.
 Se conservan los originales y el analizador excluye los intervalos duplicados;
-la causa de esa escritura sigue pendiente. La siguiente sesión contiene 225
-muestras íntegras, pero no certifica que el fallo intermitente esté corregido.
-Una vista grande mantiene unos 12 FPS sin lecturas ni escrituras solapadas;
-su traducción ocupa unos 68 ms por fotograma. Esta revisión renueva las
-copias de texturas animadas en su mismo espacio y conserva todos sus bytes
-de validación. No aumenta el tamaño de la caché ni modifica las capas del suelo.
+la causa de esa escritura sigue pendiente. La sesión reciente, conservada en
+`build/PS2/hardware-runtime/setup-physical-20261007-205251`, contiene 285
+muestras íntegras y 13 perfiles, sin certificar la corrección de ese fallo
+intermitente. Entre 111 y 126 segundos, 14 intervalos sin escrituras
+solapadas recogen 169 fotogramas a 11,9 FPS de mediana: traducción 68,02 ms,
+envío final 1,96 y presentación 13,11 por fotograma. No hay lecturas ni
+observaciones de cola de audio vacía; el renderer sigue siendo el coste
+sostenido. Los tiempos generales incluyen la ejecución de otros hilos.
 `[PS2 TEXTURE CONTENT]` distingue `smallBypass`, `largeBypass`, `mutations`,
 `newSnapshots`, `descriptorEvictions` y `overlapEvictions`: límites pequeños
 o grandes, cambios renovados, nuevas copias y expulsiones por descriptores
 o por espacio del anillo. `[PS2 DRAW SETUP PROFILE]` mide preparación inicial,
 aplicación de tiles y metadatos anteriores a la búsqueda. Sus tiempos están
-incluidos en envío/búsqueda. La mejora de FPS debe comprobarse en consola.
+incluidos en envío/búsqueda. Los contadores describen el fotograma muestreado,
+no toda la sesión. En cinco perfiles grandes, 358 de 372 expulsiones (96,2 %)
+son de descriptores. La candidata amplía su número a 128, con 3.840 bytes
+adicionales de metadatos; mantiene el anillo de 128 KiB, los límites de
+256 bytes/16 KiB y la comparación de todos los bytes de ambas fuentes.
+También conserva 17 huellas de paleta en 72 bytes, más 12 de contadores:
+sólo invalida el banco y la paleta completa cuando cambia una entrada
+decodificada. Todas las cargas TLUT siguen leyendo RAM. No se ha aislado
+aún su parte del coste físico de metadatos, de 3,3–4,9 ms en esos cinco perfiles.
+`[PS2 PALETTE HASH PROFILE]` mide las huellas dentro de metadatos, excluyendo
+las actualizaciones TLUT. `[PS2 MATERIAL RUN PROFILE]` cuenta comandos que
+delimitan grupos; no todos corresponden a vaciar un lote con primitivas.
+Pasan la batería EE aislada, once pruebas del analizador y ambos recorridos
+con USB nativo emulado: logo a 59,9 FPS, opciones/diálogo en español y
+casa → Kokiri → casa. Las capturas conservan el menú; el diálogo sólo cambia
+35 píxeles del parpadeo de los ojos. Los registros, datos y tarjeta del jugador
+se verifican intactos. Las pruebas usan tarjetas desactivadas. Sus ciclos
+emulados no establecen una ganancia de FPS físicos ni del fotograma completo.
+Detalles: [CHANGELOG_PS2_PORT.md](CHANGELOG_PS2_PORT.md). La mejora en consola
+y los 20 FPS estables de esta candidata siguen pendientes.
 
 Para una prueba con contador visible abre `mass:/OOTPS2/DIAG.ELF`.
 Ejecuta el mismo juego con tu mando y guardado normal; crea `DIAG.LOG` junto a

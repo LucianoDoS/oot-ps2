@@ -145,6 +145,7 @@ int ps2_renderer_smoke(void) {
     failures += ps2_combiner_channel_smoke();
     failures += ps2_combiner_analysis_smoke();
     failures += ps2_texture_cache_key_smoke();
+    failures += ps2_texture_palette_hash_smoke();
     static u8 readInputs[4112] __attribute__((aligned(128)));
     for (unsigned i=0;i<sizeof(readInputs);i++) readInputs[i]=(i*73+159)&255;
     for (unsigned offset=0;offset<16;offset++) for (unsigned i=0;i<256;i++) {

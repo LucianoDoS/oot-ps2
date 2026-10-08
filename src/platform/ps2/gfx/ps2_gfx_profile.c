@@ -25,6 +25,12 @@ typedef struct {
 } TextureMiss;
 static TextureMiss sMisses[24];
 static unsigned sMissCount;
+static unsigned sRunFences[4];
+void ps2_gfx_profile_run_fence(u32 opcode) {
+    /* This counts existing flushes; it does not change batching or order. */
+    unsigned kind = opcode == 0x01 ? 0 : opcode == 0xde ? 1 : opcode == 0xdf ? 2 : 3;
+    sRunFences[kind]++;
+}
 void ps2_gfx_profile_texture_miss(u32 source, u32 prim, u32 env,
     unsigned width, unsigned height, unsigned fmt, unsigned siz,
     unsigned reason, bool paired) {
@@ -47,6 +53,7 @@ void ps2_gfx_profile_begin(void) {
         sWallStart = ps2_gfx_cycles();
         sStart = ps2_gfx_profile_enter();
         sMissCount = 0;
+        memset(sRunFences,0,sizeof(sRunFences));
     }
 }
 void ps2_gfx_profile_end(void) {
@@ -93,6 +100,12 @@ void ps2_gfx_profile_end(void) {
         (unsigned)sFrame,(unsigned)micros(gPS2GfxProfileCycles[GFX_PROFILE_DRAW_SETUP]),(unsigned)gPS2GfxProfileCalls[GFX_PROFILE_DRAW_SETUP],
         (unsigned)micros(gPS2GfxProfileCycles[GFX_PROFILE_TILE]),(unsigned)gPS2GfxProfileCalls[GFX_PROFILE_TILE],
         (unsigned)micros(gPS2GfxProfileCycles[GFX_PROFILE_METADATA]),(unsigned)gPS2GfxProfileCalls[GFX_PROFILE_METADATA]);
+    PS2PaletteHashStats palette = ps2_texture_palette_hash_stats(false);
+    printf("[PS2 PALETTE HASH PROFILE] frame=%u timeUs=%u calls=%u hits=%u builds=%u changedEntries=%u (included in metadata; TLUT updates outside this timer)\n",
+        sFrame,micros(gPS2GfxProfileCycles[GFX_PROFILE_PALETTE]),gPS2GfxProfileCalls[GFX_PROFILE_PALETTE],
+        palette.hits,palette.builds,palette.changedEntries);
+    printf("[PS2 MATERIAL RUN PROFILE] frame=%u vtxFences=%u dlFences=%u endFences=%u otherFences=%u\n",
+        sFrame,sRunFences[0],sRunFences[1],sRunFences[2],sRunFences[3]);
     for (unsigned i=0;i<sMissCount;i++) {
         const TextureMiss* miss=&sMisses[i];
         printf("[PS2 TEXTURE MISS] frame=%u source=%08x size=%ux%u fmt=%u siz=%u reason=%u paired=%u prim=%08x env=%08x\n",

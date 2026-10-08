@@ -9,7 +9,7 @@ extern u32 ps2_texture_hash(const u8*, u32, u32);
 #define SNAPSHOT_BYTES (128u * 1024u)
 #define SNAPSHOT_MAX_BYTES (16u * 1024u)
 #define SNAPSHOT_MIN_BYTES 256u
-#define SNAPSHOT_SLOTS 64u
+#define SNAPSHOT_SLOTS 128u
 #define SNAPSHOT_BUCKETS 64u
 #define SNAPSHOT_END 0xffffu
 
@@ -28,12 +28,21 @@ static PS2TextureContentStats sStats;
 
 #ifdef PS2_RENDERER_SMOKE_CAPTURE
 static bool sDisabled;
+static unsigned sSlotLimit = SNAPSHOT_SLOTS;
+#define SNAPSHOT_ACTIVE_SLOTS sSlotLimit
+unsigned ps2_texture_content_test_slots(void) { return sSlotLimit; }
+/* Smoke callers reset after changing the limit before binding any source. */
+void ps2_texture_content_test_set_slots(unsigned slots) {
+    if (slots == 64u || slots == SNAPSHOT_SLOTS) sSlotLimit = slots;
+}
 void ps2_texture_content_test_enable(bool enabled) { sDisabled = !enabled; }
 void ps2_texture_content_test_reset(void) {
     memset(sSnapshots, 0, sizeof(sSnapshots));
     memset(&sStats, 0, sizeof(sStats));
     sReady = false; sCursor = sClock = 0;
 }
+#else
+#define SNAPSHOT_ACTIVE_SLOTS SNAPSHOT_SLOTS
 #endif
 
 /* Copies and each saved row start at a 16-byte boundary. Complete stripes
@@ -302,8 +311,8 @@ u32 ps2_texture_content_hash(const PS2TextureSourceSpan* spans, unsigned count) 
     u32 hash = hash_spans(spans, count);
     u32 bytes = copyBytes;
     if (sCursor + bytes > SNAPSHOT_BYTES) sCursor = 0;
-    unsigned slot = SNAPSHOT_SLOTS;
-    for (unsigned i = 0; i < SNAPSHOT_SLOTS; i++) {
+    unsigned slot = SNAPSHOT_ACTIVE_SLOTS;
+    for (unsigned i = 0; i < SNAPSHOT_ACTIVE_SLOTS; i++) {
         Snapshot* saved = &sSnapshots[i];
         if (saved->valid && saved->offset < sCursor + bytes && sCursor < saved->offset + saved->bytes) {
             unlink_snapshot(i); saved->valid = 0;
@@ -311,9 +320,9 @@ u32 ps2_texture_content_hash(const PS2TextureSourceSpan* spans, unsigned count) 
         }
         if (!saved->valid) slot = i;
     }
-    if (slot == SNAPSHOT_SLOTS) {
+    if (slot == SNAPSHOT_ACTIVE_SLOTS) {
         slot = 0;
-        for (unsigned i = 1; i < SNAPSHOT_SLOTS; i++)
+        for (unsigned i = 1; i < SNAPSHOT_ACTIVE_SLOTS; i++)
             if (sSnapshots[i].used < sSnapshots[slot].used) slot = i;
         unlink_snapshot(slot);
         sStats.descriptorEvictions++;

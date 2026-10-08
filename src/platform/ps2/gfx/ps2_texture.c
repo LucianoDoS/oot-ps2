@@ -48,6 +48,36 @@ static u8 s_convBuf[512 * 256 * 4] __attribute__((aligned(128)));
 static u32 s_textureVram = GSKIT_ALLOC_ERROR;
 static u8 s_sourceRows[sizeof(s_convBuf)] __attribute__((aligned(128)));
 static u32 s_clut[256] __attribute__((aligned(128)));
+/* CI4 uses one 16-entry bank; CI8 uses the complete palette. A hash remains
+ * valid until the only CLUT writer changes one of its decoded entries. */
+typedef struct {
+    u32 hashes[17], validMask;
+} PaletteHashCache;
+static PaletteHashCache s_paletteHashes;
+static PS2PaletteHashStats s_paletteHashStats;
+
+static u32 palette_hash(unsigned first, unsigned count) {
+    u32 start = ps2_gfx_profile_enter();
+    unsigned slot = count == 16 ? first >> 4 : 16;
+    u32 mask = 1u << slot;
+    if (s_paletteHashes.validMask & mask) {
+        s_paletteHashStats.hits++;
+    } else {
+        u32 hash = 2166136261u;
+        for (unsigned i = 0; i < count; i++) hash = (hash ^ s_clut[first + i]) * 16777619u;
+        s_paletteHashes.hashes[slot] = hash;
+        s_paletteHashes.validMask |= mask;
+        s_paletteHashStats.builds++;
+    }
+    ps2_gfx_profile_leave(GFX_PROFILE_PALETTE, start);
+    return s_paletteHashes.hashes[slot];
+}
+
+PS2PaletteHashStats ps2_texture_palette_hash_stats(bool reset) {
+    PS2PaletteHashStats stats = s_paletteHashStats;
+    if (reset) memset(&s_paletteHashStats, 0, sizeof(s_paletteHashStats));
+    return stats;
+}
 typedef struct TextureCacheEntry {
     uintptr_t source;
     uintptr_t source2;
@@ -885,14 +915,158 @@ void ps2_texture_load_tlut_at(const u8* tlut_src, int first, int count) {
         u8 g = (px >>  6) & 0x1F;  g = (g << 3) | (g >> 2);
         u8 b = (px >>  1) & 0x1F;  b = (b << 3) | (b >> 2);
         u8 a = (px & 1) ? 0x80 : 0;
-        s_clut[first + i] = ((u32)a << 24) | ((u32)b << 16) |
-                    ((u32)g <<  8) |  (u32)r;
+        unsigned entry = first + i;
+        u32 decoded = ((u32)a << 24) | ((u32)b << 16) |
+                      ((u32)g << 8) | (u32)r;
+        if (s_clut[entry] != decoded) {
+            s_clut[entry] = decoded;
+            s_paletteHashes.validMask &= ~((1u << (entry >> 4)) | (1u << 16));
+            s_paletteHashStats.changedEntries++;
+        }
     }
 }
 
 void ps2_texture_load_tlut(const u8* tlut_src, int count) {
     ps2_texture_load_tlut_at(tlut_src, 0, count);
 }
+
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+/* Independent palette decoding and the original ordered FNV loop. Volatile
+ * word loads and noinline calls keep the benchmark from folding unchanged
+ * palette inputs into a constant checksum. These checks never upload to GS. */
+static u32 palette_test_decode(const u8* source) {
+    static const u8 expand5[32] = {0,8,16,24,33,41,49,57,66,74,82,90,99,107,115,123,
+                                 132,140,148,156,165,173,181,189,198,206,214,222,231,239,247,255};
+    unsigned value = (unsigned)source[0] * 256u + source[1];
+    return expand5[(value >> 11) & 31] | ((u32)expand5[(value >> 6) & 31] << 8) |
+           ((u32)expand5[(value >> 1) & 31] << 16) | ((value & 1) ? 0x80000000u : 0);
+}
+
+static __attribute__((noinline)) u32 palette_hash_reference(const volatile u32* colors,
+    unsigned first, unsigned count) {
+    u32 hash = 2166136261u;
+    for (unsigned i = 0; i < count; i++) hash = (hash ^ colors[first + i]) * 16777619u;
+    return hash;
+}
+
+static __attribute__((noinline)) u32 palette_hash_test_full(void) {
+    return palette_hash(0, 256);
+}
+
+static unsigned palette_test_all(const u32 expected[256]) {
+    unsigned failures = 0;
+    for (unsigned i = 0; i < 256; i++) failures += s_clut[i] != expected[i];
+    for (unsigned bank = 0; bank < 16; bank++)
+        failures += palette_hash(bank * 16, 16) != palette_hash_reference(expected, bank * 16, 16);
+    failures += palette_hash_test_full() != palette_hash_reference(expected, 0, 256);
+    return failures;
+}
+
+static unsigned palette_test_load(u32 expected[256], const u8* source, int first, int count) {
+    u32 invalidated = 0;
+    unsigned changed = 0, builds = 0;
+    for (int i = 0; i < count; i++) {
+        unsigned entry = first + i;
+        u32 decoded = palette_test_decode(source + i * 2);
+        if (expected[entry] != decoded) {
+            expected[entry] = decoded;
+            invalidated |= (1u << (entry >> 4)) | (1u << 16);
+            changed++;
+        }
+    }
+    for (unsigned i = 0; i < 17; i++) builds += !!(invalidated & (1u << i));
+    ps2_texture_palette_hash_stats(true);
+    ps2_texture_load_tlut_at(source, first, count);
+    unsigned failures = s_paletteHashes.validMask != (0x1ffffu & ~invalidated);
+    failures += palette_test_all(expected);
+    PS2PaletteHashStats stats = ps2_texture_palette_hash_stats(false);
+    failures += stats.changedEntries != changed || stats.builds != builds || stats.hits != 17 - builds;
+    return failures;
+}
+
+static unsigned palette_test_invalid(const u32 expected[256], const u8* source, int first, int count) {
+    ps2_texture_palette_hash_stats(true);
+    ps2_texture_load_tlut_at(source, first, count);
+    unsigned failures = s_paletteHashes.validMask != 0x1ffffu;
+    failures += palette_test_all(expected);
+    PS2PaletteHashStats stats = ps2_texture_palette_hash_stats(false);
+    failures += stats.changedEntries != 0 || stats.builds != 0 || stats.hits != 17;
+    return failures;
+}
+
+static volatile u32 s_paletteHashBenchSink;
+int ps2_texture_palette_hash_smoke(void) {
+    u32 oldClut[256], expected[256];
+    u8 source[512];
+    memcpy(oldClut, s_clut, sizeof(oldClut));
+    PaletteHashCache oldHashes = s_paletteHashes;
+    PS2PaletteHashStats oldStats = s_paletteHashStats;
+    bool oldProfile = gPS2GfxProfileActive;
+    gPS2GfxProfileActive = false;
+    s_paletteHashes.validMask = 0;
+    for (unsigned i = 0; i < 256; i++) {
+        u16 value = i * 1031u + 0x93a7u;
+        source[i * 2] = value >> 8; source[i * 2 + 1] = value;
+        expected[i] = palette_test_decode(source + i * 2);
+    }
+    ps2_texture_load_tlut(source, 256);
+    unsigned failures = palette_test_all(expected), bitCases = 0, partialLoads = 0;
+    /* Mutate every source bit at the same RAM address, then reload unchanged.
+     * Check the affected bank/full rebuild and retention of every other bank. */
+    for (unsigned entry = 0; entry < 256; entry++) for (unsigned bit = 0; bit < 16; bit++) {
+        unsigned byte = entry * 2 + (bit < 8);
+        source[byte] ^= 1u << (bit & 7);
+        failures += palette_test_load(expected, source + entry * 2, entry, 1);
+        failures += palette_test_load(expected, source + entry * 2, entry, 1);
+        source[byte] ^= 1u << (bit & 7);
+        failures += palette_test_load(expected, source + entry * 2, entry, 1);
+        bitCases++;
+    }
+    for (unsigned bank = 0; bank < 16; bank++) {
+        for (unsigned i = 0; i < 16; i++) source[(bank * 16 + i) * 2 + 1] ^= 1;
+        failures += palette_test_load(expected, source + bank * 32, bank * 16, 16);
+        failures += palette_test_load(expected, source + bank * 32, bank * 16, 16);
+        partialLoads++;
+    }
+    /* Boundary and cross-bank partial loads, including both legal empty ranges. */
+    static const int ranges[][2] = {{0,0},{256,0},{15,2},{255,1},{7,241}};
+    for (unsigned range = 0; range < sizeof(ranges) / sizeof(ranges[0]); range++) {
+        unsigned first = ranges[range][0], count = ranges[range][1];
+        for (unsigned i = 0; i < count; i++) source[(first + i) * 2] ^= 1;
+        failures += palette_test_load(expected, source + first * 2, first, count);
+        partialLoads++;
+    }
+    for (unsigned i = 0; i < 256; i++) source[i * 2] ^= 2;
+    failures += palette_test_load(expected, source, 0, 256);
+    failures += palette_test_load(expected, source, 0, 256);
+    static const int invalid[][2] = {{-1,1},{0,-1},{257,0},{255,2},{0,257},{256,1}};
+    for (unsigned i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++)
+        failures += palette_test_invalid(expected, source, invalid[i][0], invalid[i][1]);
+    failures += palette_test_invalid(expected, NULL, 0, 256);
+
+    ps2_texture_palette_hash_stats(true);
+    u32 start = ps2_gfx_cycles(), referenceChecksum = 0, cachedChecksum = 0;
+    for (unsigned i = 0; i < 8192; i++) referenceChecksum += palette_hash_reference(s_clut, 0, 256);
+    u32 referenceCycles = ps2_gfx_cycles() - start;
+    s_paletteHashBenchSink = referenceChecksum;
+    start = ps2_gfx_cycles();
+    for (unsigned i = 0; i < 8192; i++) cachedChecksum += palette_hash_test_full();
+    u32 cachedCycles = ps2_gfx_cycles() - start;
+    s_paletteHashBenchSink = cachedChecksum;
+    PS2PaletteHashStats benchStats = ps2_texture_palette_hash_stats(false);
+    failures += referenceChecksum != cachedChecksum || benchStats.hits != 8192 ||
+                benchStats.builds != 0 || benchStats.changedEntries != 0;
+    /* Preserve the initial palette and every cache/stat field for the first
+     * GPU descriptor/fence test and subsequent renderer fixtures. */
+    memcpy(s_clut, oldClut, sizeof(oldClut));
+    s_paletteHashes = oldHashes; s_paletteHashStats = oldStats;
+    gPS2GfxProfileActive = oldProfile;
+    printf("[PS2 PALETTE HASH TEST] bitCases=%u partialLoads=%u invalidLoads=7 failures=%u referenceCycles=%u cachedCycles=%u checksum=%u operations=8192 (isolated palette hashes, not frame time)\n",
+        bitCases, partialLoads, failures, (unsigned)referenceCycles, (unsigned)cachedCycles,
+        (unsigned)s_paletteHashBenchSink);
+    return failures;
+}
+#endif
 
 /* ─────────────────────────────────────────────────────────── *
  *  ps2_texture_upload() — convert N64 texture and upload to GS VRAM
@@ -980,8 +1154,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
     if (tile->fmt == G_IM_FMT_CI) {
         unsigned first = tile->siz == G_IM_SIZ_4b ? tile->palette * 16 : 0;
         unsigned count = tile->siz == G_IM_SIZ_4b ? 16 : 256;
-        key.paletteHash = 2166136261u;
-        for (unsigned i = 0; i < count; i++) key.paletteHash = (key.paletteHash ^ s_clut[first + i]) * 16777619u;
+        key.paletteHash = palette_hash(first, count);
     }
     /* Validate every loaded byte against a bounded source copy before reusing
      * its fingerprint. Mutations, uncached/large windows and both pair inputs

@@ -4,6 +4,81 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Límite de descriptores y reutilización de huellas de paleta — 2026-10-07
+
+- La sesión física se conserva en
+  `build/PS2/hardware-runtime/setup-physical-20261007-205251`: 285 muestras
+  utilizables y 13 fotogramas perfilados, sin daño, duplicados, saltos,
+  pérdidas declaradas, errores USB ni fallos de scratchpad. Entre 111 y
+  126 segundos, excluyendo el intervalo solapado con una escritura del
+  registro, quedan 14 intervalos y 169 fotogramas: mediana 11,9 FPS,
+  traducción 68,02 ms, envío final 1,96 y presentación 13,11 por fotograma.
+  No hay lecturas ni observaciones de cola de audio vacía en ese tramo.
+  El coste sostenido sigue concentrado en el renderer; estos tiempos
+  generales incluyen las interrupciones y la ejecución de otros hilos.
+- Los motivos nuevos separan el límite de descriptores del espacio de copias.
+  En cinco fotogramas de la vista grande, 358 de 372 expulsiones (96,2 %)
+  corresponden a descriptores; sólo 14 corresponden al espacio del anillo.
+
+  | Fotograma | Nuevas copias | Expulsiones de descriptor | Solapamientos del anillo |
+  | --- | ---: | ---: | ---: |
+  | 1200 | 75 | 73 | 2 |
+  | 1500 | 74 | 71 | 3 |
+  | 1800 | 75 | 71 | 4 |
+  | 2100 | 74 | 72 | 2 |
+  | 2400 | 74 | 71 | 3 |
+
+- La versión candidata conserva 128 descriptores en lugar de 64: añade
+  3.840 bytes de metadatos y mantiene el anillo de 128 KiB, el máximo de
+  16 KiB y el mínimo de 256 bytes por copia. Se siguen comparando todos
+  los bytes cargados, incluidas ambas fuentes de las mezclas, antes de
+  reutilizar una huella. La prueba de 96 fuentes de 512 bytes conserva
+  384 aciertos tras calentarse y valida después 96 cambios de contenido.
+- Se conservan 17 huellas FNV de paleta: 16 bancos CI4 y la paleta CI8
+  completa. Sólo cambia su validez cuando cambia una entrada RGBA decodificada;
+  todas las cargas TLUT siguen leyendo sus bytes de RAM. Usa 72 bytes de
+  caché y 12 de contadores. Los metadatos de los cinco perfiles citados
+  ocupan 3,3–4,9 ms, pero aún no se ha aislado qué parte corresponde a la
+  paleta en consola.
+- Pasa la batería EE en `build/PS2/floor-production-smoke-20261007-211045`,
+  con 233.216 comparaciones de contenido y 42.430 comprobaciones de huellas.
+  En 9.600 consultas calentadas a 96 fuentes, 64 descriptores registran
+  41.295.030 ciclos, cero aciertos y 9.600 hashes; 128 registran 6.546.806
+  ciclos, 9.600 aciertos y cero hashes, con checksum idéntico `a9acb698`.
+  La paleta pasa 4.096 cambios de entrada/bit, 21 cargas parciales y siete
+  cargas inválidas. En 8.192 huellas completas sin cambios registra
+  17.268.078 ciclos de referencia y 303.277 con reutilización, conservando
+  el checksum. Son operaciones aisladas en PCSX2, no medidas de todo el
+  fotograma ni de la consola física.
+- PERF añade `[PS2 PALETTE HASH PROFILE]`, incluido en metadatos, y
+  `[PS2 MATERIAL RUN PROFILE]`, que cuenta límites de grupos por comandos
+  de vértices, listas, fin y otros estados. Esos límites no equivalen
+  necesariamente a vaciados de lotes con primitivas pendientes. Pasan once
+  pruebas del analizador. Sigue pendiente medir la ganancia física de esta
+  versión candidata y alcanzar 20 FPS estables en las vistas grandes.
+- Pasan ambos recorridos con USB nativo emulado:
+  `build/PS2/usb-stack-checks/20261007-212243-879` (habitual) y
+  `build/PS2/usb-stack-checks/20261007-212625-070` (PERF). Verifican logo a
+  59,9 FPS, menú/diálogo en español, casa → Kokiri → casa y registros íntegros.
+  El menú conserva todos sus píxeles; las 35 diferencias del diálogo quedan
+  limitadas al parpadeo de los ojos y coinciden con la captura ya inspeccionada
+  de la versión anterior. Ambas variantes producen las mismas capturas.
+  Los perfiles nuevos están completos en PERF y ausentes en el registro
+  habitual. Se conservan los hashes de los datos y la tarjeta del jugador,
+  desactivada durante las pruebas. Los símbolos de producción confirman
+  7.680 bytes de descriptores, 131.072 de copias y 84 de paleta/contadores;
+  no contienen los helpers de pruebas. El rango estático de OOTPS2 termina
+  en 0x01223AF0; no certifica el uso dinámico de memoria. La comprobación
+  se conserva en `build/PS2/retention-palette-release-verification.json`.
+- El paquete queda copiado y verificado en `D:\OOTPS2` (12 archivos), con
+  copia de los archivos sustituidos en `D:\OOTPS2-backup-20261007-213036`.
+  BOOT.LOG y DIAG.LOG conservan sus hashes originales; los datos OOT.Z64,
+  ESP.DAT y la tarjeta del jugador permanecen intactos. OOTPS2 SHA256:
+  `D2A3D384E40A08D04C17308F3AD0C80D8BF50846B10BE45A86F77B1E56DAB965`.
+  La nueva comprobación física debe usar PERF.ELF en la misma vista grande,
+  quieto y caminando, para comparar presión de descriptores y tiempo de
+  traducción sin atribuir cambios de cámara a una optimización.
+
 ## Coste físico de las vistas grandes y renovación de copias — 2026-10-07
 
 - Se conservan BOOT.LOG, DIAG.LOG, el manifiesto y las identidades de los

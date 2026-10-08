@@ -88,16 +88,23 @@ búsqueda, los paquetes GS y el ajuste de las coordenadas del suelo. Se han
 detectado dos muestras duplicadas y una línea dañada en el registro físico;
 el analizador excluye los intervalos duplicados y con tiempo regresivo.
 La causa de la escritura dañada sigue sin resolver.
-La sesión física siguiente contiene 225 muestras íntegras. Una vista lenta
-mantiene unos 12 FPS incluso sin lecturas ni escrituras del registro solapadas:
-la traducción de gráficos ocupa unos 68 ms por fotograma. Los tiempos nuevos
-descartan claves, paquetes y reajuste del suelo como coste principal. La copia
-de una textura animada se renueva ahora en su mismo espacio, conservando las
-copias estables y la validación completa. Se simplifica además la escala de
-color sin cambiar sus valores. PERF mide ahora la preparación del triángulo,
-los tiles, los metadatos y los motivos de expulsión; su mejora física sigue
-pendiente. Un registro íntegro no certifica la corrección de la escritura
-intermitente anterior ni el objetivo de 20 FPS en todas las vistas.
+La última sesión física contiene 285 muestras íntegras y 13 perfiles,
+conservados en `build/PS2/hardware-runtime/setup-physical-20261007-205251`.
+Una vista lenta mantiene 11,9 FPS sin lecturas ni colas de audio vacías;
+14 intervalos sin escrituras solapadas recogen 169 fotogramas, con 68,02 ms
+de traducción, 1,96 de envío final y 13,11 de presentación por fotograma.
+El dibujo sigue siendo el coste sostenido. Los motivos de expulsión muestran
+que el límite de descriptores causa el 96,2 % de las expulsiones en cinco
+fotogramas de esa vista. La versión candidata amplía la capacidad de 64 a
+128 descriptores, conserva el anillo de 128 KiB y valida todos los
+bytes. También reutiliza 17 huellas de paleta, invalidadas al cambiar sus
+entradas decodificadas; cada carga TLUT sigue leyendo RAM. Pasan las pruebas
+aisladas EE y once pruebas del analizador; PERF separa ahora la huella de
+paleta y los límites de grupos de material. Los resultados y costes de
+memoria están en [CHANGELOG_PS2_PORT.md](CHANGELOG_PS2_PORT.md).
+La ganancia física de esta candidata y los 20 FPS estables siguen pendientes.
+Un registro íntegro tampoco certifica la corrección de la escritura
+intermitente anterior.
 
 El selector incorpora idioma English/Español cuando encuentra el paquete
 privado `ESP.DAT`. Traduce diálogos, fuente y texturas de menús conservando

@@ -241,6 +241,7 @@ void rdp_to_gs_exec(const Gfx* dl) {
         u8  op = (u8)(w0 >> 24);
         bool triangle = op == G_TRI1 || op == G_TRI2 || op == G_QUAD;
         if (triangleRun && !triangle) {
+            if (gPS2GfxProfileActive) ps2_gfx_profile_run_fence(op);
             u32 start = ps2_gfx_profile_enter();
             f3dex2_batch_end(&g_rdpState);
             ps2_gfx_profile_leave(GFX_PROFILE_TRI, start);
@@ -494,6 +495,7 @@ void rdp_to_gs_submit(void) {
 #endif
     ps2_gfx_profile_end();
     PS2TextureContentStats content = ps2_texture_content_stats(true);
+    ps2_texture_palette_hash_stats(true);
     static u32 frames;
     if (++frames <= 3 || frames % 300 == 0) {
 #if PS2_GFX_SCRATCHPAD

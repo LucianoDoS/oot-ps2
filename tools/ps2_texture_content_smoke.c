@@ -5,10 +5,12 @@
 #include "ps2_gfx_profile.h"
 #endif
 extern u32 ps2_texture_hash(const u8*, u32, u32);
+extern unsigned ps2_texture_content_test_slots(void);
+extern void ps2_texture_content_test_set_slots(unsigned slots);
 
 static u8 source[2][32784] __attribute__((aligned(64)));
 static u8 copy[32784] __attribute__((aligned(64)));
-static u8 evictions[96][2048] __attribute__((aligned(64)));
+static u8 evictions[129][2048] __attribute__((aligned(64)));
 
 /* The original renderer chained the second effect per row. Keep this
  * independent oracle rather than comparing two calls to the cache. */
@@ -72,15 +74,16 @@ static unsigned mutation_reuse_smoke(unsigned* hashes) {
 }
 static unsigned eviction_stats_smoke(unsigned* hashes) {
     unsigned failures = 0;
-    /* 65 small sources need one descriptor eviction, but their copies do
-     * not fill the ring. Nine 16 KiB windows fill the ring with spare slots. */
+    unsigned entries = ps2_texture_content_test_slots() + 1;
+    /* Capacity plus one small sources need one descriptor eviction; copies
+     * do not fill the ring. Nine 16 KiB windows fill it with spare slots. */
     ps2_texture_content_test_reset();
-    for (unsigned i = 0; i < 65; i++) {
+    for (unsigned i = 0; i < entries; i++) {
         PS2TextureSourceSpan span = {evictions[i], 256, 0, 1, false};
         failures += check_hash(&span, 1); (*hashes)++;
     }
     PS2TextureContentStats stats = ps2_texture_content_stats(false);
-    failures += stats.newSnapshots != 65 || stats.hashes != 65;
+    failures += stats.newSnapshots != entries || stats.hashes != entries;
     failures += stats.descriptorEvictions != 1 || stats.overlapEvictions != 0;
     ps2_texture_content_test_reset();
     for (unsigned i = 0; i < 9; i++) {
@@ -92,9 +95,42 @@ static unsigned eviction_stats_smoke(unsigned* hashes) {
     failures += stats.descriptorEvictions != 0 || stats.overlapEvictions != 1;
     return failures;
 }
+static unsigned descriptor_capacity_smoke(unsigned* hashes) {
+    unsigned failures = 0;
+    /* 96 source copies need 48 KiB, below the unchanged 128 KiB byte pool.
+     * This isolates descriptor pressure from ring capacity and mutations. */
+    ps2_texture_content_test_reset();
+    for (unsigned i = 0; i < 96; i++) {
+        PS2TextureSourceSpan span = {evictions[i], 512, 0, 1, false};
+        failures += check_hash(&span, 1); (*hashes)++;
+    }
+    PS2TextureContentStats stats = ps2_texture_content_stats(true);
+    failures += stats.hashes != 96 || stats.newSnapshots != 96;
+    failures += stats.descriptorEvictions != 0 || stats.overlapEvictions != 0;
+    for (unsigned pass = 0; pass < 4; pass++) for (unsigned i = 0; i < 96; i++) {
+        PS2TextureSourceSpan span = {evictions[i], 512, 0, 1, false};
+        failures += check_hash(&span, 1); (*hashes)++;
+    }
+    stats = ps2_texture_content_stats(false);
+    failures += stats.hits != 384 || stats.hashes != 0 || stats.newSnapshots != 0;
+    failures += stats.descriptorEvictions != 0 || stats.overlapEvictions != 0;
+    for (unsigned i = 0; i < 96; i++) {
+        PS2TextureSourceSpan span = {evictions[i], 512, 0, 1, false};
+        evictions[i][511] ^= 0x81;
+        failures += check_hash(&span, 1); (*hashes)++;
+        failures += check_hash(&span, 1); (*hashes)++;
+    }
+    stats = ps2_texture_content_stats(false);
+    failures += stats.hits != 480 || stats.hashes != 96 || stats.mutations != 96;
+    failures += stats.hashedBytes != 96u * 512u || stats.newSnapshots != 0;
+    failures += stats.descriptorEvictions != 0 || stats.overlapEvictions != 0;
+    printf("[PS2 TEXTURE DESCRIPTORS TEST] sources=96 copyBytes=49152 warmHits=384 mutations=96 failures=%u\n", failures);
+    return failures;
+}
 
 int ps2_texture_content_smoke(void) {
     unsigned failures = 0, comparisons = 0, hashes = 0;
+    ps2_texture_content_test_set_slots(128);
     ps2_texture_content_test_enable(true);
     ps2_texture_content_test_reset();
     for (unsigned i = 0; i < sizeof(source[0]); i++) {
@@ -162,10 +198,11 @@ int ps2_texture_content_smoke(void) {
     }
     failures += mutation_reuse_smoke(&hashes);
     /* Descriptor replacement, pool wrap, RAM reuse and same-pointer shape
-     * changes. More live sources than the 64 descriptors and 128 KiB pool. */
+     * changes pressure the 128 descriptors and unchanged 128 KiB pool. */
     ps2_texture_content_test_reset();
-    for (unsigned i = 0; i < 96; i++) for (unsigned j = 0; j < 2048; j++)
+    for (unsigned i = 0; i < 129; i++) for (unsigned j = 0; j < 2048; j++)
         evictions[i][j] = (i * 37 + j * 71 + (j >> 8)) & 255;
+    failures += descriptor_capacity_smoke(&hashes);
     failures += eviction_stats_smoke(&hashes);
     ps2_texture_content_test_reset();
     for (unsigned pass = 0; pass < 5; pass++) for (unsigned i = 0; i < 96; i++) {
@@ -193,6 +230,35 @@ int ps2_texture_content_smoke(void) {
     printf("[PS2 TEXTURE CONTENT TEST] comparisons=%u hashes=%u alignment, every byte, strided/pair mutation, in-place reuse, padding, shape and bounded evictions failures=%u\n",
         comparisons, hashes, failures);
 #ifdef _EE
+    u32 referenceChecksum = 0;
+    for (unsigned i = 0; i < 96; i++) {
+        PS2TextureSourceSpan span = {evictions[i], 512, 0, 1, false};
+        referenceChecksum += reference_hash(&span, 1) * 100u;
+    }
+    for (unsigned slots = 64; slots <= 128; slots *= 2) {
+        ps2_texture_content_test_set_slots(slots);
+        ps2_texture_content_test_reset();
+        ps2_texture_content_test_enable(true);
+        for (unsigned i = 0; i < 96; i++) {
+            PS2TextureSourceSpan span = {evictions[i], 512, 0, 1, false};
+            failures += check_hash(&span, 1);
+        }
+        ps2_texture_content_stats(true);
+        u32 checksum = 0, start = ps2_gfx_cycles();
+        for (unsigned repeat = 0; repeat < 100; repeat++) for (unsigned i = 0; i < 96; i++) {
+            PS2TextureSourceSpan span = {evictions[i], 512, 0, 1, false};
+            checksum += ps2_texture_content_hash(&span, 1);
+        }
+        u32 cycles = ps2_gfx_cycles() - start;
+        PS2TextureContentStats stats = ps2_texture_content_stats(false);
+        failures += checksum != referenceChecksum;
+        failures += stats.hits != (slots == 128 ? 9600u : 0u);
+        failures += stats.hashes != (slots == 128 ? 0u : 9600u);
+        printf("[PS2 TEXTURE DESCRIPTORS BENCH] slots=%u sources=96 copyBytes=49152 calls=9600 cycles=%u exactHits=%u hashes=%u descriptorEvictions=%u overlapEvictions=%u checksum=%08x failures=%u\n",
+            slots, cycles, stats.hits, stats.hashes, stats.descriptorEvictions,
+            stats.overlapEvictions, checksum, failures);
+    }
+    ps2_texture_content_test_set_slots(128);
     const unsigned lengths[] = {256, 2048, 8192};
     for (unsigned offset = 0; offset <= 3; offset += 3) {
         for (unsigned size = 0; size < 3; size++) {

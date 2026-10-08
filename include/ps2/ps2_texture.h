@@ -12,10 +12,16 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp);
 u32 ps2_texture_hash(const u8* source, u32 bytes, u32 seed);
 void ps2_texture_end_frame(RDPState* rdp);
 void ps2_texture_profile_cache(void);
+typedef struct {
+    u32 hits, builds, changedEntries;
+} PS2PaletteHashStats;
+/* Hashes describe decoded CLUT contents; every TLUT load still reads RAM. */
+PS2PaletteHashStats ps2_texture_palette_hash_stats(bool reset);
 #ifdef PS2_RENDERER_SMOKE_CAPTURE
 unsigned ps2_texture_test_cache_capacity(void);
 unsigned ps2_texture_test_combiner_lookup(const RDPState* rdp, u8 values[4][256]);
 void ps2_texture_test_combiner_rgba16(const RDPState* rdp, u32 values[4][32]);
+int ps2_texture_palette_hash_smoke(void);
 #endif
 void ps2_texture_load_tlut(const u8* tlut_src, int count);
 void ps2_texture_load_tlut_at(const u8* tlut_src, int first, int count);

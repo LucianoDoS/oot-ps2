@@ -11,6 +11,7 @@ enum { GFX_PROFILE_VTX, GFX_PROFILE_TRI, GFX_PROFILE_RECT,
        GFX_PROFILE_ANALYSIS,
        GFX_PROFILE_KEY, GFX_PROFILE_PACKET, GFX_PROFILE_WRAP,
        GFX_PROFILE_DRAW_SETUP, GFX_PROFILE_TILE, GFX_PROFILE_METADATA,
+       GFX_PROFILE_PALETTE,
        GFX_PROFILE_COUNT };
 extern bool gPS2GfxProfileActive;
 extern u32 gPS2GfxProfileCycles[GFX_PROFILE_COUNT];
@@ -41,6 +42,7 @@ void ps2_gfx_profile_begin(void);
 void ps2_gfx_profile_enable(bool enabled);
 void ps2_gfx_profile_sample_every(unsigned frames);
 void ps2_gfx_profile_end(void);
+void ps2_gfx_profile_run_fence(u32 opcode);
 void ps2_gfx_profile_texture_miss(u32 source, u32 prim, u32 env,
     unsigned width, unsigned height, unsigned fmt, unsigned siz,
     unsigned reason, bool paired);

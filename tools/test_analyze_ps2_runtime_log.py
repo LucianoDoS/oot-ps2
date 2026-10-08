@@ -154,6 +154,26 @@ tMs=2000 [PS2 DRAW SETUP PROFILE] frame=600 setupUs=12 setupCalls=3 tileUs=70 ti
         self.assertEqual(report['texture_content_snapshots'][0]['overlapEvictions'], 5)
         self.assertEqual(len(report['damaged_lines']), 1)
 
+    def test_palette_profile_requires_complete_fields(self):
+        log = """OOT PS2 runtime log v3 test
+tMs=1000 [PS2 PALETTE HASH PROFILE] frame=300 timeUs=12 calls=20 hits=19 builds=1 changedEntries=16
+tMs=2000 [PS2 PALETTE HASH PROFILE] frame=600 timeUs=12 calls=20 hits=19 builds=1
+"""
+        report = analyze(log)
+        self.assertEqual(len(report['palette_hash_profiles']), 1)
+        self.assertEqual(report['palette_hash_profiles'][0]['hits'], 19)
+        self.assertEqual(len(report['damaged_lines']), 1)
+
+    def test_material_fences_require_complete_fields(self):
+        log = """OOT PS2 runtime log v3 test
+tMs=1000 [PS2 MATERIAL RUN PROFILE] frame=300 vtxFences=12 dlFences=20 endFences=19 otherFences=10
+tMs=2000 [PS2 MATERIAL RUN PROFILE] frame=600 vtxFences=12 dlFences=20 endFences=19
+"""
+        report = analyze(log)
+        self.assertEqual(len(report['material_run_profiles']), 1)
+        self.assertEqual(report['material_run_profiles'][0]['vtxFences'], 12)
+        self.assertEqual(len(report['damaged_lines']), 1)
+
 
 if __name__ == '__main__':
     unittest.main()
