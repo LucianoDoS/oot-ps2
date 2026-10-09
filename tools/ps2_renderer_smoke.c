@@ -35,6 +35,47 @@ extern int ps2_vertex_index_smoke(void);
 extern int ps2_combiner_analysis_smoke(void);
 extern int ps2_texture_cache_key_smoke(void);
 
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+/* Ignored syncs may join primitives, but ENV/PRIM must still split a run.
+ * The historical per-command fence path is an independent point oracle. */
+static int material_fence_smoke(void) {
+    static RSPState savedRsp;
+    static RDPState savedRdp;
+    static GSPRIMSTQPOINT reference[12];
+    const u32 commands[][2] __attribute__((aligned(8)))={
+        {0x05000204,0},{0xe7000000,0},{0x05000204,0},
+        {0xfb000000,0x20406080},{0x05000204,0},
+        {0xe6000000,0},{0xe7000000,0},{0xe8000000,0},{0xe9000000,0},
+        {0xfa000000,0xffffff72},{0x05000204,0},{0xdf000000,0}};
+    savedRsp=g_rspState; savedRdp=g_rdpState;
+    unsigned referenceCount=0; int failures=0;
+    for (unsigned path=0;path<2;path++) {
+        g_rspState=savedRsp; g_rdpState=savedRdp;
+        ps2_gs_state_reset(); rdp_apply_othermode(&g_rdpState);
+        rdp_to_gs_test_run_reference(path==0); f3dex2_test_capture(true);
+        u32 beforeDraw=g_rdpState.stats.submitted;
+        u32 beforePackets=g_rdpState.stats.texturePackets+g_rdpState.stats.colorPackets;
+        rdp_to_gs_exec((const Gfx*)commands);
+        unsigned count; const GSPRIMSTQPOINT* points=f3dex2_test_points(&count);
+        unsigned packets=g_rdpState.stats.texturePackets+g_rdpState.stats.colorPackets-beforePackets;
+        failures+=g_rdpState.stats.submitted-beforeDraw!=4 || packets!=(path?3:4);
+        failures+=g_rdpState.envColor!=0x20406080 || g_rdpState.primColor!=0xffffff72;
+        failures+=count!=12;
+        if (!path) {
+            referenceCount=count;
+            if (count==12) memcpy(reference,points,sizeof(reference));
+        } else if (count==12 && referenceCount==12)
+            failures+=memcmp(reference,points,sizeof(reference))!=0;
+    }
+    rdp_to_gs_test_run_reference(false); f3dex2_test_capture(false);
+    g_rspState=savedRsp; g_rdpState=savedRdp;
+    ps2_gs_state_reset(); rdp_apply_othermode(&g_rdpState);
+    printf("[PS2 MATERIAL FENCE TEST] textured=%u four syncs, ENV/PRIM boundaries, root END and exact point order failures=%d\n",
+        (unsigned)savedRsp.texEnabled,failures);
+    return failures;
+}
+#endif
+
 static void matrix(short* out, float scale, float translate) {
     memset(out, 0, 64);
     for (int i = 0; i < 16; i++) {
@@ -1009,13 +1050,18 @@ int ps2_renderer_smoke(void) {
         g_rdpState.stats.texturePackets != beforePackets + 1) failures++;
     const u32 boundaryDL[][2] __attribute__((aligned(8))) = {
         {0x05000204,0},{0xfb000000,0x80808080},{0x05000204,0},
-        {0xe7000000,0},{0x05000204,0},{0xdf000000,0}
+        {0xe6000000,0},{0xe7000000,0},{0xe8000000,0},{0xe9000000,0},
+        {0x05000204,0},{0xdf000000,0}
     };
     beforePackets = g_rdpState.stats.texturePackets;
     beforeDraw = g_rdpState.stats.submitted;
     rdp_to_gs_exec((const Gfx*)boundaryDL);
     if (g_rdpState.stats.submitted != beforeDraw + 3 ||
-        g_rdpState.stats.texturePackets != beforePackets + 3) failures++;
+        g_rdpState.stats.texturePackets != beforePackets + 2 ||
+        g_rdpState.envColor != 0x80808080) failures++;
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+    failures+=material_fence_smoke();
+#endif
     u32 capacityDL[23][2] __attribute__((aligned(8)));
     for (int i = 0; i < 21; i++) {
         capacityDL[i][0] = 0x05000204; capacityDL[i][1] = 0;
@@ -1148,8 +1194,11 @@ int ps2_renderer_smoke(void) {
     g_rspState=pointState; g_rspState.texEnabled=false; g_rspState.geometryMode=0;
     rdp_setothermode(0,0x30,&g_rdpState);
     u32 packets=g_rdpState.stats.colorPackets;
+    beforeDraw=g_rdpState.stats.submitted;
     rdp_to_gs_exec((const Gfx*)boundaryDL);
-    if (g_rdpState.stats.colorPackets-packets!=3) failures++;
+    if (g_rdpState.stats.colorPackets-packets!=2 ||
+        g_rdpState.stats.submitted-beforeDraw!=3 || g_rdpState.envColor!=0x80808080) failures++;
+    failures+=material_fence_smoke();
     u32 start=ps2_gfx_cycles();
     for (unsigned i=0;i<100;i++) f3dex2_tri2(0x06000204,0x00000204,&g_rspState,&g_rdpState);
     u32 immediate=ps2_gfx_cycles()-start;

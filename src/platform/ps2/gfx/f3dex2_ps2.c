@@ -423,6 +423,8 @@ static void capture_color_points(const GSPRIMPOINT* points) {
 #ifdef PS2_RENDERER_SMOKE_CAPTURE
 static bool s_indexReference;
 void f3dex2_test_index_reference(bool enabled) { s_indexReference = enabled; }
+static bool s_batchCopyReference;
+void f3dex2_test_batch_copy_reference(bool enabled) { s_batchCopyReference = enabled; }
 /* The old pointer/stride calculation is kept only for the EE output oracle. */
 static int reference_vertex_slot(const RSPState* rsp, const RSPVertex* vertex) {
     uintptr_t address=(uintptr_t)vertex, base=(uintptr_t)rsp->vtx;
@@ -597,6 +599,14 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
     bool pointReady[3] = {false,false,false};
     int pointSlots[3] = {-1,-1,-1};
     GSPRIMSTQPOINT texturePoints[3] __attribute__((aligned(8)));
+    GSPRIMSTQPOINT* points=texturePoints;
+    /* The unused batch tail is safe until the count commits below. Keep the
+     * temporary for overflow so the existing flush stays in draw order. */
+    if (rsp->texEnabled && s_tri2Batch && !s_runGround && s_tri2Count+3<=60
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+        && !s_batchCopyReference
+#endif
+    ) points=s_tri2Points+s_tri2Count;
     /* The cached GS point already includes shade, alpha and depth. Look it
      * up before calculating those inputs again. Clipped temporaries and
      * per-triangle decal slopes still use the complete preparation path. */
@@ -604,7 +614,7 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
         for (unsigned i=0;i<3;i++) {
             int slot=pointSlots[i]=cacheSlots[i];
             if (slot>=0 && (s_runVertexValid & (1ull<<slot))) {
-                texturePoints[i]=s_runVertices[slot]; pointReady[i]=true;
+                points[i]=s_runVertices[slot]; pointReady[i]=true;
                 if (s_runGround) *colors[i]=s_runGroundColors[slot];
                 rdp->stats.textureVertexHits++;
             }
@@ -666,7 +676,6 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
         }
         if (!tile->gsTextureLoaded) { rdp->stats.textureFailed++; return; }
 
-        GSPRIMSTQPOINT* points=texturePoints;
         if (!s_triangleRun || !s_runTileBound || s_runGround) {
             apply_texture_tile(tile, rdp, false);
             if (s_triangleRun) s_runTileBound = true;
@@ -686,7 +695,8 @@ static void submit_vertices(RSPVertex* v0, RSPVertex* v1, RSPVertex* v2,
         if (s_tri2Batch) {
             if (s_tri2Count + 3 > 60) flush_tri2(rdp);
             if (!s_tri2Count) { s_tri2Texture = tile->gsTexture; s_tri2Fog = fog; }
-            memcpy(s_tri2Points + s_tri2Count, points, sizeof(texturePoints));
+            if (points != s_tri2Points+s_tri2Count)
+                memcpy(s_tri2Points+s_tri2Count, points, sizeof(texturePoints));
             s_tri2Count += 3;
         } else {
             submit_texture_packet(gs, &tile->gsTexture, 3, points, false);

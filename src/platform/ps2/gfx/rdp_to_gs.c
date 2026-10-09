@@ -217,8 +217,12 @@ static bool preserves_triangle_run(u8 op, int depth) {
 #endif
     /* Matrices affect the next vertex load, not vertices already transformed.
      * Loads invalidate their exact slots; queued packets contain copied points.
-     * Material, viewport, fog, targets and all other states remain fences. */
+     * The four RDP sync handlers below are already no-ops in this sequential
+     * interpreter. Actual loads/state changes still end the run before their
+     * GS writes or upload retirement. Targets/capture and root end are fences. */
     return op == G_VTX || op == G_MTX || op == G_POPMTX || op == G_DL ||
+           op == G_RDPLOADSYNC || op == G_RDPPIPESYNC ||
+           op == G_RDPTILESYNC || op == G_RDPFULLSYNC ||
            (op == G_ENDDL && depth > 0);
 }
 void rdp_to_gs_exec(const Gfx* dl) {

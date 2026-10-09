@@ -7,12 +7,152 @@
 #include "ps2_gfx_profile.h"
 #include "ps2_segment.h"
 
+static u64 s_tailArena[8192] __attribute__((aligned(64)));
+static u64 s_tailPackets[8192] __attribute__((aligned(64)));
+static volatile u32 s_tailSink;
+static void tail_queue_reset(GSQUEUE* queue) {
+    memset(queue,0,sizeof(*queue));
+    memset(s_tailArena,0,sizeof(s_tailArena));
+    queue->pool[0]=s_tailArena; queue->pool_max[0]=s_tailArena+8192;
+    queue->dma_tag=s_tailArena; queue->pool_cur=s_tailArena+2;
+    queue->last_type=GIF_RESERVED;
+}
+
+/* Compare the actual interpreter with only the output destination changed.
+ * A private queue and preloaded, uncached descriptor prevent uploads, cache
+ * retirement or synthetic packets from reaching the real GS queue. */
+static unsigned batch_tail_smoke(void) {
+    static RSPState savedRsp, initialRsp;
+    static RDPState savedRdp, initialRdp;
+    static GSPRIMSTQPOINT reference[600];
+    static struct { u32 commands[64][2]; u16 vertex[8]; } data
+        __attribute__((aligned(16)));
+    savedRsp=g_rspState; savedRdp=g_rdpState;
+    uintptr_t oldSegment=gRspSegments[14];
+    gRspSegments[14]=(uintptr_t)&data;
+    GSGLOBAL initialGs=*savedRdp.gs, gs=initialGs;
+    __typeof__(*gs.Clamp) clamp;
+    GSQUEUE queue;
+    gs.Clamp=&clamp; gs.CurQueue=&queue;
+    initialGs=gs;
+    memset(&initialRsp,0,sizeof(initialRsp));
+    initialRsp.texEnabled=true; initialRsp.texScaleS=0.75f; initialRsp.texScaleT=0.5f;
+    initialRsp.vpScaleX=30; initialRsp.vpScaleY=-30;
+    initialRsp.vpTransX=initialRsp.vpTransY=100;
+    for (unsigned i=0;i<16;i++) initialRsp.mvp[i]=i%5==0?1:0;
+    for (unsigned i=0;i<3;i++) initialRsp.vtx[i]=(RSPVertex){
+        .valid=true,.cw=2,.cx=(int)i-1,.cy=i==1?0.5f:-0.5f,.cz=0.25f*i,
+        .sz=0.25f*i,.sx=100+i*10,.sy=i==1?110:100,
+        .tc_s=(int)i*321-71,.tc_t=(int)i*157-321,
+        .cr=29+i*91,.cg=229-i*73,.cb=53+i*71,.ca=83+i*63};
+    memset(&initialRdp,0,sizeof(initialRdp));
+    initialRdp.gs=&gs; initialRdp.primColor=0xffffffff;
+    initialRdp.otherMode.hi=1u<<19; initialRdp.otherMode.lo=0xc8112078u;
+    initialRdp.combiner.w0=0xfc119623u; initialRdp.combiner.w1=0xff2fffffu;
+    initialRdp.tile[0]=(TileDescriptor){.fmt=G_IM_FMT_RGBA,.siz=G_IM_SIZ_16b,
+        .width=2,.height=2,.masks=1,.maskt=1,.gsTextureLoaded=true,.cacheSlot=0xffff,
+        .gsTexture={.Width=2,.Height=2,.Vram=0x8000,.TBW=1,.PSM=GS_PSM_CT32}};
+    memset(&data,0,sizeof(data));
+    data.vertex[0]=1; data.vertex[1]=1; data.vertex[4]=117; data.vertex[5]=231;
+    u8* color=(u8*)data.vertex+12;
+    color[0]=61; color[1]=179; color[2]=93; color[3]=211;
+    unsigned failures=0,pointsCompared=0;
+    rdp_to_gs_test_run_reference(false);
+    for (unsigned fixture=0;fixture<4;fixture++) {
+        unsigned commands=0;
+        for (unsigned draw=0;draw<27;draw++) {
+            if (fixture==1 && draw==10) {
+                data.commands[commands][0]=0xe6000000; data.commands[commands++][1]=0;
+                data.commands[commands][0]=0x01001004;
+                data.commands[commands++][1]=0x0e000000u|(u32)offsetof(__typeof__(data),vertex);
+                data.commands[commands][0]=0xe7000000; data.commands[commands++][1]=0;
+            }
+            data.commands[commands][0]=draw%7==0?0x05000004:0x05000204;
+            data.commands[commands++][1]=0;
+            data.commands[commands][0]=(0xe6u+(draw&3))<<24;
+            data.commands[commands++][1]=0;
+        }
+        data.commands[commands][0]=0xdf000000; data.commands[commands][1]=0;
+        unsigned referenceCount=0,referenceBytes=0,referencePackets=0;
+        __typeof__(initialRdp.stats) referenceStats;
+        for (unsigned path=0;path<2;path++) {
+            gs=initialGs; tail_queue_reset(&queue);
+            memset(&clamp,0,sizeof(clamp)); ps2_gs_state_reset();
+            g_rspState=initialRsp; g_rdpState=initialRdp;
+            if (fixture==2) { g_rspState.vtx[0].cx=-6; g_rspState.vtx[0].clipFlags=1; }
+            f3dex2_test_batch_copy_reference(path==0); f3dex2_test_capture(true);
+            rdp_to_gs_exec((const Gfx*)data.commands);
+            unsigned dlPoints; f3dex2_test_points(&dlPoints);
+            /* All four ignored syncs retain capacity grouping; only overflow
+             * and root END flush these unchanged-material display lists. */
+            failures+=g_rdpState.stats.texturePackets!=(dlPoints+59)/60;
+            if (fixture==3) {
+                /* Fail at 57 queued points, then reuse the same uncommitted
+                 * tail. The old packet and the next triangle must survive. */
+                f3dex2_batch_begin(&g_rspState,&g_rdpState);
+                for (unsigned draw=0;draw<30;draw++) {
+                    g_rdpState.tile[0].gsTextureLoaded=draw!=19;
+                    f3dex2_tri1(0x05000204,0,&g_rspState,&g_rdpState);
+                }
+                f3dex2_batch_end(&g_rdpState);
+            }
+            unsigned count; const GSPRIMSTQPOINT* points=f3dex2_test_points(&count);
+            unsigned bytes=(u8*)queue.pool_cur-(u8*)s_tailArena;
+            unsigned packets=g_rdpState.stats.texturePackets;
+            if (!path) {
+                referenceCount=count; referenceBytes=bytes; referencePackets=packets;
+                referenceStats=g_rdpState.stats;
+                memcpy(reference,points,count*sizeof(*points));
+                memcpy(s_tailPackets,s_tailArena,bytes);
+            } else {
+                failures+=count!=referenceCount || memcmp(reference,points,count*sizeof(*points));
+                failures+=bytes!=referenceBytes || memcmp(s_tailPackets,s_tailArena,bytes);
+                failures+=packets!=referencePackets || packets<2;
+                failures+=memcmp(&referenceStats,&g_rdpState.stats,sizeof(referenceStats))!=0;
+                failures+=fixture==3 && g_rdpState.stats.textureFailed!=1;
+                pointsCompared+=count;
+            }
+        }
+    }
+    f3dex2_test_capture(false);
+    /* Both kernels execute runtime display lists and create complete packets.
+     * Reset identical descriptors/queues outside timing and alternate order. */
+    for (unsigned i=0;i<27;i++) {
+        data.commands[i*2][0]=i%7==0?0x05000004:0x05000204; data.commands[i*2][1]=0;
+        data.commands[i*2+1][0]=(0xe6u+(i&3))<<24; data.commands[i*2+1][1]=0;
+    }
+    data.commands[54][0]=0xdf000000; data.commands[54][1]=0;
+    u32 cycles[2]={0,0},checksums[2]={0,0};
+    for (unsigned repeat=0;repeat<32;repeat++) for (unsigned pass=0;pass<2;pass++) {
+        unsigned path=pass^(repeat&1);
+        gs=initialGs; tail_queue_reset(&queue);
+        memset(&clamp,0,sizeof(clamp)); ps2_gs_state_reset();
+        g_rspState=initialRsp; g_rdpState=initialRdp;
+        f3dex2_test_batch_copy_reference(path==0);
+        u32 start=ps2_gfx_cycles(); rdp_to_gs_exec((const Gfx*)data.commands);
+        cycles[path]+=ps2_gfx_cycles()-start;
+        unsigned words=((u8*)queue.pool_cur-(u8*)s_tailArena)/sizeof(u64);
+        for (unsigned i=2;i<words;i++) checksums[path]+=(u32)s_tailArena[i]^(u32)(s_tailArena[i]>>32);
+        s_tailSink=checksums[path];
+    }
+    failures+=checksums[0]!=checksums[1];
+    f3dex2_test_batch_copy_reference(false); f3dex2_test_capture(false);
+    g_rspState=savedRsp; g_rdpState=savedRdp; gRspSegments[14]=oldSegment;
+    ps2_gs_state_reset();
+    printf("[PS2 BATCH TAIL TEST] cases=4 points=%u four RDP syncs, root END, overflow, repeated slots, partial loads, clipping, failed upload and packet bytes failures=%u\n",
+        pointsCompared,failures);
+    printf("[PS2 BATCH TAIL BENCH] triangles=864 referenceCycles=%u directCycles=%u checksum=%08x failures=%u (isolated interpreter, not frame time)\n",
+        cycles[0],cycles[1],(unsigned)s_tailSink,failures);
+    return failures;
+}
+
 /* Execute the real interpreter twice. The reference keeps every historical
  * fence; compare copied GS points, final transformed vertices and draw order.
- * Nested calls/branches and matrix changes bracket partial/full vertex loads. */
+ * Nested calls/branches and matrix changes bracket partial/full vertex loads.
+ * All four ignored RDP syncs appear around traversal, loads and material. */
 static int traversal_smoke(unsigned* cases, u32* referenceCycles, u32* reusedCycles) {
     static struct {
-        u32 root[8][2], child[7][2], leaf[10][2], tail[2][2];
+        u32 root[16][2], child[14][2], leaf[24][2], tail[6][2];
         u16 matrix[32], vertices[64][8];
     } data __attribute__((aligned(16)));
     static RSPState savedRsp, initialRsp, finalRsp;
@@ -33,20 +173,23 @@ static int traversal_smoke(unsigned* cases, u32* referenceCycles, u32* reusedCyc
     data.matrix[0]=data.matrix[5]=data.matrix[10]=data.matrix[15]=1;
     data.matrix[12]=1;
     const u32 root[][2] = {
-        {0x05000204,0},{0xde000000,ADDRESS(child)},{0x05000204,0},
-        {0xde000000,0x0f000001},{0xfb000000,64},{0x05000204,0},
+        {0x05000204,0},{0xe6000000,0},{0xde000000,ADDRESS(child)},
+        {0xe7000000,0},{0x05000204,0},{0xe8000000,0},
+        {0xde000000,0x0f000001},{0xe9000000,0},{0xfb000000,64},
+        {0xe6000000,0},{0x05000204,0},{0xe7000000,0},{0xe8000000,0},{0xe9000000,0},
         {0xdf000000,0}};
     const u32 child[][2] = {
-        {0xda000002,ADDRESS(matrix)},{0x05000204,0},
-        {0xde000000,ADDRESS(leaf)},{0xd8380002,64},
-        {0x05000204,0},{0xdf000000,0}};
+        {0xe8000000,0},{0xda000002,ADDRESS(matrix)},{0xe6000000,0},{0x05000204,0},
+        {0xe7000000,0},{0xde000000,ADDRESS(leaf)},{0xe9000000,0},{0xd8380002,64},
+        {0xe8000000,0},{0x05000204,0},{0xe6000000,0},{0xdf000000,0}};
     const u32 leaf[][2] = {
-        {0x01003006,ADDRESS(vertices)},{0x05000204,0},
-        {0x01001004,ADDRESS(vertices)+16*4},{0x05000204,0},
-        {0x01001080,ADDRESS(vertices)+16*63},{0x057e0204,0},
-        {0x01040080,ADDRESS(vertices)},{0x05000204,0},
-        {0xde010000,ADDRESS(tail)}};
-    const u32 tail[][2] = {{0x05000204,0},{0xdf000000,0}};
+        {0xe6000000,0},{0x01003006,ADDRESS(vertices)},{0xe7000000,0},{0x05000204,0},
+        {0xe8000000,0},{0x01001004,ADDRESS(vertices)+16*4},{0xe9000000,0},{0x05000204,0},
+        {0xe6000000,0},{0x01001080,ADDRESS(vertices)+16*63},{0xe7000000,0},{0x057e0204,0},
+        {0xe8000000,0},{0x01040080,ADDRESS(vertices)},{0xe9000000,0},{0x05000204,0},
+        {0xe6000000,0},{0xde010000,ADDRESS(tail)}};
+    const u32 tail[][2] = {
+        {0xe7000000,0},{0x05000204,0},{0xe8000000,0},{0xe9000000,0},{0xdf000000,0}};
     memcpy(data.root,root,sizeof(root)); memcpy(data.child,child,sizeof(child));
     memcpy(data.leaf,leaf,sizeof(leaf)); memcpy(data.tail,tail,sizeof(tail));
     unsigned failures=0;
@@ -56,6 +199,7 @@ static int traversal_smoke(unsigned* cases, u32* referenceCycles, u32* reusedCyc
         if (variant==2) rdp_setcombine(0xfcffffff,0xfffdf6fb,&g_rdpState);
         initialRsp=g_rspState; initialRdp=g_rdpState;
         unsigned referenceCount=0; u32 draws=0,packets=0,builds=0;
+        __typeof__(initialRdp.stats) referenceStats;
         for (unsigned path=0; path<2; path++) {
             g_rspState=initialRsp; g_rdpState=initialRdp;
             ps2_gs_state_reset(); rdp_apply_othermode(&g_rdpState);
@@ -73,6 +217,7 @@ static int traversal_smoke(unsigned* cases, u32* referenceCycles, u32* reusedCyc
                 *referenceCycles+=cycles; referenceCount=count;
                 memcpy(reference,points,count*sizeof(*points)); finalRsp=g_rspState;
                 draws=actualDraws; packets=actualPackets; builds=actualBuilds;
+                referenceStats=g_rdpState.stats;
             } else {
                 *reusedCycles+=cycles;
                 /* The cull-both fixture intentionally emits no points. */
@@ -83,6 +228,11 @@ static int traversal_smoke(unsigned* cases, u32* referenceCycles, u32* reusedCyc
                 if (variant==0) failures+=actualPackets!=packets;
                 else failures+=actualPackets>packets;
                 if (variant!=1) failures+=actualBuilds>builds;
+                failures+=g_rdpState.stats.triangles!=referenceStats.triangles ||
+                          g_rdpState.stats.culled!=referenceStats.culled ||
+                          g_rdpState.stats.clipped!=referenceStats.clipped ||
+                          g_rdpState.stats.invalid!=referenceStats.invalid ||
+                          g_rdpState.stats.textureFailed!=referenceStats.textureFailed;
                 (*cases)++;
             }
         }
@@ -194,7 +344,7 @@ int ps2_ground_run_smoke(void) {
     static const u8 overlay[16] __attribute__((aligned(16)))={
         0,0x3f,0xf8,1,0xff,0xff,7,0xc1,7,0xc1,0xff,0xff,0xf8,1,0,0x3f};
     savedRsp=g_rspState; savedRdp=g_rdpState;
-    int failures=texture_wrap_smoke();
+    int failures=texture_wrap_smoke()+batch_tail_smoke();
     u32 immediateCycles=0, reusedCycles=0;
     u32 traversalReference=0, traversalReused=0; unsigned traversalCases=0;
     for (unsigned fixture=0;fixture<8;fixture++) {
@@ -359,7 +509,7 @@ int ps2_ground_run_smoke(void) {
     g_rspState=savedRsp; g_rdpState=savedRdp;
     ps2_gs_state_reset(); rdp_apply_othermode(&g_rdpState);
     printf("[PS2 GROUND RUN TEST] points, layer order, packets, fog, perspective, alpha, decals, clipping and state fences failures=%d\n",failures);
-    printf("[PS2 TRAVERSAL RUN TEST] cases=%u referenceCycles=%u reusedCycles=%u nested calls, branches, matrices, partial/full/last-slot loads, material fences and copied points failures=%d\n",
+    printf("[PS2 TRAVERSAL RUN TEST] cases=%u referenceCycles=%u reusedCycles=%u four RDP syncs, root END, nested calls, branches, matrices, partial/full/last-slot loads, material fences and copied points failures=%d\n",
         traversalCases,traversalReference,traversalReused,failures);
     printf("[PS2 GROUND RUN BENCH] immediateCycles=%u reusedCycles=%u\n",
         (unsigned)immediateCycles,(unsigned)reusedCycles);

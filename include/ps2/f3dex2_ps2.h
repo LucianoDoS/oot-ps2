@@ -29,6 +29,8 @@ const GSPRIMSTQPOINT* f3dex2_test_points(unsigned* count);
 /* Force the original initial viewport calculation for differential tests. */
 void f3dex2_test_geometry_reference(bool enabled);
 void f3dex2_test_index_reference(bool enabled);
+/* Keep the historical temporary-plus-copy path for the batch-tail oracle. */
+void f3dex2_test_batch_copy_reference(bool enabled);
 void rdp_to_gs_test_run_reference(bool enabled);
 #endif
 void f3dex2_mtx(u32 w0, u32 w1, RSPState* rsp);

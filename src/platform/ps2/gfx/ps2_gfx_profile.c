@@ -26,10 +26,44 @@ typedef struct {
 static TextureMiss sMisses[24];
 static unsigned sMissCount;
 static unsigned sRunFences[4];
+enum {
+    FENCE_TEXTURE, FENCE_GEOMETRY, FENCE_MOVE_WORD, FENCE_MOVE_MEM,
+    FENCE_TIMG, FENCE_TILE, FENCE_TILE_SIZE, FENCE_LOAD, FENCE_TLUT,
+    FENCE_COMBINE, FENCE_PRIM, FENCE_ENV, FENCE_FOG, FENCE_BLEND,
+    FENCE_FILL, FENCE_OTHER_MODE, FENCE_SYNC, FENCE_NOOP, FENCE_OTHER,
+    FENCE_COUNT
+};
+static unsigned sOtherFences[FENCE_COUNT];
 void ps2_gfx_profile_run_fence(u32 opcode) {
-    /* This counts existing flushes; it does not change batching or order. */
+    if (!gPS2GfxProfileActive) return;
+    /* Count command boundaries, including empty runs. No batching changes. */
     unsigned kind = opcode == 0x01 ? 0 : opcode == 0xde ? 1 : opcode == 0xdf ? 2 : 3;
     sRunFences[kind]++;
+    if (kind != 3) return;
+    /* Opcode values match the F3DEX2/RDP interpreter in rdp_to_gs.c. Each
+     * otherFence belongs to exactly one category; VTX/DL/END stay separate. */
+    unsigned category = FENCE_OTHER;
+    switch (opcode) {
+        case 0xd7: category = FENCE_TEXTURE; break;
+        case 0xd9: category = FENCE_GEOMETRY; break;
+        case 0xdb: category = FENCE_MOVE_WORD; break;
+        case 0xdc: category = FENCE_MOVE_MEM; break;
+        case 0xfd: category = FENCE_TIMG; break;
+        case 0xf5: category = FENCE_TILE; break;
+        case 0xf2: category = FENCE_TILE_SIZE; break;
+        case 0xf3: case 0xf4: category = FENCE_LOAD; break;
+        case 0xf0: category = FENCE_TLUT; break;
+        case 0xfc: category = FENCE_COMBINE; break;
+        case 0xfa: category = FENCE_PRIM; break;
+        case 0xfb: category = FENCE_ENV; break;
+        case 0xf8: category = FENCE_FOG; break;
+        case 0xf9: category = FENCE_BLEND; break;
+        case 0xf7: category = FENCE_FILL; break;
+        case 0xef: case 0xe2: case 0xe3: category = FENCE_OTHER_MODE; break;
+        case 0xe6: case 0xe7: case 0xe8: case 0xe9: category = FENCE_SYNC; break;
+        case 0x00: category = FENCE_NOOP; break;
+    }
+    sOtherFences[category]++;
 }
 void ps2_gfx_profile_texture_miss(u32 source, u32 prim, u32 env,
     unsigned width, unsigned height, unsigned fmt, unsigned siz,
@@ -54,6 +88,7 @@ void ps2_gfx_profile_begin(void) {
         sStart = ps2_gfx_profile_enter();
         sMissCount = 0;
         memset(sRunFences,0,sizeof(sRunFences));
+        memset(sOtherFences,0,sizeof(sOtherFences));
     }
 }
 void ps2_gfx_profile_end(void) {
@@ -106,6 +141,17 @@ void ps2_gfx_profile_end(void) {
         palette.hits,palette.builds,palette.changedEntries);
     printf("[PS2 MATERIAL RUN PROFILE] frame=%u vtxFences=%u dlFences=%u endFences=%u otherFences=%u\n",
         sFrame,sRunFences[0],sRunFences[1],sRunFences[2],sRunFences[3]);
+    /* Two complete records fit the 320-byte runtime logger even at UINT_MAX. */
+    printf("[PS2 MATERIAL FENCE PROFILE] frame=%u texture=%u geometry=%u moveWord=%u moveMem=%u timg=%u tile=%u tileSize=%u load=%u tlut=%u\n",
+        sFrame,sOtherFences[FENCE_TEXTURE],sOtherFences[FENCE_GEOMETRY],
+        sOtherFences[FENCE_MOVE_WORD],sOtherFences[FENCE_MOVE_MEM],sOtherFences[FENCE_TIMG],
+        sOtherFences[FENCE_TILE],sOtherFences[FENCE_TILE_SIZE],sOtherFences[FENCE_LOAD],
+        sOtherFences[FENCE_TLUT]);
+    printf("[PS2 MATERIAL FENCE STATE PROFILE] frame=%u combine=%u prim=%u env=%u fog=%u blend=%u fill=%u otherMode=%u sync=%u noop=%u other=%u\n",
+        sFrame,sOtherFences[FENCE_COMBINE],sOtherFences[FENCE_PRIM],
+        sOtherFences[FENCE_ENV],sOtherFences[FENCE_FOG],sOtherFences[FENCE_BLEND],
+        sOtherFences[FENCE_FILL],sOtherFences[FENCE_OTHER_MODE],sOtherFences[FENCE_SYNC],
+        sOtherFences[FENCE_NOOP],sOtherFences[FENCE_OTHER]);
     for (unsigned i=0;i<sMissCount;i++) {
         const TextureMiss* miss=&sMisses[i];
         printf("[PS2 TEXTURE MISS] frame=%u source=%08x size=%ux%u fmt=%u siz=%u reason=%u paired=%u prim=%08x env=%08x\n",

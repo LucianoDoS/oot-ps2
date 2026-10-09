@@ -11,6 +11,22 @@ extern void ps2_texture_content_test_set_slots(unsigned slots);
 static u8 source[2][32784] __attribute__((aligned(64)));
 static u8 copy[32784] __attribute__((aligned(64)));
 static u8 evictions[129][2048] __attribute__((aligned(64)));
+#ifdef _EE
+static u8 compareCopies[96][512] __attribute__((aligned(64)));
+#endif
+
+/* Volatile byte reads keep this independent oracle bounded to the exact
+ * requested interval; it cannot be folded into the MMI comparator. */
+static __attribute__((noinline)) bool reference_equal(const u8* source, const u8* saved, unsigned bytes) {
+    const volatile u8* input = source;
+    const volatile u8* copy = saved;
+    for (unsigned i = 0; i < bytes; i++) if (input[i] != copy[i]) return false;
+    return true;
+}
+static unsigned check_equal(const u8* input, const u8* saved, unsigned bytes, unsigned* cases) {
+    (*cases)++;
+    return reference_equal(input, saved, bytes) != ps2_texture_content_test_equal(input, saved, bytes);
+}
 
 /* The original renderer chained the second effect per row. Keep this
  * independent oracle rather than comparing two calls to the cache. */
@@ -29,6 +45,147 @@ static u32 reference_hash(const PS2TextureSourceSpan* spans, unsigned count) {
 static unsigned check_hash(const PS2TextureSourceSpan* spans, unsigned count) {
     return reference_hash(spans, count) != ps2_texture_content_hash(spans, count);
 }
+static unsigned compare_matrix_smoke(void) {
+    const unsigned lengths[] = {0, 1, 7, 8, 15, 16, 17, 31, 32, 63, 64, 65,
+        127, 128, 129, 143, 144, 145, 191, 192, 193, 255, 256, 257,
+        271, 272, 273, 383, 384, 385, 511, 512, 513};
+    const unsigned widths[] = {63, 64, 65, 127, 128, 129, 255, 256, 257};
+    const unsigned fallbackLengths[] = {63, 127, 255, 513};
+    unsigned failures = 0, cases = 0, hashCases = 0;
+    for (unsigned block = 64; block <= 256; block *= 2) {
+        ps2_texture_content_test_set_compare_bytes(block);
+        failures += ps2_texture_content_test_compare_bytes() != block;
+        for (unsigned offset = 0; offset < 16; offset++) {
+            const u8* input = source[0] + 32 + offset;
+            u8* saved = copy + 32;
+            for (unsigned size = 0; size < sizeof(lengths) / sizeof(lengths[0]); size++) {
+                unsigned bytes = lengths[size];
+                memcpy(saved, input, bytes);
+                /* Excluded sentinels catch accidentally compared prefix/tail
+                 * bytes. They do not prove unused loads absent: inspect the
+                 * EE load offsets and whole-block guards after compilation. */
+                saved[-1] = input[-1] ^ 0xff;
+                saved[bytes] = input[bytes] ^ 0xff;
+                failures += check_equal(input, saved, bytes, &cases);
+                for (unsigned position = 0; position < bytes; position++) {
+                    saved[position] ^= 0x81;
+                    failures += check_equal(input, saved, bytes, &cases);
+                    saved[position] ^= 0x81;
+                }
+                if (bytes >= block) {
+                    const unsigned distances[] = {16, block / 2, block - 16};
+                    for (unsigned distance = 0; distance < 3; distance++) {
+                        for (unsigned position = 0; position < 16; position++) {
+                            saved[position] ^= 0x81;
+                            saved[position + distances[distance]] ^= 0x81;
+                            failures += check_equal(input, saved, bytes, &cases);
+                            saved[position] ^= 0x81;
+                            saved[position + distances[distance]] ^= 0x81;
+                        }
+                    }
+                }
+            }
+            /* Every unaligned saved-copy offset must retain scalar fallback. */
+            for (unsigned savedOffset = 1; savedOffset < 16; savedOffset++) {
+                saved = copy + 32 + savedOffset;
+                for (unsigned size = 0; size < sizeof(fallbackLengths) / sizeof(fallbackLengths[0]); size++) {
+                    unsigned bytes = fallbackLengths[size];
+                    memcpy(saved, input, bytes);
+                    saved[-1] = input[-1] ^ 0xff;
+                    saved[bytes] = input[bytes] ^ 0xff;
+                    failures += check_equal(input, saved, bytes, &cases);
+                    saved[0] ^= 0x81;
+                    failures += check_equal(input, saved, bytes, &cases);
+                    saved[0] ^= 0x81;
+                    saved[bytes - 1] ^= 0x81;
+                    failures += check_equal(input, saved, bytes, &cases);
+                    saved[bytes - 1] ^= 0x81;
+                }
+            }
+            for (unsigned size = 0; size < sizeof(widths) / sizeof(widths[0]); size++) {
+                unsigned width = widths[size];
+                PS2TextureSourceSpan spans[2] = {
+                    {source[0] + 8192 + offset, width, width + 19, 5, false},
+                    {source[1] + 8192 + 15 - offset, width + 3, width + 23, 5, true}
+                };
+                ps2_texture_content_test_reset();
+                failures += check_hash(spans, 2); hashCases++;
+                failures += check_hash(spans, 2); hashCases++;
+                u8* padding = (u8*)spans[0].source;
+                padding[width] ^= 0x80;
+                failures += check_hash(spans, 2); hashCases++;
+                padding[width] ^= 0x80;
+                for (unsigned inputIndex = 0; inputIndex < 2; inputIndex++) {
+                    PS2TextureSourceSpan* span = &spans[inputIndex];
+                    u8* mutable = (u8*)span->source;
+                    for (unsigned row = 0; row < span->rows; row++) {
+                        unsigned at = row * span->stride + span->rowBytes - 1;
+                        mutable[at] ^= 0x5b;
+                        failures += check_hash(spans, 2); hashCases++;
+                        failures += check_hash(spans, 2); hashCases++;
+                        mutable[at] ^= 0x5b;
+                        failures += check_hash(spans, 2); hashCases++;
+                    }
+                }
+                PS2TextureContentStats stats = ps2_texture_content_stats(false);
+                failures += stats.hits != 12 || stats.hashes != 21 || stats.mutations != 20;
+                failures += stats.newSnapshots != 1 || stats.descriptorEvictions != 0 || stats.overlapEvictions != 0;
+            }
+        }
+    }
+    ps2_texture_content_test_set_compare_bytes(256);
+    ps2_texture_content_test_reset();
+    printf("[PS2 TEXTURE COMPARE TEST] blocks=64,128,256 alignments=16 savedAlignments=16 cases=%u hashCases=%u excludedSentinels=1 failures=%u\n",
+        cases, hashCases, failures);
+    return failures;
+}
+#ifdef _EE
+static unsigned compare_bench_smoke(void) {
+    const unsigned lengths[] = {256, 2048, 8192, 16384};
+    const unsigned offsets[] = {0, 3, 4, 8};
+    unsigned failures = 0;
+    for (unsigned offsetIndex = 0; offsetIndex < 4; offsetIndex++) {
+        unsigned offset = offsets[offsetIndex];
+        for (unsigned size = 0; size < 4; size++) {
+            unsigned bytes = lengths[size];
+            const u8* input = source[0] + offset;
+            memcpy(copy, input, bytes);
+            failures += !reference_equal(input, copy, bytes);
+            for (unsigned block = 64; block <= 256; block *= 2) {
+                ps2_texture_content_test_set_compare_bytes(block);
+                PS2TextureContentCompare compare = ps2_texture_content_test_comparator();
+                failures += !compare(input, copy, bytes);
+                u32 checksum = 0, start = ps2_gfx_cycles();
+                for (unsigned repeat = 0; repeat < 1000; repeat++) checksum += compare(input, copy, bytes);
+                u32 cycles = ps2_gfx_cycles() - start;
+                failures += checksum != 1000;
+                printf("[PS2 TEXTURE COMPARE BENCH] set=single block=%u offset=%u bytes=%u calls=1000 cycles=%u checksum=%u failures=%u\n",
+                    block, offset, bytes, cycles, checksum, failures);
+            }
+        }
+        /* A 48 KiB saved-copy working set plus 96 RAM windows exercises
+         * repeated streams beyond a single small warm comparison buffer. */
+        for (unsigned i = 0; i < 96; i++) {
+            memcpy(compareCopies[i], evictions[i] + offset, 512);
+            failures += !reference_equal(evictions[i] + offset, compareCopies[i], 512);
+        }
+        for (unsigned block = 64; block <= 256; block *= 2) {
+            ps2_texture_content_test_set_compare_bytes(block);
+            PS2TextureContentCompare compare = ps2_texture_content_test_comparator();
+            for (unsigned i = 0; i < 96; i++) failures += !compare(evictions[i] + offset, compareCopies[i], 512);
+            u32 checksum = 0, start = ps2_gfx_cycles();
+            for (unsigned repeat = 0; repeat < 100; repeat++) for (unsigned i = 0; i < 96; i++)
+                checksum += compare(evictions[i] + offset, compareCopies[i], 512);
+            u32 cycles = ps2_gfx_cycles() - start;
+            failures += checksum != 9600;
+            printf("[PS2 TEXTURE COMPARE BENCH] set=stream block=%u offset=%u bytes=512 copies=96 copyBytes=49152 calls=9600 cycles=%u checksum=%u failures=%u\n",
+                block, offset, cycles, checksum, failures);
+        }
+    }
+    ps2_texture_content_test_set_compare_bytes(256);
+    return failures;
+}
+#endif
 static unsigned mutation_reuse_smoke(unsigned* hashes) {
     unsigned failures = 0;
     /* Two live 4 KiB snapshots fit easily. Appending a new copy for every
@@ -130,6 +287,7 @@ static unsigned descriptor_capacity_smoke(unsigned* hashes) {
 
 int ps2_texture_content_smoke(void) {
     unsigned failures = 0, comparisons = 0, hashes = 0;
+    ps2_texture_content_test_set_compare_bytes(256);
     ps2_texture_content_test_set_slots(128);
     ps2_texture_content_test_enable(true);
     ps2_texture_content_test_reset();
@@ -227,9 +385,11 @@ int ps2_texture_content_smoke(void) {
     PS2TextureContentStats limits = ps2_texture_content_stats(false);
     failures += limits.smallBypass != 8 || limits.largeBypass != 4;
     failures += limits.newSnapshots != 2 || limits.hits != 2 || limits.hashes != 14;
+    failures += compare_matrix_smoke();
     printf("[PS2 TEXTURE CONTENT TEST] comparisons=%u hashes=%u alignment, every byte, strided/pair mutation, in-place reuse, padding, shape and bounded evictions failures=%u\n",
         comparisons, hashes, failures);
 #ifdef _EE
+    failures += compare_bench_smoke();
     u32 referenceChecksum = 0;
     for (unsigned i = 0; i < 96; i++) {
         PS2TextureSourceSpan span = {evictions[i], 512, 0, 1, false};
@@ -280,6 +440,7 @@ int ps2_texture_content_smoke(void) {
     }
 #endif
     ps2_texture_content_test_enable(true);
+    ps2_texture_content_test_set_compare_bytes(256);
     ps2_texture_content_test_reset();
     return failures ? 1 : 0;
 }

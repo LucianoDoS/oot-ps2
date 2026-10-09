@@ -272,6 +272,28 @@ Carga una partida sintética, completa 120 actualizaciones en casa, bosque
 Kokiri y casa, y utiliza las transiciones normales. No prueba el contacto
 con la puerta ni el progreso de una partida real y no forma parte del USB.
 
+La sesión física `traversal-physical-20261008-164351` mantiene una vista a
+unos 13 FPS sin lecturas USB. Se aprovechan 224 muestras completas: el último
+sector de 512 bytes coincide con el registro anterior y se excluye junto a
+las líneas empalmadas. La causa de esa escritura sigue sin resolver.
+El perfil sigue señalando traducción y preparación del dibujo; los tiempos
+anidados no deben sumarse. PERF desglosa ahora sus límites por tipo de comando
+en dos líneas completas por fotograma muestreado, compatibles con el buffer
+del registro. El analizador sólo une ambas si pertenecen al mismo fotograma
+y no están duplicadas; no certifica por sí solo todos los daños de un archivo.
+
+La candidata compara las texturas en bloques completos de 256 bytes y
+conserva la ruta anterior para las colas, sin saltarse contenido. Los puntos
+texturados de una capa se escriben directamente en la parte libre del lote;
+las dos capas del suelo conservan su orden. Los cuatro comandos RDP SYNC,
+ya ignorados por el intérprete, dejan de cortar los grupos; cargas, materiales,
+capturas y fin de la lista raíz siguen siendo límites. Pasan las comparaciones
+de puntos, paquetes y contenido en EE emulado. Los ahorros aislados no certifican todavía
+una mejora física de FPS ni los 20 estables; la siguiente prueba usa PERF.ELF.
+En las dos escenas del recorrido automático, los límites SYNC desaparecen,
+pero el siguiente cambio de material mantiene el total de grupos. Ese cambio
+no demuestra por sí solo un ahorro de lotes en esas escenas.
+
 ## Comparación del temblor del suelo
 
 `mass:/OOTPS2/DIAG224.ELF` ejecuta el mismo diagnóstico, pero dibuja a

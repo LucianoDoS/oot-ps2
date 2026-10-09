@@ -28,5 +28,9 @@ PS2TextureContentStats ps2_texture_content_stats(bool reset);
 void ps2_texture_content_test_reset(void);
 void ps2_texture_content_test_enable(bool enabled);
 bool ps2_texture_content_test_equal(const u8* source, const u8* copy, unsigned bytes);
+void ps2_texture_content_test_set_compare_bytes(unsigned bytes);
+unsigned ps2_texture_content_test_compare_bytes(void);
+typedef bool (*PS2TextureContentCompare)(const u8*, const u8*, u32);
+PS2TextureContentCompare ps2_texture_content_test_comparator(void);
 #endif
 #endif

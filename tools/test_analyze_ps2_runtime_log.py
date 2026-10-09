@@ -174,6 +174,50 @@ tMs=2000 [PS2 MATERIAL RUN PROFILE] frame=600 vtxFences=12 dlFences=20 endFences
         self.assertEqual(report['material_run_profiles'][0]['vtxFences'], 12)
         self.assertEqual(len(report['damaged_lines']), 1)
 
+    def test_material_fence_categories_sum_only_other_fences(self):
+        categories = dict(texture=1, geometry=2, moveWord=3, moveMem=4,
+            timg=5, tile=6, tileSize=7, load=8, tlut=9, combine=10, prim=11,
+            env=12, fog=13, blend=14, fill=15, otherMode=16, sync=17, noop=18, other=19)
+        source = ' '.join(f'{key}={value}' for key, value in list(categories.items())[:9])
+        state = ' '.join(f'{key}={value}' for key, value in list(categories.items())[9:])
+        log = ('OOT PS2 runtime log v3 test\n'
+            'tMs=1000 [PS2 MATERIAL RUN PROFILE] frame=300 '
+            'vtxFences=12 dlFences=20 endFences=19 otherFences=190\n'
+            f'tMs=1001 [PS2 MATERIAL FENCE PROFILE] frame=300 {source}\n'
+            f'tMs=1002 [PS2 MATERIAL FENCE STATE PROFILE] frame=300 {state}\n')
+        report = analyze(log)
+        self.assertEqual(report['material_fence_profiles'], [dict(tMs=1001, frame=300, **categories)])
+        run = report['material_run_profiles'][0]
+        self.assertEqual(sum(categories.values()), run['otherFences'])
+        self.assertNotEqual(sum(categories.values()), sum(run[key] for key in
+            ('vtxFences', 'dlFences', 'endFences', 'otherFences')))
+        self.assertEqual(report['damaged_lines'], [])
+
+    def test_material_fence_categories_reject_every_missing_field(self):
+        fields = ('texture', 'geometry', 'moveWord', 'moveMem', 'timg', 'tile', 'tileSize',
+            'load', 'tlut', 'combine', 'prim', 'env', 'fog', 'blend', 'fill', 'otherMode',
+            'sync', 'noop', 'other')
+        for missing in fields:
+            with self.subTest(missing=missing):
+                source = ' '.join(f'{field}=1' for field in fields[:9] if field != missing)
+                state = ' '.join(f'{field}=1' for field in fields[9:] if field != missing)
+                report = analyze('OOT PS2 runtime log v3 test\n'
+                    f'tMs=1000 [PS2 MATERIAL FENCE PROFILE] frame=300 {source}\n'
+                    f'tMs=1001 [PS2 MATERIAL FENCE STATE PROFILE] frame=300 {state}\n')
+                self.assertEqual(report['material_fence_profiles'], [])
+                self.assertEqual(report['damaged_lines'], [2 if missing in fields[:9] else 3])
+
+    def test_material_fence_categories_require_same_frame_unique_pair(self):
+        source = ('tMs=1000 [PS2 MATERIAL FENCE PROFILE] frame=300 texture=1 geometry=1 '
+            'moveWord=1 moveMem=1 timg=1 tile=1 tileSize=1 load=1 tlut=1\n')
+        state = ('tMs=1001 [PS2 MATERIAL FENCE STATE PROFILE] frame=300 combine=1 prim=1 '
+            'env=1 fog=1 blend=1 fill=1 otherMode=1 sync=1 noop=1 other=1\n')
+        for rows in (source, state, source + state.replace('frame=300', 'frame=600'),
+                     source + source + state, source + state + state):
+            with self.subTest(rows=rows):
+                report = analyze('OOT PS2 runtime log v3 test\n' + rows)
+                self.assertEqual(report['material_fence_profiles'], [])
+
 
 if __name__ == '__main__':
     unittest.main()

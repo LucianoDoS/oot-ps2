@@ -13,7 +13,9 @@ def analyze(text):
     damaged_lines, sequence_gaps = [], []
     texture_content, scratchpad_storage, scratchpad_errors = [], [], []
     profiles = {name: [] for name in ('graphics', 'geometry', 'content', 'preemption',
-                                    'state', 'vertex_color', 'material_point', 'analysis', 'draw_detail', 'draw_setup', 'palette', 'runs')}
+                                    'state', 'vertex_color', 'material_point', 'analysis', 'draw_detail', 'draw_setup', 'palette', 'runs', 'fence_source', 'fence_state')}
+    fence_source_fields = ('texture', 'geometry', 'moveWord', 'moveMem', 'timg', 'tile', 'tileSize', 'load', 'tlut')
+    fence_state_fields = ('combine', 'prim', 'env', 'fog', 'blend', 'fill', 'otherMode', 'sync', 'noop', 'other')
     profile_fields = {
         '[PS2 GFX PROFILE]': ('graphics', ('totalUs', 'vtxUs', 'triUs', 'rectUs', 'lookupUs', 'convertUs', 'uploadUs')),
         '[PS2 GEOMETRY PROFILE]': ('geometry', ('matrixUs', 'transformUs', 'lightUs', 'texgenUs', 'clipUs', 'submitUs')),
@@ -27,6 +29,8 @@ def analyze(text):
         '[PS2 DRAW SETUP PROFILE]': ('draw_setup', ('setupUs', 'setupCalls', 'tileUs', 'tileCalls', 'metadataUs', 'metadataCalls')),
         '[PS2 PALETTE HASH PROFILE]': ('palette', ('timeUs', 'calls', 'hits', 'builds', 'changedEntries')),
         '[PS2 MATERIAL RUN PROFILE]': ('runs', ('vtxFences', 'dlFences', 'endFences', 'otherFences')),
+        '[PS2 MATERIAL FENCE PROFILE]': ('fence_source', fence_source_fields),
+        '[PS2 MATERIAL FENCE STATE PROFILE]': ('fence_state', fence_state_fields),
     }
     sparse_profile_every = None
     previous_sequence = None
@@ -93,6 +97,13 @@ def analyze(text):
                     damaged_lines.append(number)
                     current_sample = None
                 break
+    # The histogram spans two bounded logger records. Expose all categories
+    # only for an unambiguous pair from the same sampled frame.
+    source_frames = Counter(row['frame'] for row in profiles['fence_source'])
+    state_frames = Counter(row['frame'] for row in profiles['fence_state'])
+    fence_states = {row['frame']: row for row in profiles['fence_state']}
+    material_fences = [dict(row, **{field: fence_states[row['frame']][field] for field in fence_state_fields})
+        for row in profiles['fence_source'] if source_frames[row['frame']] == 1 and state_frames[row['frame']] == 1]
     # An overwritten sector may contain plausible rows with a repeated
     # sequence. Reject every copy, rather than trusting the first; timestamps which go back
     # also cannot describe a fresh interval. Keep original rows for auditing.
@@ -164,6 +175,7 @@ def analyze(text):
         'draw_setup_profiles': profiles['draw_setup'],
         'palette_hash_profiles': profiles['palette'],
         'material_run_profiles': profiles['runs'],
+        'material_fence_profiles': material_fences,
         'progress_snapshots': [line.rstrip() for line in text.splitlines() if any(
             marker in line for marker in (' STALL_SNAPSHOT ', ' GAME_PROGRESS ', ' PLAY_PROGRESS ',
                 ' GFX_WORKER ', ' THREAD ', '[PS2 GFX WAIT]'))],

@@ -2,7 +2,7 @@
 
 Port de **The Legend of Zelda: Ocarina of Time** a PlayStation 2, basado en la descompilación [zeldaret/oot](https://github.com/zeldaret/oot).
 
-## Estado comprobado — 7 de octubre de 2026
+## Estado comprobado — 8 de octubre de 2026
 
 **Port en desarrollo, con todos los recursos descritos del juego convertidos.**
 La versión actual de PCSX2 usa el perfil `full`: 101 escenas, 388 salas y
@@ -112,6 +112,27 @@ Pasan 24 comparaciones del intérprete con el recorrido anterior y ambos
 recorridos con USB nativo emulado; la ganancia física aún debe medirse.
 Un registro íntegro tampoco certifica la corrección de la escritura
 intermitente anterior.
+La sesión física siguiente confirma que desaparecen los límites por VTX,
+DL y ENDDL anidado, conservando el final raíz. La vista lenta sigue cerca de 13 FPS: 60,26 ms de traducción
+por fotograma en 13 intervalos sin lecturas ni escrituras solapadas. La cola
+del archivo contiene un sector del registro anterior; se conservan y analizan
+sólo las primeras 224 muestras completas. El fallo de escritura sigue pendiente.
+Los costes restantes incluyen comparar 376–379 kB de texturas (3,4–4,7 ms),
+preparar sus puntos (4–5,3 ms) y el dibujo de triángulos (34,5–39 ms, con
+categorías anidadas). PERF añade un desglose de los cambios de estado que
+cierran los grupos; el juego habitual conserva los cronómetros desactivados.
+
+La candidata compara las texturas en bloques completos de 256 bytes y
+conserva la ruta anterior para las colas, sin saltarse contenido. Los puntos
+texturados de una capa se escriben directamente en la parte libre del lote;
+las dos capas del suelo conservan su orden. Los cuatro comandos RDP SYNC,
+ya ignorados por el intérprete, dejan de cortar los grupos; cargas, materiales,
+capturas y fin de la lista raíz siguen siendo límites. Pasan las comparaciones
+de puntos, paquetes y contenido en EE emulado. Los ahorros aislados no certifican todavía
+una mejora física de FPS ni los 20 estables; la siguiente prueba usa PERF.ELF.
+En las dos escenas del recorrido automático, los límites SYNC desaparecen,
+pero el siguiente cambio de material mantiene el total de grupos. Ese cambio
+no demuestra por sí solo un ahorro de lotes en esas escenas.
 
 El selector incorpora idioma English/Español cuando encuentra el paquete
 privado `ESP.DAT`. Traduce diálogos, fuente y texturas de menús conservando

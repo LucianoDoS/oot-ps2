@@ -4,6 +4,95 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Comparación de texturas, escritura directa y sincronizaciones vacías — 2026-10-08
+
+- La sesión `build/PS2/hardware-runtime/traversal-physical-20261008-164351`
+  coincide con el paquete entregado: PERF SHA256
+  `3BBC47BF012FEB61A533DCE12BC306175CCC46EBF0C235461EA6B7EBA314A09E`.
+  Tiene 224 muestras completas fiables y 12 perfiles. El último sector,
+  offset 163.840 de 164.352 bytes, coincide byte a byte con el registro
+  anterior; empalma AUDIO 225 y contiene las muestras antiguas 234/235.
+  Se conserva el archivo original y se excluye esa cola. La escritura
+  intermitente sigue sin resolver; un contador de pérdidas cero no la descarta.
+- Entre 111 y 126 segundos, sin lecturas ni escrituras solapadas, quedan
+  13 intervalos/174 fotogramas: mediana 13 FPS, traducción 60,26 ms,
+  envío final 2,43 y presentación 12,37 por fotograma. No se observan colas
+  vacías de audio en esos intervalos. La cámara no está verificada idéntica;
+  el resultado no demuestra una mejora sostenida frente a la sesión anterior.
+  VTX/DL/END anidado ya no cierran grupos; el END raíz los vacía.
+  Permanecen 381/382 límites de otros estados.
+- Los perfiles grandes 1800/2100 gastan 34,50–39,01 ms en triángulos,
+  incluidos 29,11–33,55 ms en su preparación/envío. Comparan 376–379 kB
+  en 3,42–4,68 ms, sin nuevas copias, mutaciones o expulsiones. Las huellas
+  restantes sólo corresponden a texturas pequeñas no admitidas. La paleta
+  ocupa 0,163–0,173 ms; las subidas de 5/7 texturas cuestan 4,54–6,13 ms.
+  Son categorías anidadas, no tiempos independientes que se puedan sumar.
+- El comparador EE procesa ahora bloques completos de 256 bytes y conserva
+  la ruta de 64/16 bytes y escalar para las colas. No omite validación de
+  contenido, padding excluido, ninguna de las dos fuentes ni cambios de RAM.
+  No amplía el anillo de 128 KiB ni los 128 descriptores. El comparador de
+  128 bytes y el selector de referencia existen sólo en SMOKE. Los bloques
+  mayores tardan más en detectar una mutación temprana; las vistas pesadas
+  medidas no registran mutaciones, pero la corrección se comprueba igualmente.
+- Los triángulos texturados de una capa escriben sus puntos directamente
+  en la cola libre, evitando una copia de 144 bytes. Al llenarse el lote
+  conservan el temporal y el instante original del vaciado. El suelo de dos
+  capas, las capturas y los dibujos fallidos mantienen su orden; sólo se
+  compromete la cola cuando la textura carga. No se agrupan las capas del suelo.
+- El desglose previo a esta corrección, fixture
+  `usb-stack-checks/20261008-172657-381`, encuentra 248 de 302 límites
+  en los cuatro RDP SYNC del fotograma 600. Sus handlers ya eran vacíos;
+  ahora tampoco cortan el grupo. LOAD/TLUT, cambios de material, capturas,
+  objetivos y ENDDL raíz siguen vaciándolo antes de ejecutarse. No se
+  elimina ni difiere ninguna sincronización efectiva del GS.
+- Pasa `build/PS2/floor-production-smoke-20261008-174515`: 338.880
+  comparaciones y 14.256 huellas adicionales para los tres bloques, alineaciones,
+  cada byte, diferencias repetidas, colas, parejas y filas con padding; también
+  pasa la batería previa de 233.216/42.430. El desensamblado confirma guardias
+  de bloque/alineación, offsets finales y retorno a la ruta de cola. Los canarios
+  de la prueba certifican resultados, no por sí solos las lecturas descartadas.
+- En 20 grupos aislados el bloque de 256 supera al de 64: aproximadamente
+  17–29 % menos ciclos en fuentes individuales y 18–25 % en un recorrido
+  de 96 copias/48 KiB. La cola directa conserva 480 puntos y todos los bytes
+  de paquetes en cuatro casos con desbordamiento, recorte, cargas parciales
+  y fallo de textura. Con los cuatro SYNC, en 864 triángulos por ruta mide
+  929.009 ciclos anteriores y 863.926 directos. Son ensayos emulados de
+  operaciones aisladas, no ganancias de FPS del juego ni prueba física de 20 FPS estables.
+- Los 24 casos de recorrido de listas pasan con SYNC, ramas, matrices y
+  cargas parciales, completas y del slot final. El diferencial separado
+  ENV/PRIM conserva 12 puntos en orden tanto en materiales texturados como
+  de color; exige tres grupos donde la ruta anterior emitía cuatro.
+- PERF desglosa los límites restantes en 19 categorías, repartidas en dos
+  registros que caben en los 320 bytes del logger. Sólo cuenta en el fotograma
+  muestreado; las categorías suman `otherFences`. El analizador reúne partes
+  completas, únicas y del mismo fotograma; pasan sus 14 pruebas. El juego
+  habitual mantiene desactivados los cronómetros por operación.
+
+
+- Las pruebas finales con USB nativo emulado pasan en
+  `build/PS2/usb-stack-checks/20261008-201143-015` y
+  `build/PS2/usb-stack-checks/20261008-201419-773`: logo a 59,9 FPS,
+  opción y diálogo en español, casa–Kokiri–casa con 120 actualizaciones
+  por fase. Las cuatro capturas coinciden byte a byte con la referencia.
+  Las tarjetas del jugador permanecen desactivadas durante estos recorridos.
+- El perfil final confirma cero límites SYNC, pero los totales 135/302
+  no bajan en los fotogramas 300/600: el siguiente cambio real de estado
+  cierra el grupo. Por tanto este caso no demuestra un ahorro de lotes ni
+  FPS. La nueva clasificación permite estudiar esos materiales en hardware.
+- `build/PS2/compare-release-verification.json` vincula el ELF del smoke,
+  los ELF de ambos recorridos y sus informes mediante SHA256. Recalcula
+  independientemente la ventana física desde el log sin usar su resumen,
+  comprueba límites estáticos del ELF, los datos convertidos, el idioma y
+  la conservación del registro y la tarjeta. No certifica toda la memoria
+  dinámica ni los FPS reales de esta candidata.
+- OOTPS2 SHA256: `886825B975700707D3BCE234FD59DDBB584787BD75A12B951D55919BF2E0FD80`.
+  PERF SHA256: `7F3B97CE20E43041F42A7D62ABCA14C3ADF31F35027278D1268B6FD45266E540`.
+
+- Copiados y verificados los 12 archivos en `D:/OOTPS2`; respaldo en
+  `D:/OOTPS2-backup-20261008-201937`. La comprobación posterior
+  pasa con `copied=true`, registros físicos y tarjeta del jugador intactos.
+  Queda probar esta candidata en la misma vista pesada de la SCPH-90010.
+
 ## Reutilización al recorrer modelos y comprobación física de la caché — 2026-10-08
 
 - Se conserva la sesión en

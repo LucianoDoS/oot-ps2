@@ -28,6 +28,11 @@ static PS2TextureContentStats sStats;
 
 #ifdef PS2_RENDERER_SMOKE_CAPTURE
 static bool sDisabled;
+static unsigned sCompareBytes = 256;
+void ps2_texture_content_test_set_compare_bytes(unsigned bytes) {
+    if (bytes == 64 || bytes == 128 || bytes == 256) sCompareBytes = bytes;
+}
+unsigned ps2_texture_content_test_compare_bytes(void) { return sCompareBytes; }
 static unsigned sSlotLimit = SNAPSHOT_SLOTS;
 #define SNAPSHOT_ACTIVE_SLOTS sSlotLimit
 unsigned ps2_texture_content_test_slots(void) { return sSlotLimit; }
@@ -49,7 +54,7 @@ void ps2_texture_content_test_reset(void) {
  * never load past the requested range. PCPYUD folds the upper doubleword
  * into the branch-tested lower doubleword; reference instruction semantics:
  * https://github.com/PCSX2/pcsx2/blob/master/pcsx2/MMI.cpp */
-static bool source_equal(const u8* source, const u8* copy, u32 bytes) {
+static bool source_equal_64(const u8* source, const u8* copy, u32 bytes) {
 #ifdef _EE
     if (bytes >= 64 && !((uintptr_t)copy & 15)) {
         typedef unsigned int Vector128 __attribute__((mode(TI)));
@@ -191,7 +196,151 @@ static bool source_equal(const u8* source, const u8* copy, u32 bytes) {
     return !memcmp(source, copy, bytes);
 }
 
+#ifdef _EE
+/* Sixteen stripes amortize loop/reduction cost on unchanged source windows.
+ * Only complete 256-byte blocks enter the production path; the original
+ * 64/16/scalar comparator handles tails and unaligned saved copies. The
+ * 128-byte comparator remains a smoke benchmark reference. */
+#define WIDE_COMPARE_AT(offset) \
+            "lq %[saved]," #offset "(%[copy])\n\t" \
+            "pxor %[difference],%[input],%[saved]\n\t" \
+            "por %[combined],%[combined],%[difference]\n\t"
+#define WIDE_ALIGNED_AT(offset) \
+            "lq %[input]," #offset "(%[source])\n\t" WIDE_COMPARE_AT(offset)
+#define WIDE_EIGHT_AT(offset, upper) \
+            "ld %[input]," #offset "(%[source])\n\t" \
+            "ld %[high]," #upper "(%[source])\n\t" \
+            "pcpyld %[input],%[high],%[input]\n\t" WIDE_COMPARE_AT(offset)
+#define WIDE_BYTE_AT(offset, lowerEnd, upper, upperEnd) \
+            "ldl %[input]," #lowerEnd "(%[source])\n\t" \
+            "ldr %[input]," #offset "(%[source])\n\t" \
+            "ldl %[high]," #upperEnd "(%[source])\n\t" \
+            "ldr %[high]," #upper "(%[source])\n\t" \
+            "pcpyld %[input],%[high],%[input]\n\t" WIDE_COMPARE_AT(offset)
+#define WIDE_ALIGNED_128 \
+            WIDE_ALIGNED_AT(0) WIDE_ALIGNED_AT(16) WIDE_ALIGNED_AT(32) WIDE_ALIGNED_AT(48) \
+            WIDE_ALIGNED_AT(64) WIDE_ALIGNED_AT(80) WIDE_ALIGNED_AT(96) WIDE_ALIGNED_AT(112)
+#define WIDE_EIGHT_128 \
+            WIDE_EIGHT_AT(0,8) WIDE_EIGHT_AT(16,24) WIDE_EIGHT_AT(32,40) WIDE_EIGHT_AT(48,56) \
+            WIDE_EIGHT_AT(64,72) WIDE_EIGHT_AT(80,88) WIDE_EIGHT_AT(96,104) WIDE_EIGHT_AT(112,120)
+#define WIDE_BYTE_128 \
+            WIDE_BYTE_AT(0,7,8,15) WIDE_BYTE_AT(16,23,24,31) \
+            WIDE_BYTE_AT(32,39,40,47) WIDE_BYTE_AT(48,55,56,63) \
+            WIDE_BYTE_AT(64,71,72,79) WIDE_BYTE_AT(80,87,88,95) \
+            WIDE_BYTE_AT(96,103,104,111) WIDE_BYTE_AT(112,119,120,127)
+#define WIDE_ALIGNED_256 WIDE_ALIGNED_128 \
+            WIDE_ALIGNED_AT(128) WIDE_ALIGNED_AT(144) WIDE_ALIGNED_AT(160) WIDE_ALIGNED_AT(176) \
+            WIDE_ALIGNED_AT(192) WIDE_ALIGNED_AT(208) WIDE_ALIGNED_AT(224) WIDE_ALIGNED_AT(240)
+#define WIDE_EIGHT_256 WIDE_EIGHT_128 \
+            WIDE_EIGHT_AT(128,136) WIDE_EIGHT_AT(144,152) WIDE_EIGHT_AT(160,168) WIDE_EIGHT_AT(176,184) \
+            WIDE_EIGHT_AT(192,200) WIDE_EIGHT_AT(208,216) WIDE_EIGHT_AT(224,232) WIDE_EIGHT_AT(240,248)
+#define WIDE_BYTE_256 WIDE_BYTE_128 \
+            WIDE_BYTE_AT(128,135,136,143) WIDE_BYTE_AT(144,151,152,159) \
+            WIDE_BYTE_AT(160,167,168,175) WIDE_BYTE_AT(176,183,184,191) \
+            WIDE_BYTE_AT(192,199,200,207) WIDE_BYTE_AT(208,215,216,223) \
+            WIDE_BYTE_AT(224,231,232,239) WIDE_BYTE_AT(240,247,248,255)
+#define DEFINE_WIDE_EQUAL(name, block, aligned, eight, arbitrary) \
+static bool name(const u8* source, const u8* copy, u32 bytes) { \
+    if (bytes >= block && !((uintptr_t)copy & 15)) { \
+        typedef unsigned int Vector128 __attribute__((mode(TI))); \
+        Vector128 input, saved, high, difference, combined; \
+        u32 mode, equal; \
+        __asm__ volatile ( \
+            ".set push\n\t.set noreorder\n\t" \
+            "addiu %[equal],$zero,0\n\t" \
+            "andi %[mode],%[source],15\n\t" \
+            "bnez %[mode],2f\n\t" \
+            "nop\n\t" \
+            "1:\n\t" \
+            "pxor %[combined],$zero,$zero\n\t" \
+            aligned \
+            "b 6f\n\t" \
+            "addiu %[mode],$zero,0\n\t" \
+            "2:\n\t" \
+            "andi %[mode],%[source],7\n\t" \
+            "bnez %[mode],3f\n\t" \
+            "nop\n\t" \
+            "5:\n\t" \
+            "pxor %[combined],$zero,$zero\n\t" \
+            eight \
+            "b 6f\n\t" \
+            "addiu %[mode],$zero,1\n\t" \
+            "3:\n\t" \
+            "pxor %[combined],$zero,$zero\n\t" \
+            arbitrary \
+            "addiu %[mode],$zero,2\n\t" \
+            "6:\n\t" \
+            "pcpyud %[high],%[combined],$zero\n\t" \
+            "or %[combined],%[combined],%[high]\n\t" \
+            "bnez %[combined],4f\n\t" \
+            "nop\n\t" \
+            "addiu %[source],%[source]," #block "\n\t" \
+            "addiu %[copy],%[copy]," #block "\n\t" \
+            "addiu %[bytes],%[bytes],-" #block "\n\t" \
+            "sltiu %[equal],%[bytes]," #block "\n\t" \
+            "bnez %[equal],4f\n\t" \
+            "nop\n\t" \
+            "beq %[mode],$zero,1b\n\t" \
+            "nop\n\t" \
+            "addiu %[mode],%[mode],-1\n\t" \
+            "beq %[mode],$zero,5b\n\t" \
+            "nop\n\t" \
+            "b 3b\n\t" \
+            "nop\n\t" \
+            "4:\n\t" \
+            ".set pop\n\t" \
+            : [source] "+&r"(source), [copy] "+&r"(copy), [bytes] "+&r"(bytes), \
+              [input] "=&r"(input), [saved] "=&r"(saved), [high] "=&r"(high), \
+              [difference] "=&r"(difference), [combined] "=&r"(combined), \
+              [mode] "=&r"(mode), [equal] "=&r"(equal) \
+            : : "memory"); \
+        if (!equal) return false; \
+    } \
+    return source_equal_64(source, copy, bytes); \
+}
 #ifdef PS2_RENDERER_SMOKE_CAPTURE
+DEFINE_WIDE_EQUAL(source_equal_128, 128, WIDE_ALIGNED_128, WIDE_EIGHT_128, WIDE_BYTE_128)
+#endif
+DEFINE_WIDE_EQUAL(source_equal_256, 256, WIDE_ALIGNED_256, WIDE_EIGHT_256, WIDE_BYTE_256)
+#undef DEFINE_WIDE_EQUAL
+#undef WIDE_BYTE_256
+#undef WIDE_EIGHT_256
+#undef WIDE_ALIGNED_256
+#undef WIDE_BYTE_128
+#undef WIDE_EIGHT_128
+#undef WIDE_ALIGNED_128
+#undef WIDE_BYTE_AT
+#undef WIDE_EIGHT_AT
+#undef WIDE_ALIGNED_AT
+#undef WIDE_COMPARE_AT
+#endif
+static bool source_equal(const u8* source, const u8* copy, u32 bytes) {
+#ifdef _EE
+    return source_equal_256(source, copy, bytes);
+#else
+    return source_equal_64(source, copy, bytes);
+#endif
+}
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+static bool source_equal_selected(const u8* source, const u8* copy, u32 bytes) {
+#ifdef _EE
+    if (sCompareBytes == 128) return source_equal_128(source, copy, bytes);
+#endif
+    if (sCompareBytes == 256) return source_equal(source, copy, bytes);
+    return source_equal_64(source, copy, bytes);
+}
+/* Select outside the measured loop so each benchmark pays the same indirect
+ * call cost instead of comparing differently ordered selector branches. */
+PS2TextureContentCompare ps2_texture_content_test_comparator(void) {
+#ifdef _EE
+    if (sCompareBytes == 128) return source_equal_128;
+    if (sCompareBytes == 256) return source_equal_256;
+#endif
+    return source_equal_64;
+}
+/* Route smoke cache validation and direct tests through the same selector.
+ * Production uses the 256-byte wrapper and has no selection branch. */
+#define source_equal source_equal_selected
 bool ps2_texture_content_test_equal(const u8* source, const u8* copy, unsigned bytes) {
     return source_equal(source, copy, bytes);
 }
