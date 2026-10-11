@@ -38,6 +38,57 @@ una ejecución usando los ELF existentes y registra sus hashes.
 
 ## Casos concretos
 
+### Rendimiento de la cinemática del título
+
+```powershell
+./tools/run_ps2_perf_scene.ps1 -Mode title_cinematic
+```
+
+Este modo compila un ELF separado y ejecuta el inicializador original del
+título. Mide 480 fotogramas después de 30 de calentamiento en el Campo de
+Hyrule, con la cámara en movimiento, Link adulto y Epona originales. Sus
+posiciones, animaciones y reloj siguen el comportamiento original. La semilla
+`0x12345678` se aplica también cuando `Play_Init` vuelve a sembrar el generador,
+antes de inicializar los actores. El verificador exige avance de la cinemática,
+movimiento de cámara y registros de Link montado en el caballo cargado.
+
+Usa una partida sintética, HostFs y una configuración privada con ambas memory
+cards y los ocho mandos desactivados. Comprueba que la tarjeta del jugador
+conserve su SHA256. Cada ejecución guarda ELF, imagen de datos, configuración,
+registro, captura del GS, `fixture.json`, `report.json` y `summary.json` en
+`build/PS2/perf-scenes/<fecha>/`.
+
+Las filas de tiempos por cuadro y movimiento se almacenan en memoria y se
+escriben después de la ventana medida. La captura también se obtiene fuera
+de esa ventana.
+Los perfiles detallados se toman cada 60 fotogramas del caso; sus cuadros se
+excluyen de los tiempos normales, y la cadencia excluye además el intervalo
+siguiente. El resumen muestra traducción gráfica, envío, presentación, cadencia
+y bloques de la cinemática para localizar las caídas.
+
+Para comparar una versión nueva con una ejecución anterior:
+
+```powershell
+./tools/run_ps2_perf_scene.ps1 -Mode title_cinematic -Baseline 'build\PS2\perf-scenes\<fecha-base>\summary.json'
+```
+
+Este comando vuelve a compilar. Añade `-SkipBuild` para repetir el ELF ya
+preparado; los cambios de código pendientes no se incorporan en ese caso.
+`-FixtureRoot 'build\PS2\perf-scenes\<fecha>'` permite repetir un ELF y sus
+datos conservados, junto con `-SkipBuild`. Se comprueban sus hashes y se rechaza
+un modo diferente del pedido. El modo predeterminado `house_path` conserva las
+tres vistas fijas del exterior de la casa; sus resultados no se comparan con
+los de la cinemática.
+
+Una comparación sólo marca `comparable=true` si coinciden los datos del caso,
+ROM, emulador, configuración, índices de muestras y secuencias completas de
+geometría y movimiento. `capture_equal` compara por separado los píxeles de la
+captura final. Si las condiciones no coinciden, no calcula el porcentaje de
+mejora de traducción. La captura necesita revisión visual: no prueba todos los
+fotogramas ni la fidelidad completa. Son tiempos del EE emulado con datos por
+HostFs; no acreditan el rendimiento de USB o PS2 física, todas las escenas,
+estabilidad caminando ni una tasa de FPS garantizada.
+
 ### Paquetes de triángulos y caché de animaciones USB
 
 ```powershell

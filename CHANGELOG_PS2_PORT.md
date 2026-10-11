@@ -4,6 +4,46 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Cinemática del título y conexión del mando — 2026-10-11
+
+- `tools/run_ps2_perf_scene.ps1 -Mode title_cinematic` mide 480 fotogramas
+  tras 30 de calentamiento, con el inicializador original del título,
+  Link montado en Epona y cámara en movimiento. Usa guardado sintético,
+  semilla fija, mandos y tarjetas deshabilitados. Registra el movimiento
+  con su tarea gráfica y escribe filas/captura después del tramo medido.
+  `-Baseline` exige la misma configuración, muestras, movimiento y geometría.
+- La comparación de iluminación del título (`20261011-150455-022`, 256;
+  `20261011-150919-846`, 1024) conserva imagen y movimiento, pero sólo
+  reduce la traducción un 0,82 % y apenas cambia los FPS (18,39 a 18,42).
+  El perfil identifica un coste mayor: las nueve máscaras del aura vuelven
+  a filtrar el mismo ruido de 32 × 32 texels.
+- `PS2_FLAME_NOISE_REUSE=1` conserva una cuadrícula filtrada de 64 × 64 y
+  una copia de los 1024 bytes cargados. Cada conversión compara todos esos
+  bytes; las claves incluyen fuente, stride y scroll. Máscara, tinte y LOD
+  se aplican después mediante el cálculo original. Preserva el vecino S
+  sin máscara, que continúa en la siguiente fila de TMEM. No depende sólo
+  de direcciones ni del número de fotograma. Consume 5184 bytes de caché
+  y 16 de estadísticas; los contadores del juego avanzan sólo al perfilar.
+- `20261011-153323-009` pasa frente a `20261011-150919-846`, con captura,
+  movimiento y secuencia de geometría iguales. Traducción media: 34,96 →
+  27,05 ms (−22,61 %); FPS medios: 18,42 → 19,91. El último bloque de
+  60 fotogramas pasa de 14,61 a 19,65 FPS. El perfil registra una construcción
+  y ocho reutilizaciones por fotograma con aura, manteniendo sus subidas GS.
+  Esto no certifica todavía 20 FPS estables en todas las zonas ni en PS2 real.
+- `floor-production-smoke-20261011-152438` pasa. El nuevo oráculo verifica
+  327680 canales contra referencia independiente: dos máscaras, tinte/LOD,
+  mutación dentro del mismo fotograma, padding, stride 32/40 y scroll
+  fraccional/envolvente. Las pruebas existentes de llama, Skulltula, suelo,
+  transparencias, audio y SRAM siguen pasando. La memory card del jugador
+  conserva su SHA-256 anterior.
+- Se añade un registro único `[PS2 TITLE PAD]` tras la selección inicial
+  de archivo, para comprobar en el arranque normal la máscara de mando y
+  que no quede fijado `fileNum=0xFEDC` por una petición asíncrona pendiente.
+  El juego normal registra `mask=03 fileNum=00ff` y ambos puertos listos
+  para vibración; el usuario confirma que puede pulsar Start y entrar.
+  Ejecutable abierto: SHA-256
+  `8d25cbebe57dd96e2ae032eae423759a12e9e121b218fcabcfce630426b2b57d`.
+
 ## Caché de iluminación y versión con vibración — 2026-10-11
 
 - Se corrige la instrumentación para que la caché de 256 entradas registre

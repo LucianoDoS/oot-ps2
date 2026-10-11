@@ -391,7 +391,8 @@ OBJS += $(BUILD_DIR)/tools/ps2_perf_scene.o $(BUILD_DIR)/tools/ps2_perf_scene_ca
 DEPS += $(BUILD_DIR)/tools/ps2_perf_scene.d $(BUILD_DIR)/tools/ps2_perf_scene_capture.d
 PS2_PERF_SCENE_FRAMES ?= 120
 PS2_PERF_SCENE_WARMUP ?= 30
-$(BUILD_DIR)/tools/ps2_perf_scene.o $(BUILD_DIR)/tools/ps2_perf_scene_capture.o: CFLAGS += -DPS2_PERF_SCENE_FRAMES=$(PS2_PERF_SCENE_FRAMES) -DPS2_PERF_SCENE_WARMUP=$(PS2_PERF_SCENE_WARMUP)
+PS2_PERF_SCENE_TITLE_CINEMATIC ?= 0
+$(BUILD_DIR)/tools/ps2_perf_scene.o $(BUILD_DIR)/tools/ps2_perf_scene_capture.o: CFLAGS += -DPS2_PERF_SCENE_FRAMES=$(PS2_PERF_SCENE_FRAMES) -DPS2_PERF_SCENE_WARMUP=$(PS2_PERF_SCENE_WARMUP) -DPS2_PERF_SCENE_TITLE_CINEMATIC=$(PS2_PERF_SCENE_TITLE_CINEMATIC)
 ROM_LDFLAGS += -Wl,--wrap=ConsoleLogo_Init,--wrap=GameState_Update,--wrap=GameState_Destroy,--wrap=GameState_ReqPadData,--wrap=Room_SetupFirstRoom,--wrap=Camera_Update,--wrap=Rand_Seed,--wrap=ps2_capture_frame,--wrap=rdp_to_gs_exec,--wrap=rdp_to_gs_submit,--wrap=rdp_to_gs_present,--wrap=ps2_gfx_profile_begin
 endif
 ifeq ($(PS2_SKULLTULA_TRACE),1)

@@ -1,5 +1,6 @@
-/* Fixed-view real-game benchmark. Synthetic save; never loads a player save. */
+/* Real-game benchmarks. Synthetic save; never loads a player save. */
 #include "console_logo_state.h"
+#include "title_setup_state.h"
 #include "game.h"
 #include "gfx.h"
 #include "map_select_state.h"
@@ -25,7 +26,9 @@ extern void ps2_perf_scene_profile_init(void);
 extern PS2RenderTarget gPerfCaptureTarget;
 PS2PerfTaskTag gPerfTaskTags[2];
 static unsigned sView, sFrames, sFailures;
-static int sAdvance, sCaptureRequested, sAnchorSettled;
+static int sCaptureRequested;
+#if !PS2_PERF_SCENE_TITLE_CINEMATIC
+static int sAdvance, sAnchorSettled;
 static ActorEntry sPlayerEntry;
 static Vec3f sAnchor, sEye, sAt;
 static Vec3f sUp = { 0.0f, 1.0f, 0.0f };
@@ -42,6 +45,7 @@ static void prepare_view(GameState* state) {
     osSyncPrintf("[PS2 PERF SCENE BEGIN] view=%u scene=%u entrance=%04x warmup=%u frames=%u seed=12345678\n",
         sView, SCENE_KOKIRI_FOREST, ENTR_KOKIRI_FOREST_3, PS2_PERF_SCENE_WARMUP, PS2_PERF_SCENE_FRAMES);
 }
+#endif
 
 void __wrap_Rand_Seed(u32 requested) {
     /* Play_Init seeds again from osGetTime before actor initialization.
@@ -52,6 +56,7 @@ void __wrap_Rand_Seed(u32 requested) {
 }
 
 u32 __wrap_Room_SetupFirstRoom(PlayState* play, RoomContext* roomCtx) {
+#if !PS2_PERF_SCENE_TITLE_CINEMATIC
     if (play->sceneId != SCENE_KOKIRI_FOREST || !play->playerEntry) {
         sFailures++;
         osSyncPrintf("[PS2 PERF SCENE] FAIL wrong scene or missing spawn\n");
@@ -69,11 +74,13 @@ u32 __wrap_Room_SetupFirstRoom(PlayState* play, RoomContext* roomCtx) {
                    sAnchor.z - Math_CosS(yaw) * 220.0f };
     sAt = (Vec3f){ sAnchor.x, sAnchor.y + 45.0f, sAnchor.z };
     play->playerEntry = &sPlayerEntry;
+#endif
     return __real_Room_SetupFirstRoom(play, roomCtx);
 }
 
 Vec3s __wrap_Camera_Update(Camera* camera) {
     Vec3s result = __real_Camera_Update(camera);
+#if !PS2_PERF_SCENE_TITLE_CINEMATIC
     if (camera->play->sceneId == SCENE_KOKIRI_FOREST && camera->status == CAM_STAT_ACTIVE) {
         /* Actor culling reads camera fields as well as the view matrix. */
         camera->eye = camera->eyeNext = sEye;
@@ -84,20 +91,36 @@ Vec3s __wrap_Camera_Update(Camera* camera) {
         View_SetScale(&camera->play->view, 1.0f);
         View_LookAt(&camera->play->view, &sEye, &sAt, &sUp);
     }
+#endif
     return result;
 }
 
 static void empty_state(GameState* state) { (void)state; }
-void __wrap_ConsoleLogo_Init(GameState* state) {
-    state->main = state->destroy = empty_state;
+void __wrap_ConsoleLogo_Init(GameState* gameState) {
+    gameState->main = gameState->destroy = empty_state;
     ps2_perf_scene_profile_init();
+#if PS2_PERF_SCENE_TITLE_CINEMATIC
+    /* Follow the retail title initializer, including its debug save, age,
+     * entrance and cutscene layer. It does not open a player save. */
+    SaveContext_Init();
+    gSaveContext.fileNum = 0xff;
+    Rand_Seed(PS2_PERF_SCENE_SEED);
+    sFrames = sCaptureRequested = gPerfCaptureDone = gPerfViewComplete = 0;
+    osSyncPrintf("[PS2 PERF SCENE CONFIG] views=1 mode=title_cinematic cards=disabled input=disabled hostROM=1 syntheticSave=1 profileEvery=60 fixtureFrameAligned=1 seedOverride=1 camera=originalMoving\n");
+    osSyncPrintf("[PS2 PERF SCENE BEGIN] view=0 scene=%u entrance=%04x warmup=%u frames=%u seed=12345678\n",
+        SCENE_HYRULE_FIELD, ENTR_HYRULE_FIELD_0, PS2_PERF_SCENE_WARMUP, PS2_PERF_SCENE_FRAMES);
+    gameState->running = false;
+    SET_NEXT_GAMESTATE(gameState, TitleSetup_Init, TitleSetupState);
+#else
     osSyncPrintf("[PS2 PERF SCENE CONFIG] views=3 cards=disabled input=disabled hostROM=1 syntheticSave=1 profileEvery=60 fixtureFrameAligned=1 seedOverride=1\n");
-    prepare_view(state);
+    prepare_view(gameState);
+#endif
 }
 void __wrap_GameState_ReqPadData(GameState* state) { memset(state->input, 0, sizeof(state->input)); }
 
 void __wrap_GameState_Update(GameState* state) {
     int isPlay = state->main == Play_Main;
+#if !PS2_PERF_SCENE_TITLE_CINEMATIC
     if (isPlay) {
         Player* player = GET_PLAYER((PlayState*)state);
         if (player) {
@@ -131,6 +154,7 @@ void __wrap_GameState_Update(GameState* state) {
         }
         gSaveContext.save.dayTime = gSaveContext.skyboxTime = CLOCK_TIME(12, 0);
     }
+#endif
     __real_GameState_Update(state);
     if (!isPlay) return;
     PlayState* play = (PlayState*)state;
@@ -143,9 +167,35 @@ void __wrap_GameState_Update(GameState* state) {
         sCaptureRequested = 1;
     }
     unsigned slot = state->gfxCtx->gfxPoolIdx & 1;
-    gPerfTaskTags[slot] = (PS2PerfTaskTag){ state->gfxCtx->workBuffer, sView, sFrames, capture };
+    gPerfTaskTags[slot] = (PS2PerfTaskTag){ .root=state->gfxCtx->workBuffer,
+        .view=sView, .frame=sFrames, .capture=capture };
+#if PS2_PERF_SCENE_TITLE_CINEMATIC
+    /* Buffered with the matching display-list task, then emitted after the
+     * timing window. Do not alter the original camera, actors, or clock. */
+    Camera* camera = GET_ACTIVE_CAM(play);
+    Player* player = GET_PLAYER(play);
+    Actor* horse = player ? player->rideActor : NULL;
+    PS2PerfMotionTag* motion = &gPerfTaskTags[slot].motion;
+    *motion = (PS2PerfMotionTag){ .scene=play->sceneId, .room=play->roomCtx.curRoom.num,
+        .gameMode=gSaveContext.gameMode, .linkAge=gSaveContext.save.linkAge,
+        .cutsceneState=play->csCtx.state, .cutsceneFrame=play->csCtx.curFrame,
+        .riding=horse && horse->id == ACTOR_EN_HORSE,
+        .horseDrawable=horse && horse->id == ACTOR_EN_HORSE && horse->draw != NULL,
+        .eyeX=(int)(camera->eye.x*1000), .eyeY=(int)(camera->eye.y*1000), .eyeZ=(int)(camera->eye.z*1000),
+        .atX=(int)(camera->at.x*1000), .atY=(int)(camera->at.y*1000), .atZ=(int)(camera->at.z*1000),
+        .fovMilli=(int)(camera->fov*1000),
+        .playerX=player ? (int)(player->actor.world.pos.x*1000) : 0,
+        .playerY=player ? (int)(player->actor.world.pos.y*1000) : 0,
+        .playerZ=player ? (int)(player->actor.world.pos.z*1000) : 0 };
+#endif
     if (!gPerfViewComplete) return;
-    int correct = state->running && play->sceneId == SCENE_KOKIRI_FOREST && !play->roomCtx.status &&
+    int correct = state->running && play->sceneId ==
+#if PS2_PERF_SCENE_TITLE_CINEMATIC
+                  SCENE_HYRULE_FIELD && gSaveContext.gameMode == GAMEMODE_TITLE_SCREEN &&
+#else
+                  SCENE_KOKIRI_FOREST &&
+#endif
+                  !play->roomCtx.status &&
                   play->roomCtx.curRoom.segment && gPerfCaptureDone == 1;
     sFailures += !correct;
     osSyncPrintf("[PS2 PERF SCENE VIEW] %s view=%u scene=%d room=%d frames=%u capture=%u\n",
@@ -153,10 +203,15 @@ void __wrap_GameState_Update(GameState* state) {
     state->running = false;
     if (sView + 1 == PS2_PERF_SCENE_VIEWS) {
         state->init = NULL; state->size = 0;
-        osSyncPrintf("[PS2 PERF SCENE RESULT] %s views=3 failures=%u\n", sFailures ? "FAIL" : "PASS", sFailures);
-    } else { SET_NEXT_GAMESTATE(&play->state, Play_Init, PlayState); sAdvance = 1; }
+        osSyncPrintf("[PS2 PERF SCENE RESULT] %s views=%u failures=%u\n", sFailures ? "FAIL" : "PASS", PS2_PERF_SCENE_VIEWS, sFailures);
+    }
+#if !PS2_PERF_SCENE_TITLE_CINEMATIC
+    else { SET_NEXT_GAMESTATE(&play->state, Play_Init, PlayState); sAdvance = 1; }
+#endif
 }
 void __wrap_GameState_Destroy(GameState* state) {
     __real_GameState_Destroy(state);
+#if !PS2_PERF_SCENE_TITLE_CINEMATIC
     if (sAdvance) { sAdvance = 0; sView++; prepare_view(state); }
+#endif
 }

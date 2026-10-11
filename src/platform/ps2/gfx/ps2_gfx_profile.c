@@ -86,6 +86,7 @@ void ps2_gfx_profile_begin(void) {
         memset(gPS2GfxProfileCalls, 0, sizeof(gPS2GfxProfileCalls));
         ps2_combiner_analysis_reset_stats();
         ps2_light_cache_stats(true);
+        ps2_texture_flame_noise_stats(true);
         sWallStart = ps2_gfx_cycles();
         sStart = ps2_gfx_profile_enter();
         sMissCount = 0;
@@ -113,6 +114,9 @@ void ps2_gfx_profile_end(void) {
         gPS2GfxProfileCalls[6],gPS2GfxProfileCalls[7],gPS2GfxProfileCalls[8],
         gPS2GfxProfileCalls[9],gPS2GfxProfileCalls[10],gPS2GfxProfileCalls[11]);
     ps2_texture_profile_cache();
+    PS2FlameNoiseStats flame = ps2_texture_flame_noise_stats(false);
+    printf("[PS2 FLAME NOISE PROFILE] frame=%u hits=%u builds=%u comparedBytes=%u storageBytes=%u (included in convert)\n",
+        sFrame,flame.hits,flame.builds,flame.comparedBytes,flame.storageBytes);
     PS2LightingCacheStats lighting = ps2_light_cache_stats(false);
     printf("[PS2 LIGHT CACHE PROFILE] frame=%u tableChanges=%u rgbHits=%u rgbBuilds=%u normalHits=%u normalBuilds=%u storageBytes=%u rgbEntries=%u rgbBytes=%u\n",
         sFrame,lighting.tableChanges,lighting.rgbHits,lighting.rgbBuilds,

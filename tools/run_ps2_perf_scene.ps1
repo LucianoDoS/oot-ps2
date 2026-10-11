@@ -1,5 +1,6 @@
 param(
     [switch]$SkipBuild,
+    [ValidateSet('house_path','title_cinematic')][string]$Mode = 'house_path',
     [int]$TimeoutSeconds = 120,
     [string]$FixtureRoot = 'build\PS2-perf-scene',
     [string]$Baseline = '',
@@ -27,7 +28,7 @@ try {
     if ($TimeoutSeconds -lt 30) { throw 'Timeout must be at least 30 seconds.' }
     Save-Report
     if (!$SkipBuild) {
-        & wsl -d Ubuntu -- bash tools/build_ps2_perf_scene.sh *> (Join-Path $reportRoot 'build.log')
+        & wsl -d Ubuntu -- env "PS2_PERF_SCENE_MODE=$Mode" bash tools/build_ps2_perf_scene.sh *> (Join-Path $reportRoot 'build.log')
         if ($LASTEXITCODE -ne 0) { throw 'Scene benchmark build failed.' }
     }
     $builtRoot = if ([IO.Path]::IsPathRooted($FixtureRoot)) { $FixtureRoot } else { Join-Path $projectRoot $FixtureRoot }
@@ -35,6 +36,10 @@ try {
         Copy-Item -LiteralPath (Join-Path $builtRoot $file) -Destination (Join-Path $reportRoot $file)
     }
     $fixture = Get-Content -LiteralPath (Join-Path $reportRoot 'fixture.json') -Raw | ConvertFrom-Json
+    $fixtureMode = if ($fixture.PSObject.Properties.Name -contains 'mode') { $fixture.mode } else { 'house_path' }
+    if ($fixtureMode -ne $Mode) { throw ('Fixture mode mismatch: requested ' + $Mode + ', found ' + $fixtureMode) }
+    $report.mode = $fixtureMode
+    $completion = '\[PS2 PERF SCENE RESULT\] PASS views=' + $fixture.views + ' failures=0'
     foreach ($item in @(@('oot_ps2_perf_scene.elf','elf_sha256'),@('oot.z64','image_sha256'))) {
         if ((Get-FileHash -LiteralPath (Join-Path $reportRoot $item[0])).Hash.ToLowerInvariant() -ne $fixture.($item[1])) {
             throw ('Fixture hash mismatch: ' + $item[0])
@@ -90,13 +95,13 @@ try {
             $lastViews = $completed
             $report.completedViews = $completed
             Save-Report
-            Write-Output "Views completed: $completed/3"
+            Write-Output "Views completed: $completed/$($fixture.views)"
         }
-        if ($text -match '\[PS2 PERF SCENE RESULT\] PASS views=3 failures=0') { break }
+        if ($text -match $completion) { break }
         if (!(Get-Process -Id $ownedPid -ErrorAction SilentlyContinue)) { throw 'Benchmark exited without completion.' }
         Start-Sleep -Milliseconds 500
     }
-    if ($text -notmatch '\[PS2 PERF SCENE RESULT\] PASS views=3 failures=0') { throw 'Scene benchmark timed out.' }
+    if ($text -notmatch $completion) { throw 'Scene benchmark timed out.' }
     $verifyArgs = @((Join-Path $PSScriptRoot 'verify_ps2_perf_scene.py'), $reportRoot)
     if ($Baseline) { $verifyArgs += @('--baseline', $Baseline) }
     & $Python -X utf8 @verifyArgs

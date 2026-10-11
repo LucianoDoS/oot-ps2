@@ -14,6 +14,17 @@
 #define PS2_COLOR_INVALIDATION_REUSE 0
 #endif
 
+/* Reuse the title aura's filtered noise across its nine mask textures.
+ * Every conversion validates the loaded noise bytes before sharing a grid. */
+#ifndef PS2_FLAME_NOISE_REUSE
+#define PS2_FLAME_NOISE_REUSE 1
+#endif
+
+typedef struct {
+    u32 hits, builds, comparedBytes, storageBytes;
+} PS2FlameNoiseStats;
+PS2FlameNoiseStats ps2_texture_flame_noise_stats(bool reset);
+
 typedef struct {
     u32 retained, invalidated, forced;
 } PS2TextureColorInvalidationStats;
@@ -32,6 +43,10 @@ typedef struct {
 PS2PaletteHashStats ps2_texture_palette_hash_stats(bool reset);
 #ifdef PS2_RENDERER_SMOKE_CAPTURE
 void ps2_texture_test_color_invalidation_reference(bool enabled);
+void ps2_texture_test_flame_noise_reference(bool enabled);
+/* Run the real converter without the VRAM cache hiding repeated inputs. */
+void ps2_texture_test_flame_convert(const u8* mask, const u8* noise, unsigned stride,
+    const TileDescriptor* effect, const RDPState* rdp, u32 output[64*64]);
 unsigned ps2_texture_test_cache_capacity(void);
 unsigned ps2_texture_test_combiner_lookup(const RDPState* rdp, u8 values[4][256]);
 void ps2_texture_test_combiner_rgba16(const RDPState* rdp, u32 values[4][32]);

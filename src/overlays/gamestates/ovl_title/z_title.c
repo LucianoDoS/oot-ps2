@@ -270,6 +270,10 @@ void ConsoleLogo_Init(GameState* thisx) {
 #else
     gSaveContext.fileNum = 0xFF;
 #endif
+#if PLATFORM_PS2
+    osSyncPrintf("[PS2 TITLE PAD] mask=%02x fileNum=%04x\n",
+                 (unsigned)gPadMgr.validCtrlrsMask, (unsigned)gSaveContext.fileNum);
+#endif
 
     BOOT_STAGE("LOGO N64: reservando buffer SRAM");
     Sram_Alloc(&this->state, &this->sramCtx);

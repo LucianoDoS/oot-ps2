@@ -19,6 +19,9 @@ typedef struct {
     unsigned frame, profiled, translateUs, submitUs, presentUs, intervalUs;
     unsigned triangles, submitted, clipped, culled, invalid, textureFailed, uploads, states;
     unsigned colorRetained, colorInvalidated, colorForced;
+#if PS2_PERF_SCENE_TITLE_CINEMATIC
+    PS2PerfMotionTag motion;
+#endif
 } PerfFrame;
 static PerfFrame sFrames[PS2_PERF_SCENE_FRAMES];
 static PerfFrame sPending;
@@ -57,6 +60,9 @@ void __wrap_rdp_to_gs_submit(void) {
         .invalid=g_rdpState.stats.invalid, .textureFailed=g_rdpState.stats.textureFailed,
         .uploads=g_rdpState.stats.textureUploads, .states=g_rdpState.stats.stateWrites,
         .colorRetained=color.retained, .colorInvalidated=color.invalidated, .colorForced=color.forced };
+#if PS2_PERF_SCENE_TITLE_CINEMATIC
+    sPending.motion = sTag.motion;
+#endif
     __real_rdp_to_gs_submit();
     sSubmitted = osGetTime();
 }
@@ -79,6 +85,13 @@ void __wrap_rdp_to_gs_present(void) {
                 sTag.view, f->frame, f->profiled, f->translateUs, f->submitUs, f->presentUs, f->intervalUs,
                 f->triangles, f->submitted, f->clipped, f->culled, f->invalid, f->textureFailed, f->uploads, f->states,
                 f->colorRetained, f->colorInvalidated, f->colorForced);
+#if PS2_PERF_SCENE_TITLE_CINEMATIC
+            const PS2PerfMotionTag* m = &f->motion;
+            printf("[PS2 PERF SCENE MOTION] view=%u frame=%u scene=%u room=%u gameMode=%u linkAge=%u cutsceneState=%u cutsceneFrame=%u riding=%u horseDrawable=%u eyeX=%d eyeY=%d eyeZ=%d atX=%d atY=%d atZ=%d fovMilli=%d playerX=%d playerY=%d playerZ=%d\n",
+                sTag.view, f->frame, m->scene, m->room, m->gameMode, m->linkAge, m->cutsceneState, m->cutsceneFrame,
+                m->riding, m->horseDrawable, m->eyeX, m->eyeY, m->eyeZ, m->atX, m->atY, m->atZ,
+                m->fovMilli, m->playerX, m->playerY, m->playerZ);
+#endif
         }
         printf("[PS2 PERF SCENE MEASURED] %s view=%u count=%u expected=%u captureOutsideTiming=1\n",
             sCount == PS2_PERF_SCENE_FRAMES ? "PASS" : "FAIL", sTag.view, sCount, PS2_PERF_SCENE_FRAMES);

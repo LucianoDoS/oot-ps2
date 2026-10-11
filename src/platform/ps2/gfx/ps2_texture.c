@@ -336,10 +336,115 @@ static unsigned flame_sample(const u8* source, unsigned stride, int x, int y) {
     return source[(index/32)*stride+(index&31)];
 }
 
+static PS2FlameNoiseStats s_flameNoiseStats;
+#if PS2_FLAME_NOISE_REUSE || defined(PS2_RENDERER_SMOKE_CAPTURE)
+/* The nine title masks share this input and its scroll. Keep a complete
+ * packed copy: checking an address or frame cannot prove its bytes unchanged.
+ * Padding in a RAM row is not part of the loaded 32x32 I8 image. */
+static struct {
+    const u8* source;
+    u32 stride;
+    u16 uls, ult;
+    bool snapshotValid, gridValid;
+    u8 sourceBytes[32*32] __attribute__((aligned(64)));
+    u8 values[64*64] __attribute__((aligned(64)));
+} s_flameNoise;
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+static bool s_flameNoiseReference;
+#define FLAME_NOISE_STAT_ADD(field, amount) (s_flameNoiseStats.field += (amount))
+#else
+#define FLAME_NOISE_STAT_ADD(field, amount) do { \
+    if (gPS2GfxProfileActive) s_flameNoiseStats.field += (amount); \
+} while (0)
+#endif
+
+static bool flame_noise_unchanged(const u8* noise, unsigned stride) {
+    if (stride == 32) {
+        FLAME_NOISE_STAT_ADD(comparedBytes, 32u*32u);
+        return !memcmp(noise, s_flameNoise.sourceBytes, 32u*32u);
+    }
+    for (unsigned row=0;row<32;row++) {
+        FLAME_NOISE_STAT_ADD(comparedBytes, 32);
+        if (memcmp(noise+row*stride, s_flameNoise.sourceBytes+row*32, 32)) return false;
+    }
+    return true;
+}
+
+static const u8* flame_noise_grid(const u8* noise, unsigned stride, const TileDescriptor* effect) {
+    if (!s_flameNoise.snapshotValid || s_flameNoise.source != noise ||
+        s_flameNoise.stride != stride || !flame_noise_unchanged(noise,stride)) {
+        for (unsigned row=0;row<32;row++)
+            memcpy(s_flameNoise.sourceBytes+row*32,noise+row*stride,32);
+        s_flameNoise.source=noise;
+        s_flameNoise.stride=stride;
+        s_flameNoise.snapshotValid=true;
+        s_flameNoise.gridValid=false;
+    }
+    if (s_flameNoise.gridValid && s_flameNoise.uls == effect->uls &&
+        s_flameNoise.ult == effect->ult) {
+        FLAME_NOISE_STAT_ADD(hits,1);
+        return s_flameNoise.values;
+    }
+    /* Preserve the original signed shifts, triangle selection and /4.
+     * Sampling the packed snapshot uses the same TMEM index, including
+     * the S neighbour which continues into the next row. */
+    for (int y=0;y<64;y++) for (int x=0;x<64;x++) {
+        int s=x*2-effect->uls, t=y*2-effect->ult;
+        int sx=s>>2, sy=t>>2, fs=s&3, ft=t&3;
+        int a=flame_sample(s_flameNoise.sourceBytes,32,sx,sy), value;
+        if (fs+ft<=4) value=(a*(4-fs-ft)+flame_sample(s_flameNoise.sourceBytes,32,sx+1,sy)*fs+
+                                      flame_sample(s_flameNoise.sourceBytes,32,sx,sy+1)*ft)/4;
+        else {
+            a=flame_sample(s_flameNoise.sourceBytes,32,sx+1,sy+1);
+            value=(a*(fs+ft-4)+flame_sample(s_flameNoise.sourceBytes,32,sx,sy+1)*(4-fs)+
+                               flame_sample(s_flameNoise.sourceBytes,32,sx+1,sy)*(4-ft))/4;
+        }
+        s_flameNoise.values[y*64+x]=value;
+    }
+    s_flameNoise.uls=effect->uls;
+    s_flameNoise.ult=effect->ult;
+    s_flameNoise.gridValid=true;
+    FLAME_NOISE_STAT_ADD(builds,1);
+    return s_flameNoise.values;
+}
+#endif
+
+PS2FlameNoiseStats ps2_texture_flame_noise_stats(bool reset) {
+    PS2FlameNoiseStats result=s_flameNoiseStats;
+#if PS2_FLAME_NOISE_REUSE || defined(PS2_RENDERER_SMOKE_CAPTURE)
+    result.storageBytes=sizeof(s_flameNoise);
+#endif
+    if (reset) memset(&s_flameNoiseStats,0,sizeof(s_flameNoiseStats));
+    return result;
+}
+
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+void ps2_texture_test_flame_noise_reference(bool enabled) {
+    s_flameNoiseReference=enabled;
+    memset(&s_flameNoise,0,sizeof(s_flameNoise));
+    ps2_texture_flame_noise_stats(true);
+}
+#endif
+
 static void convert_flame(const u8* mask, const u8* noise, unsigned stride,
                           const TileDescriptor* effect, const RDPState* rdp) {
     const u32* colors=flame_lookup(rdp,false);
     u32* output=(u32*)s_convBuf;
+#if PS2_FLAME_NOISE_REUSE || defined(PS2_RENDERER_SMOKE_CAPTURE)
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+    if (!s_flameNoiseReference)
+#endif
+    {
+        const u8* values=flame_noise_grid(noise,stride,effect);
+        for (unsigned i=0;i<64u*64u;i++) {
+            unsigned m=mask[i/2];
+            m=(i&1)?m&15:m>>4;
+            output[i]=colors[m*256+values[i]];
+        }
+        return;
+    }
+#endif
+#if !PS2_FLAME_NOISE_REUSE || defined(PS2_RENDERER_SMOKE_CAPTURE)
     for (int y=0;y<64;y++) for (int x=0;x<64;x++) {
         int s=x*2-effect->uls, t=y*2-effect->ult;
         int sx=s>>2, sy=t>>2, fs=s&3, ft=t&3;
@@ -357,7 +462,16 @@ static void convert_flame(const u8* mask, const u8* noise, unsigned stride,
         m=(x&1)?m&15:m>>4;
         output[y*64+x]=colors[m*256+value];
     }
+#endif
 }
+
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+void ps2_texture_test_flame_convert(const u8* mask, const u8* noise, unsigned stride,
+    const TileDescriptor* effect, const RDPState* rdp, u32 output[64*64]) {
+    convert_flame(mask,noise,stride,effect,rdp);
+    memcpy(output,s_convBuf,64u*64u*sizeof(u32));
+}
+#endif
 
 /* Kokiri Emerald: two independently scrolling intensities, with an alpha
  * interpolation between their samples rather than the title's cutout. */

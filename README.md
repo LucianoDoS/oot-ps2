@@ -22,6 +22,15 @@ Pasan detección asíncrona, reconexión y apagado; falta comprobar la vibració
 con un mando físico. La ocarina conserva el comportamiento original al tocar
 libremente, donde las notas permanecen ocultas.
 
+La cinemática del título también tiene una prueba repetible con la cámara
+original y Link sobre Epona. Compartir el ruido filtrado entre las nueve
+piezas del aura reduce la traducción de 34,96 a 27,05 ms: la media pasa de
+18,42 a 19,91 FPS y el último tramo de 14,61 a 19,65. Se conservan la
+secuencia de geometría, el movimiento y los bytes de la captura. Son medidas
+de PCSX2; queda probar otras vistas y la consola física. El arranque conserva
+la conexión del mando durante su configuración asíncrona para evitar
+«NO CONTROLLER» al llegar al título.
+
 En la SCPH-90010 el usuario confirma intro, menú, carga de la partida, salida
 de la casa y juego hasta conseguir la espada desde USB. El fallo anterior de
 DIAG.ELF al salir de casa se reproduce y corrige:
