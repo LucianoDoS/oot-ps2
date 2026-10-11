@@ -40,6 +40,13 @@ trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
   `PadMgr_UpdateRumble` descubre el dispositivo mediante `CONT_CARD_ON` y
   utiliza la API de motor integrada. Falta comprobar la sensación de
   vibración en un mando físico.
+- La primera prueba interactiva detecta «NO CONTROLLER»: `EXECCMD` durante
+  el cambio de modo borraba temporalmente la máscara y el logo N64 fijaba
+  `fileNum=0xFEDC`. Se conserva una conexión previamente comprobada durante
+  la petición; una lectura pendiente devuelve overrun 4, que PadMgr trata
+  conservando la muestra anterior. Desconexión/error reales siguen devolviendo
+  8. La prueba host ahora incluye `PadSetup_Init` real, la máscara usada por
+  el título y un puerto ocupado cuya presencia nunca fue comprobada: PASS.
 
 ## Sesión física posterior y pruebas repetibles — 2026-10-10
 

@@ -66,6 +66,7 @@ struct OSMesgQueue;
 
 /* Códigos de error de libultra */
 #define CONT_NO_RESPONSE_ERROR  0x08
+#define CONT_OVERRUN_ERROR      0x04
 #define CONT_CARD_ON            0x01
 
 /* ───────────────────────────────────────────────────────────────── *
@@ -100,6 +101,8 @@ static u8 s_padBuf[PS2_PORTS][256] __attribute__((aligned(64)));
 static struct padButtonStatus s_padStatus[PS2_PORTS];
 static bool s_portOpen[PS2_PORTS];
 static bool s_padInitDone = false;
+static bool s_padPresent[PS2_PORTS];
+static bool s_padInputReady[PS2_PORTS];
 
 typedef enum PadConfig {
     PAD_CONFIG_DISCOVER,
@@ -132,6 +135,8 @@ static void pad_forget(int port) {
     s_configRetry[port] = 0;
     s_motorOn[port] = false;
     s_stopPending[port] = false;
+    s_padPresent[port] = false;
+    s_padInputReady[port] = false;
     memset(&s_padStatus[port], 0, sizeof(s_padStatus[port]));
 }
 
@@ -144,20 +149,30 @@ static void pad_forget(int port) {
 static bool pad_poll(int port) {
     if (port < 0 || port >= PS2_PORTS || !s_portOpen[port]) return false;
 
+    s_padInputReady[port] = false;
     int state = padGetState(port, 0);
     if (state == PAD_STATE_DISCONN || state == PAD_STATE_ERROR || state == PAD_STATE_FINDPAD) {
         pad_stop_motor(port);
         pad_forget(port);
         return false;
     }
+    /* Mode/alignment requests temporarily change STABLE to EXECCMD.
+     * They do not unplug a controller whose presence was already proven.
+     * Query must retain it: ConsoleLogo latches NO CONTROLLER otherwise. */
+    if (state == PAD_STATE_EXECCMD) return s_padPresent[port];
     if (state != PAD_STATE_STABLE && state != PAD_STATE_FINDCTP1) return false;
+    s_padPresent[port] = true;
+    s_padInputReady[port] = true;
 
     if (s_configRetry[port]) {
         --s_configRetry[port];
         return true;
     }
     int request = padGetReqState(port, 0);
-    if (request == PAD_RSTAT_BUSY) return true;
+    if (request == PAD_RSTAT_BUSY) {
+        s_padInputReady[port] = false;
+        return true;
+    }
 
     switch (s_padConfig[port]) {
         case PAD_CONFIG_DISCOVER: {
@@ -171,6 +186,7 @@ static bool pad_poll(int port) {
                 s_padConfig[port] = PAD_CONFIG_NO_MOTOR;
             } else if (padSetMainMode(port, 0, PAD_MMODE_DUALSHOCK, PAD_MMODE_LOCK) == 1) {
                 s_padConfig[port] = PAD_CONFIG_WAIT_MODE;
+                s_padInputReady[port] = false;
             } else {
                 s_configRetry[port] = 60;
             }
@@ -194,6 +210,7 @@ static bool pad_poll(int port) {
             const char align[6] = {0, 1, -1, -1, -1, -1};
             if (padSetActAlign(port, 0, align) == 1) {
                 s_padConfig[port] = PAD_CONFIG_WAIT_ALIGN;
+                s_padInputReady[port] = false;
             } else {
                 s_configRetry[port] = 60;
             }
@@ -313,6 +330,12 @@ void osContGetReadData(OSContPad* pad) {
 
         if (!pad_poll(port)) {
             pad[port].errno = CONT_NO_RESPONSE_ERROR;
+            continue;
+        }
+        if (!s_padInputReady[port]) {
+            /* PadMgr handles overrun by retaining its last input sample
+             * and connection state while PADMAN completes the request. */
+            pad[port].errno = CONT_OVERRUN_ERROR;
             continue;
         }
 

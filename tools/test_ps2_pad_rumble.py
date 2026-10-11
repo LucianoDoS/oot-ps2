@@ -75,6 +75,16 @@ int SleepThread(void);
 #endif
 '''
 
+ULTRA64 = r'''
+#ifndef TEST_ULTRA64_H
+#define TEST_ULTRA64_H
+typedef struct OSMesgQueue OSMesgQueue;
+#define MAXCONTROLLERS 4
+#define OS_MESG_BLOCK 1
+s32 osRecvMesg(OSMesgQueue*, OSMesg*, s32);
+#endif
+'''
+
 DRIVER = r'''
 #include <stdio.h>
 #include <stdlib.h>
@@ -92,19 +102,23 @@ void ps2_os_fire_event(int);
 #define _Static_assert(expression, message)
 #include "MISC_SOURCE"
 #undef _Static_assert
+#include "PADSETUP_SOURCE"
 
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %d: %s\n", __LINE__, #x); return 1; } } while (0)
-static int states[2] = {PAD_STATE_STABLE, PAD_STATE_DISCONN};
+static int states[2] = {PAD_STATE_STABLE, PAD_STATE_EXECCMD};
 static int requests[2], dualshock[2] = {1, 1}, acts[2] = {2, 2};
 static int modeCalls[2], alignCalls[2], directCalls[2], initCalls, openCalls, closeCalls;
 static int modeResult = 1, alignResult = 1, directResult = 1, initResult = 1;
 static unsigned char motors[2][6];
 static int pending[2], readMode = 0x73, readResult = 1, buttons = 0xffff, siEvents;
-static int stateCalls, requestCalls;
+static int stateCalls, requestCalls, readCalls[2];
 int DIntr(void) { return 1; }
 void EIntr(void) {}
 int SleepThread(void) { abort(); }
 void ps2_os_fire_event(int event) { if (event != 5) abort(); siEvents++; }
+s32 osRecvMesg(OSMesgQueue* queue, OSMesg* message, s32 flag) {
+    (void)queue; (void)message; (void)flag; abort();
+}
 int padInit(int mode) { if (mode) abort(); initCalls++; return initResult; }
 int padEnd(void) { return 1; }
 int padPortOpen(int port, int slot, void* memory) {
@@ -150,7 +164,8 @@ int padSetActDirect(int port, int slot, const char data[6]) {
     return directResult;
 }
 unsigned char padRead(int port, int slot, struct padButtonStatus* status) {
-    (void)port; if (slot) abort(); memset(status, 0, sizeof(*status));
+    if (slot || requests[port] == PAD_RSTAT_BUSY) abort();
+    readCalls[port]++; memset(status, 0, sizeof(*status));
     status->mode = readMode; status->btns = buttons;
     if (readMode != 0x41) status->rjoy_h = status->rjoy_v = status->ljoy_h = status->ljoy_v = 128;
     return readResult;
@@ -168,21 +183,34 @@ static void settle(OSContStatus status[4]) {
 int main(void) {
     OSContStatus status[4]; OSContPad pads[4]; OSPfs pfs; u8 mask;
     memset(&pfs, 0, sizeof(pfs));
-    osContInit(NULL, &mask, status);
+    CHECK(PadSetup_Init(NULL, &mask, status) == 0);
     CHECK(mask == 1 && initCalls == 1 && openCalls == 2);
     CHECK(status[0].type == 5 && !status[0].status && !status[0].errno);
     CHECK(status[1].errno == 8 && status[2].errno == 8 && status[3].errno == 8);
+    states[1] = PAD_STATE_DISCONN;
     CHECK(modeCalls[0] == 1 && !alignCalls[0] && !directCalls[0]);
     CHECK(osMotorInit(NULL, NULL, 0) == 5);
     CHECK(osMotorInit(NULL, &pfs, 0) != 0 && !pfs.status);
     CHECK(__osMotorAccess(&pfs, 1) != 0 && __osMotorAccess(NULL, 1) != 0);
     int previous = stateCalls;
     osContGetReadData(pads); osContGetQuery(status);
-    CHECK(stateCalls - previous == 4 && pads[0].errno == 8 &&
-          !status[0].status && !alignCalls[0]);
+    CHECK(stateCalls - previous == 4 && pads[0].errno == 4 &&
+          !status[0].errno && status[0].type == 5 && !status[0].status &&
+          !alignCalls[0] && !readCalls[0]);
+    /* Real PadSetup_Init followed by PadMgr's query during a pending
+     * mode command must keep the mask used by ConsoleLogo_Init. That
+     * state latches fileNum=0xFEDC and disables Start if port 0 vanishes. */
+    CHECK(PadSetup_Init(NULL, &mask, status) == 0 && mask == 1);
+    osContGetQuery(status);
+    u32 titleMask = 0;
+    for (int i = 0; i < MAX_CONTROLLERS; ++i)
+        if (!status[i].errno && status[i].type == CONT_TYPE_NORMAL) titleMask |= 1u << i;
+    u16 titleFileNum = (titleMask & 1) ? 0xFF : 0xFEDC;
+    CHECK(titleFileNum == 0xFF && !status[0].status);
     complete(0, 1); osContGetQuery(status); osContGetQuery(status);
     CHECK(alignCalls[0] == 1 && !status[0].status && !directCalls[0]);
-    osContGetQuery(status); CHECK(!status[0].status && !directCalls[0]);
+    osContGetReadData(pads); osContGetQuery(status);
+    CHECK(pads[0].errno == 4 && !status[0].errno && !status[0].status && !directCalls[0]);
     complete(0, 1); osContGetQuery(status); osContGetQuery(status);
     CHECK(status[0].status == 1 && directCalls[0] == 1 && !motors[0][0] && !motors[0][1]);
     CHECK(osMotorInit((struct OSMesgQueue*)0x1234, &pfs, 0) == 0 && pfs.status == 8);
@@ -216,6 +244,7 @@ int main(void) {
     CHECK(!motors[0][0] && !motors[0][1]);
     CHECK(__osMotorAccess(&pfs, 1) != 0);
     states[0] = PAD_STATE_FINDPAD; osContGetQuery(status); CHECK(status[0].errno == 8);
+    states[0] = PAD_STATE_EXECCMD; osContGetQuery(status); CHECK(status[0].errno == 8);
     states[0] = PAD_STATE_STABLE; osContGetQuery(status);
     CHECK(modeCalls[0] == 2 && !status[0].status);
     complete(0, 0); osContGetQuery(status); CHECK(!status[0].status);
@@ -280,7 +309,7 @@ int main(void) {
     CHECK(osMotorInit(NULL, &pfs, 0) == 0 && __osMotorAccess(&pfs, 1) == 0);
     ps2_pad_shutdown(); CHECK(closeCalls == 2 && !motors[0][0] && !motors[0][1]);
     initResult = -1; osContInit(NULL, &mask, status); CHECK(mask == 0 && openCalls == 2);
-    puts("PS2 pad/rumble: PASS asynchronous negotiation, capability reporting, game motor API, failure recovery, reconnect, digital input and shutdown");
+    puts("PS2 pad/rumble: PASS asynchronous negotiation, title connection mask, capability reporting, game motor API, failure recovery, reconnect, digital input and shutdown");
     return 0;
 }
 '''
@@ -291,10 +320,14 @@ def main():
     source = repository / 'src/platform/ps2/libultra_stub'
     driver = DRIVER.replace('PAD_SOURCE', (source / 'osContPad.c').as_posix())
     driver = driver.replace('MISC_SOURCE', (source / 'osMisc.c').as_posix())
+    driver = driver.replace('PADSETUP_SOURCE', (repository / 'src/libu64/padsetup.c').as_posix())
     with tempfile.TemporaryDirectory(prefix='ps2-pad-test-') as folder:
         root = Path(folder)
         (root / 'libpad.h').write_text(LIBPAD)
         (root / 'kernel.h').write_text(KERNEL)
+        (root / 'ultra64.h').write_text(ULTRA64)
+        (root / 'libu64').mkdir()
+        (root / 'libu64/padsetup.h').write_text((repository / 'include/libu64/padsetup.h').read_text())
         (root / 'driver.c').write_text(driver)
         executable = root / ('test.exe' if os.name == 'nt' else 'test')
         subprocess.run([os.environ.get('CC', 'gcc'), '-std=gnu11', '-O2', '-Wall', '-Wextra',
