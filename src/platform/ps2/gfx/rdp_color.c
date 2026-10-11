@@ -99,9 +99,15 @@ static inline u8 n64_alpha_to_gs(u8 a) {
  * ─────────────────────────────────────────────────────────── */
 void rdp_setprimcolor(u32 w0, u32 w1, RDPState* rdp) {
     if (rdp->primLodFrac == (w0 & 255) && rdp->primColor == w1) return;
+    bool lodChanged = rdp->primLodFrac != (w0 & 255);
     rdp->primLodFrac = w0 & 255;
     rdp->primColor = w1;  /* store as RRGGBBAA */
+#if PS2_COLOR_INVALIDATION_REUSE || defined(PS2_RENDERER_SMOKE_CAPTURE)
+    ps2_texture_invalidate_color(rdp, lodChanged);
+#else
+    (void)lodChanged;
     for (int i = 0; i < MAX_TILES; i++) rdp->tile[i].gsTextureLoaded = false;
+#endif
 }
 
 /* ─────────────────────────────────────────────────────────── *
@@ -111,7 +117,11 @@ void rdp_setenvcolor(u32 w0, u32 w1, RDPState* rdp) {
     (void)w0;
     if (rdp->envColor == w1) return;
     rdp->envColor = w1;
+#if PS2_COLOR_INVALIDATION_REUSE || defined(PS2_RENDERER_SMOKE_CAPTURE)
+    ps2_texture_invalidate_color(rdp, false);
+#else
     for (int i = 0; i < MAX_TILES; i++) rdp->tile[i].gsTextureLoaded = false;
+#endif
 }
 
 /* ─────────────────────────────────────────────────────────── *

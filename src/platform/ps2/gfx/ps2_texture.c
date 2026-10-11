@@ -167,6 +167,68 @@ int ps2_texture_cache_key_smoke(void) {
 #define TEXTURE_CACHE_BYTES (1792u * 1024)
 static u32 s_textureCacheBytes;
 static TextureCacheEntry s_cache[TEXTURE_CACHE_SLOTS];
+#if PS2_COLOR_INVALIDATION_REUSE || defined(PS2_RENDERER_SMOKE_CAPTURE)
+/* Keep the analysis mode of the texels actually converted into this entry.
+ * A cache hit must not relabel old texels after a restored RDP snapshot. */
+static u32 s_cacheColorMode[TEXTURE_CACHE_SLOTS];
+#endif
+static PS2TextureColorInvalidationStats s_colorInvalidationStats;
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+static bool s_colorInvalidationReference;
+void ps2_texture_test_color_invalidation_reference(bool enabled) {
+    s_colorInvalidationReference = enabled;
+}
+#endif
+PS2TextureColorInvalidationStats ps2_texture_color_invalidation_stats(bool reset) {
+    PS2TextureColorInvalidationStats stats = s_colorInvalidationStats;
+    if (reset) memset(&s_colorInvalidationStats, 0, sizeof(s_colorInvalidationStats));
+    return stats;
+}
+void ps2_texture_invalidate_color(RDPState* rdp, bool force) {
+    bool loaded = false;
+    for (unsigned i = 0; i < MAX_TILES; i++) loaded |= rdp->tile[i].gsTextureLoaded;
+    if (!loaded) return;
+#if PS2_COLOR_INVALIDATION_REUSE || defined(PS2_RENDERER_SMOKE_CAPTURE)
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+    force |= s_colorInvalidationReference;
+#endif
+    /* These CPU pair converters retain raw constants/LOD in their own
+     * equations. Generic selector masks cannot establish their identity. */
+    if (!force) force = ps2_combiner_path_lerp(rdp) || ps2_combiner_flame(rdp) ||
+                        ps2_combiner_token_flame(rdp) || ps2_combiner_jewel(rdp);
+    u32 prim = 0, env = 0;
+    if (!force) {
+        ps2_combiner_constants(rdp, &prim, &env);
+        if (ps2_combiner_dynamic_alpha(rdp)) prim &= 0xffffff00u;
+    }
+    u32 cycle = (rdp->otherMode.hi >> 20) & 3;
+    u32 mode = rdp->otherMode.lo & 0x5003u;
+#else
+    force = true;
+#endif
+    if (force) s_colorInvalidationStats.forced++;
+    for (unsigned i = 0; i < MAX_TILES; i++) {
+        TileDescriptor* tile = &rdp->tile[i];
+        if (!tile->gsTextureLoaded) continue;
+        bool retain = false;
+#if PS2_COLOR_INVALIDATION_REUSE || defined(PS2_RENDERER_SMOKE_CAPTURE)
+        if (!force && tile->cacheSlot < TEXTURE_CACHE_SLOTS && tile->tmem < 512) {
+            const TextureCacheEntry* entry = &s_cache[tile->cacheSlot];
+            const void* source = rdp->textureLoads[tile->tmem].source;
+            if (!source) source = tile->addr;
+            retain = entry->valid && entry->vram == tile->gsTexture.Vram &&
+                entry->source == (uintptr_t)source && !entry->source2 &&
+                entry->fmt == tile->fmt && entry->siz == tile->siz && entry->palette == tile->palette &&
+                entry->uploadWidth == tile->gsTexture.Width && entry->uploadHeight == tile->gsTexture.Height &&
+                entry->combine0 == rdp->combiner.w0 && entry->combine1 == rdp->combiner.w1 &&
+                entry->cycle == cycle && s_cacheColorMode[tile->cacheSlot] == mode &&
+                entry->prim == prim && entry->env == env;
+        }
+#endif
+        if (retain) s_colorInvalidationStats.retained++;
+        else { tile->gsTextureLoaded = false; s_colorInvalidationStats.invalidated++; }
+    }
+}
 /* Bindings usually revisit a handful of entries with the same RAM address.
  * Index those candidates instead of comparing every material each time.
  * Evictions unlink descriptors before reusing their slot or VRAM. */
@@ -1188,6 +1250,9 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
          * frame's version of the same source/material instead of filling
          * VRAM with historical animation/tint values. Retire GS reads below. */
         unsigned match=cache_match(cached,&key);
+#if PS2_COLOR_INVALIDATION_REUSE || defined(PS2_RENDERER_SMOKE_CAPTURE)
+        if (s_cacheColorMode[i] != (rdp->otherMode.lo & 0x5003u)) match &= ~2u;
+#endif
         if (match & 2u) {
             ps2_gfx_profile_leave(GFX_PROFILE_KEY,keyStart);
             cached->used = ++s_cacheClock;
@@ -1406,6 +1471,9 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
     key.vram = vram; key.size = size; key.used = ++s_cacheClock;
     key.frame = s_textureFrame; key.valid = 1;
     s_cache[slot] = key;
+#if PS2_COLOR_INVALIDATION_REUSE || defined(PS2_RENDERER_SMOKE_CAPTURE)
+    s_cacheColorMode[slot] = rdp->otherMode.lo & 0x5003u;
+#endif
     unsigned bucket = cache_bucket(key.source);
     s_cacheNext[slot] = s_cacheHeads[bucket];
     s_cacheHeads[bucket] = slot;

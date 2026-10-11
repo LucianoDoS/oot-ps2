@@ -2,7 +2,7 @@
 
 Port de **The Legend of Zelda: Ocarina of Time** a PlayStation 2, basado en la descompilación [zeldaret/oot](https://github.com/zeldaret/oot).
 
-## Estado comprobado — 8 de octubre de 2026
+## Estado comprobado — 11 de octubre de 2026
 
 **Port en desarrollo, con todos los recursos descritos del juego convertidos.**
 La versión actual de PCSX2 usa el perfil `full`: 101 escenas, 388 salas y
@@ -10,6 +10,17 @@ La versión actual de PCSX2 usa el perfil `full`: 101 escenas, 388 salas y
 juego ya se compila para el EE; no ejecuta las instrucciones de los overlays N64.
 Esto amplía la carga al resto del mapa, pero todavía falta validar la
 progresión completa, los combates, las cinemáticas y la fidelidad visual.
+
+La optimización se mide ahora también con tres cámaras repetibles en PCSX2,
+semilla fija y capturas, sin abrir la partida ni su memory card. La referencia
+registra 19,48 / 19,82 / 19,06 FPS con la caché RGB de iluminación ampliada
+de 256 a 1024 entradas. Conserva exactamente las capturas y reduce el tiempo
+de traducción un 1,1–1,6 %, pero los FPS apenas cambian y esto no certifica
+20 FPS estables en todas las zonas. El juego ya anuncia correctamente el Rumble Pak al
+detectar un DualShock compatible y traduce sus pulsos a los motores de PS2.
+Pasan detección asíncrona, reconexión y apagado; falta comprobar la vibración
+con un mando físico. La ocarina conserva el comportamiento original al tocar
+libremente, donde las notas permanecen ocultas.
 
 En la SCPH-90010 el usuario confirma intro, menú, carga de la partida, salida
 de la casa y juego hasta conseguir la espada desde USB. El fallo anterior de

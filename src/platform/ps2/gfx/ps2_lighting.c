@@ -14,6 +14,37 @@
 
 #include "ps2_types.h"
 #include "rdp_to_gs.h"
+#include "ps2_lighting.h"
+#include "ps2_gfx_profile.h"
+
+static PS2LightingCacheStats s_cacheStats;
+#if PS2_NORMAL_VECTOR_REUSE || defined(PS2_RENDERER_SMOKE_CAPTURE)
+/* Normals depend only on the three signed source bytes, not the current
+ * light table or model matrix. The high bit is a separate valid guard;
+ * even the all-zero normal must pass a real key check after BSS clearing. */
+typedef struct { u32 key; float x, y, z; } NormalVectorEntry;
+static NormalVectorEntry s_normalVectors[256];
+_Static_assert(sizeof(s_normalVectors) == 4096, "normal cache must fit 4 KiB");
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+static bool s_normalReuse = true;
+#endif
+#endif
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+#define LIGHT_STAT_INC(field) (++s_cacheStats.field)
+#else
+#define LIGHT_STAT_INC(field) do { if (gPS2GfxProfileActive) s_cacheStats.field++; } while (0)
+#endif
+
+PS2LightingCacheStats ps2_light_cache_stats(bool reset) {
+    PS2LightingCacheStats result = s_cacheStats;
+#if PS2_NORMAL_VECTOR_REUSE || defined(PS2_RENDERER_SMOKE_CAPTURE)
+    result.storageBytes = sizeof(s_normalVectors);
+#endif
+    result.rgbEntries = 1u << PS2_LIGHT_RGB_CACHE_BITS;
+    result.rgbStorageBytes = result.rgbEntries * 3u * sizeof(u32);
+    if (reset) memset(&s_cacheStats, 0, sizeof(s_cacheStats));
+    return result;
+}
 
 /* 
  * N64 Light structure format (16 bytes):
@@ -69,7 +100,8 @@ void ps2_light_set_count(u32 numLights, RSPState* rsp) {
 /* ─────────────────────────────────────────────────────────── *
  *  Apply lighting to a single vertex
  * ─────────────────────────────────────────────────────────── */
-void ps2_light_apply_vertex(RSPVertex* v, const RSPState* rsp) {
+static void light_apply_vertex(RSPVertex* v, const RSPState* rsp,
+                               u32 normal, unsigned slot, bool reuseNormal) {
     /* If lighting is off, the vertex color is just the raw color. */
     if (!(rsp->geometryMode & 0x00020000 /* G_LIGHTING */)) {
         return;
@@ -95,11 +127,32 @@ void ps2_light_apply_vertex(RSPVertex* v, const RSPState* rsp) {
     float nz = (float)((s8)v->cb);
     
     /* Normalize vertex normal */
-    float nlen = sqrtf(nx*nx + ny*ny + nz*nz);
-    if (nlen > 0.0f) {
-        nx /= nlen;
-        ny /= nlen;
-        nz /= nlen;
+#if PS2_NORMAL_VECTOR_REUSE || defined(PS2_RENDERER_SMOKE_CAPTURE)
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+    reuseNormal = reuseNormal && s_normalReuse;
+#endif
+    u32 key = normal | 0x80000000u;
+    NormalVectorEntry* cached = &s_normalVectors[slot];
+    if (reuseNormal && cached->key == key) {
+        nx = cached->x; ny = cached->y; nz = cached->z;
+        LIGHT_STAT_INC(normalHits);
+    } else
+#endif
+    {
+        /* Keep the original sqrt and three divisions, including zero.
+         * A reciprocal or pre-scaled light changes rounding near byte edges. */
+        float nlen = sqrtf(nx*nx + ny*ny + nz*nz);
+        if (nlen > 0.0f) {
+            nx /= nlen;
+            ny /= nlen;
+            nz /= nlen;
+        }
+#if PS2_NORMAL_VECTOR_REUSE || defined(PS2_RENDERER_SMOKE_CAPTURE)
+        if (reuseNormal) {
+            *cached = (NormalVectorEntry){key,nx,ny,nz};
+            LIGHT_STAT_INC(normalBuilds);
+        }
+#endif
     }
 
     /* Add diffuse contributions from directional lights */
@@ -126,6 +179,11 @@ void ps2_light_apply_vertex(RSPVertex* v, const RSPState* rsp) {
     /* Alpha remains unchanged (v->ca) */
 }
 
+/* The public scalar path remains an independent arithmetic reference. */
+void ps2_light_apply_vertex(RSPVertex* v, const RSPState* rsp) {
+    light_apply_vertex(v, rsp, 0, 0, false);
+}
+
 /* A G_VTX batch has one immutable light table. Verify its actual contents
  * once before loading vertices: light commands, direct color writes and
  * state copies then all invalidate this cache without separate hooks.
@@ -138,7 +196,20 @@ static struct {
     u32 normal;
     u32 rgb;
     u32 generation;
-} s_normalColors[256];
+} s_normalColors[1u << PS2_LIGHT_RGB_CACHE_BITS];
+_Static_assert(sizeof(s_normalColors) == (1u << PS2_LIGHT_RGB_CACHE_BITS) * 12u,
+    "RGB lighting cache entries must remain 12 bytes");
+
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+void ps2_light_test_normal_cache(bool enabled) {
+    s_normalReuse = enabled;
+    memset(s_normalVectors, 0, sizeof(s_normalVectors));
+    memset(s_normalColors, 0, sizeof(s_normalColors));
+    s_batchValid = false;
+    s_lightGeneration = 0;
+    ps2_light_cache_stats(true);
+}
+#endif
 
 void ps2_light_prepare_batch(const RSPState* rsp) {
     if (!(rsp->geometryMode & 0x00020000u) || !rsp->numLights) return;
@@ -154,6 +225,7 @@ void ps2_light_prepare_batch(const RSPState* rsp) {
             s_lightGeneration = 1;
         }
         s_batchValid = true;
+        LIGHT_STAT_INC(tableChanges);
     }
 }
 
@@ -167,16 +239,21 @@ void ps2_light_apply_prepared_vertex(RSPVertex* v, const RSPState* rsp) {
     }
     if (!s_batchValid) ps2_light_prepare_batch(rsp);
     u32 normal = (u32)v->cr | ((u32)v->cg << 8) | ((u32)v->cb << 16);
-    unsigned slot = (normal * 0x9e3779b1u) >> 24;
+    u32 hash = normal * 0x9e3779b1u;
+    unsigned slot = hash >> (32 - PS2_LIGHT_RGB_CACHE_BITS);
     if (s_normalColors[slot].generation == s_lightGeneration &&
         s_normalColors[slot].normal == normal) {
         u32 rgb = s_normalColors[slot].rgb;
         v->cr = (u8)rgb;
         v->cg = (u8)(rgb >> 8);
         v->cb = (u8)(rgb >> 16);
+        LIGHT_STAT_INC(rgbHits);
         return;
     }
-    ps2_light_apply_vertex(v, rsp);
+    LIGHT_STAT_INC(rgbBuilds);
+    /* The experimental normal cache stays at 256 entries independently
+     * of the RGB cache size. Sharing its wider slot would exceed 4 KiB. */
+    light_apply_vertex(v, rsp, normal, hash >> 24, true);
     s_normalColors[slot].normal = normal;
     s_normalColors[slot].rgb = (u32)v->cr | ((u32)v->cg << 8) | ((u32)v->cb << 16);
     s_normalColors[slot].generation = s_lightGeneration;

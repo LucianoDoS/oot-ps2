@@ -8,8 +8,8 @@
  *
  * Aquí está también la vibración, que antes vivía en io/ps2_controller.c
  * bajo nombres propios (ps2_controller_set_rumble) que NADIE llamaba.
- * El juego usa osMotorInit / osMotorStart / osMotorStop, así que ahora
- * la vibración se conecta por ahí y funciona de verdad.
+ * El juego usa osMotorInit / osMotorStart / osMotorStop; el estado de
+ * conexión y la negociación de los motores pertenecen a osContPad.c.
  */
 
 #include <kernel.h>
@@ -19,6 +19,7 @@
 #include <stdio.h>
 
 #include "ps2_os_internal.h"
+#include "ps2_pad_internal.h"
 #include "ps2_runtime_trace.h"
 #ifdef PS2_USB_BOOT
 #include "ps2_boot_trace.h"
@@ -113,16 +114,12 @@ s32 osAfterPreNMI(void) {
 /* ───────────────────────────────────────────────────────────────── *
  *  Rumble Pak → motores del DualShock 2
  *
- *  ESTO ES LO QUE ANTES NO ESTABA CONECTADO. El módulo anterior exponía
- *  ps2_controller_set_rumble(), pero el juego nunca llama a eso: llama
- *  a osMotorStart/osMotorStop. Resultado: mando mudo.
- *
- *  Además faltaba padSetActAlign() antes de padSetActDirect(), sin lo
- *  cual los motores no responden (ahora se hace en osContPad.c).
+ *  PadMgr descubre el motor mediante CONT_CARD_ON, inicializa OSPfs y
+ *  envía los pulsos calculados por RumbleMgr a __osMotorAccess. El dueño
+ *  del puerto confirma alineación/conexión antes de aceptar comandos.
  * ───────────────────────────────────────────────────────────────── */
-#define PS2_MAX_PORTS  2
-
-extern bool ps2_pad_is_open(int port);
+#define PFS_MOTOR_INITIALIZED 0x08
+#define PFS_ERR_INVALID       5
 
 /* OSPfs — layout EXACTO de ultra64/pfs.h, size = 0x68.
  * Comprobado con _Static_assert contra el header real. */
@@ -144,26 +141,14 @@ typedef struct OSPfs {
 
 _Static_assert(sizeof(OSPfs) == 0x68, "OSPfs debe medir 0x68");
 
-static char s_actuator[PS2_MAX_PORTS][6];
-
 s32 osMotorInit(struct OSMesgQueue* ctrlrqueue, OSPfs* pfs, s32 channel) {
-    (void)ctrlrqueue;
-    if (pfs) pfs->channel = channel;
-    if (channel < 0 || channel >= PS2_MAX_PORTS) return 1;
-    return ps2_pad_is_open(channel) ? 0 : 1;
-}
-
-static s32 motor_set(s32 channel, int on) {
-    if (channel < 0 || channel >= PS2_MAX_PORTS) return 1;
-    if (!ps2_pad_is_open(channel)) return 1;
-
-    /* byte 0: motor pequeño (digital, on/off)
-     * byte 1: motor grande  (analógico, 0-255) */
-    memset(s_actuator[channel], 0xFF, sizeof(s_actuator[channel]));
-    s_actuator[channel][0] = on ? 1 : 0;
-    s_actuator[channel][1] = on ? 0xFF : 0;
-
-    return (padSetActDirect(channel, 0, s_actuator[channel]) != 0) ? 0 : 1;
+    if (!pfs) return PFS_ERR_INVALID;
+    memset(pfs, 0, sizeof(*pfs));
+    pfs->channel = channel;
+    pfs->queue = ctrlrqueue;
+    if (!ps2_pad_rumble_ready(channel)) return 1; /* PFS_ERR_NOPACK */
+    pfs->status = PFS_MOTOR_INITIALIZED;
+    return 0;
 }
 
 /* ─────────────────────────────────────────────────────────────────
@@ -182,7 +167,9 @@ static s32 motor_set(s32 channel, int on) {
 #define MOTOR_START  1
 
 s32 __osMotorAccess(OSPfs* pfs, s32 vibrate) {
-    return motor_set(pfs ? pfs->channel : 0, (vibrate == MOTOR_START));
+    if (!pfs || !(pfs->status & PFS_MOTOR_INITIALIZED) ||
+        (vibrate != MOTOR_START && vibrate != MOTOR_STOP)) return PFS_ERR_INVALID;
+    return ps2_pad_set_rumble(pfs->channel, vibrate == MOTOR_START);
 }
 
 /* ───────────────────────────────────────────────────────────────── *

@@ -8,6 +8,19 @@
 #include "ps2_types.h"
 #include "rdp_to_gs.h"
 
+/* Experimental constant-only reuse: fixed-view measurements showed no gain.
+ * Keep normal rendering unchanged; the differential smoke exercises this path. */
+#ifndef PS2_COLOR_INVALIDATION_REUSE
+#define PS2_COLOR_INVALIDATION_REUSE 0
+#endif
+
+typedef struct {
+    u32 retained, invalidated, forced;
+} PS2TextureColorInvalidationStats;
+/* Called after updating RDP constants. Vertex/material run fences remain. */
+void ps2_texture_invalidate_color(RDPState* rdp, bool force);
+PS2TextureColorInvalidationStats ps2_texture_color_invalidation_stats(bool reset);
+
 void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp);
 u32 ps2_texture_hash(const u8* source, u32 bytes, u32 seed);
 void ps2_texture_end_frame(RDPState* rdp);
@@ -18,6 +31,7 @@ typedef struct {
 /* Hashes describe decoded CLUT contents; every TLUT load still reads RAM. */
 PS2PaletteHashStats ps2_texture_palette_hash_stats(bool reset);
 #ifdef PS2_RENDERER_SMOKE_CAPTURE
+void ps2_texture_test_color_invalidation_reference(bool enabled);
 unsigned ps2_texture_test_cache_capacity(void);
 unsigned ps2_texture_test_combiner_lookup(const RDPState* rdp, u8 values[4][256]);
 void ps2_texture_test_combiner_rgba16(const RDPState* rdp, u32 values[4][32]);

@@ -34,6 +34,7 @@ extern int ps2_texture_content_smoke(void);
 extern int ps2_vertex_index_smoke(void);
 extern int ps2_combiner_analysis_smoke(void);
 extern int ps2_texture_cache_key_smoke(void);
+extern int ps2_color_invalidation_smoke(void);
 
 #ifdef PS2_RENDERER_SMOKE_CAPTURE
 /* Ignored syncs may join primitives, but ENV/PRIM must still split a run.
@@ -580,8 +581,15 @@ int ps2_renderer_smoke(void) {
     rdp_setenvcolor(0, g_rdpState.envColor, &g_rdpState);
     rdp_setcombine(g_rdpState.combiner.w0, g_rdpState.combiner.w1, &g_rdpState);
     if (!g_rdpState.tile[0].gsTextureLoaded) failures++;
+    /* Require invalidation for a component actually baked into these
+     * texels. An unused PRIM change may retain a live texture descriptor. */
+    u32 savedInvalCombine0=g_rdpState.combiner.w0, savedInvalCombine1=g_rdpState.combiner.w1;
+    rdp_setcombine(0xfcffffffu,0xfffdf6fbu,&g_rdpState); /* PRIMITIVE */
+    ps2_texture_upload(&g_rdpState.tile[0],&g_rdpState);
+    if (!g_rdpState.tile[0].gsTextureLoaded) failures++;
     rdp_setprimcolor(g_rdpState.primLodFrac, g_rdpState.primColor ^ 0x100, &g_rdpState);
     if (g_rdpState.tile[0].gsTextureLoaded) failures++;
+    rdp_setcombine(savedInvalCombine0,savedInvalCombine1,&g_rdpState);
     ps2_texture_upload(&g_rdpState.tile[0], &g_rdpState);
     ps2_texture_end_frame(&g_rdpState);
     if (g_rdpState.tile[0].gsTextureLoaded) failures++;
@@ -1036,6 +1044,7 @@ int ps2_renderer_smoke(void) {
         g_rdpState.stats.texturePackets != beforePackets + 4) failures++;
     printf("[PS2 TRI2 TEST] failures=%d\n", failures);
     g_rspState = reflection;
+    failures+=ps2_color_invalidation_smoke();
     failures+=ps2_ground_run_smoke();
     failures+=ps2_texture_vertex_smoke();
     rdp_setcombine(0xfcffffff, 0xfffdf6fb, &g_rdpState);

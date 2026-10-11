@@ -42,6 +42,7 @@
 
 #include "ps2_types.h"
 #include "ps2_os_internal.h"
+#include "ps2_pad_internal.h"
 
 struct OSMesgQueue;
 
@@ -65,6 +66,7 @@ struct OSMesgQueue;
 
 /* Códigos de error de libultra */
 #define CONT_NO_RESPONSE_ERROR  0x08
+#define CONT_CARD_ON            0x01
 
 /* ───────────────────────────────────────────────────────────────── *
  *  Structs de libultra — layout EXACTO (ultra64/controller.h)
@@ -99,38 +101,142 @@ static struct padButtonStatus s_padStatus[PS2_PORTS];
 static bool s_portOpen[PS2_PORTS];
 static bool s_padInitDone = false;
 
-/* ───────────────────────────────────────────────────────────────── *
- *  Espera a que el mando termine de negociar el modo
- * ───────────────────────────────────────────────────────────────── */
-static int pad_wait_ready(int port) {
-    int state;
-    int timeout = 0;
-    do {
-        state = padGetState(port, 0);
-        if (state == PAD_STATE_DISCONN) return 0;
-        if (state == PAD_STATE_STABLE || state == PAD_STATE_FINDCTP1) return 1;
-        /* Cede la CPU en vez de hacer busy-wait puro */
-        if (++timeout > 1000000) return 0;
-    } while (1);
+typedef enum PadConfig {
+    PAD_CONFIG_DISCOVER,
+    PAD_CONFIG_WAIT_MODE,
+    PAD_CONFIG_ALIGN,
+    PAD_CONFIG_WAIT_ALIGN,
+    PAD_CONFIG_STOP,
+    PAD_CONFIG_READY,
+    PAD_CONFIG_NO_MOTOR
+} PadConfig;
+
+static PadConfig s_padConfig[PS2_PORTS];
+static u8 s_configRetry[PS2_PORTS];
+static bool s_motorOn[PS2_PORTS];
+static bool s_stopPending[PS2_PORTS];
+static const char s_motorOff[6] = {0, 0, 0, 0, 0, 0};
+
+static void pad_stop_motor(int port) {
+    if (s_motorOn[port] || s_stopPending[port]) {
+        /* Clear PADMAN's cached command as well as the local flag. An
+         * unplugged pad may reject this; negotiation sends off again
+         * before rumble is exposed after reconnection. */
+        s_stopPending[port] = padSetActDirect(port, 0, s_motorOff) != 1;
+        if (!s_stopPending[port]) s_motorOn[port] = false;
+    }
+}
+
+static void pad_forget(int port) {
+    s_padConfig[port] = PAD_CONFIG_DISCOVER;
+    s_configRetry[port] = 0;
+    s_motorOn[port] = false;
+    s_stopPending[port] = false;
+    memset(&s_padStatus[port], 0, sizeof(s_padStatus[port]));
 }
 
 /* ───────────────────────────────────────────────────────────────── *
- *  Configura un puerto: modo analógico + actuadores de vibración
+ *  Advance negotiation once per call; PadMgr polls us on each retrace.
+ *  The SDK requests are asynchronous: STABLE alone does not confirm a
+ *  mode/alignment request. Check its request status on a later poll.
+ *  No busy wait may hold up PadMgr, audio, or a disconnected controller.
  * ───────────────────────────────────────────────────────────────── */
-static void pad_configure(int port) {
-    if (!pad_wait_ready(port)) return;
+static bool pad_poll(int port) {
+    if (port < 0 || port >= PS2_PORTS || !s_portOpen[port]) return false;
 
-    /* Modo analógico bloqueado: sin esto el stick izquierdo no se lee */
-    padSetMainMode(port, 0, PAD_MMODE_DUALSHOCK, PAD_MMODE_LOCK);
-    if (!pad_wait_ready(port)) return;
-
-    /* Actuadores de vibración. ESTO FALTABA: padSetActDirect() no hace
-     * nada si antes no se alinearon los actuadores. */
-    if (padInfoAct(port, 0, -1, 0) != 0) {
-        char actAlign[6] = {0, 1, -1, -1, -1, -1};
-        padSetActAlign(port, 0, actAlign);
-        pad_wait_ready(port);
+    int state = padGetState(port, 0);
+    if (state == PAD_STATE_DISCONN || state == PAD_STATE_ERROR || state == PAD_STATE_FINDPAD) {
+        pad_stop_motor(port);
+        pad_forget(port);
+        return false;
     }
+    if (state != PAD_STATE_STABLE && state != PAD_STATE_FINDCTP1) return false;
+
+    if (s_configRetry[port]) {
+        --s_configRetry[port];
+        return true;
+    }
+    int request = padGetReqState(port, 0);
+    if (request == PAD_RSTAT_BUSY) return true;
+
+    switch (s_padConfig[port]) {
+        case PAD_CONFIG_DISCOVER: {
+            int modes = padInfoMode(port, 0, PAD_MODETABLE, -1);
+            bool dualshock = false;
+            for (int i = 0; i < modes; ++i) {
+                if (padInfoMode(port, 0, PAD_MODETABLE, i) == PAD_TYPE_DUALSHOCK)
+                    dualshock = true;
+            }
+            if (!dualshock || !padInfoMode(port, 0, PAD_MODECUREXID, 0)) {
+                s_padConfig[port] = PAD_CONFIG_NO_MOTOR;
+            } else if (padSetMainMode(port, 0, PAD_MMODE_DUALSHOCK, PAD_MMODE_LOCK) == 1) {
+                s_padConfig[port] = PAD_CONFIG_WAIT_MODE;
+            } else {
+                s_configRetry[port] = 60;
+            }
+            break;
+        }
+        case PAD_CONFIG_WAIT_MODE:
+            if (request == PAD_RSTAT_COMPLETE) {
+                s_padConfig[port] = PAD_CONFIG_ALIGN;
+            } else {
+                s_padConfig[port] = PAD_CONFIG_DISCOVER;
+                s_configRetry[port] = 60;
+            }
+            break;
+        case PAD_CONFIG_ALIGN: {
+            /* DualShock's motor slots are 0 (digital) and 1 (analog). */
+            int actuators = padInfoAct(port, 0, -1, 0);
+            if (actuators < 2 || actuators > 6) {
+                s_padConfig[port] = PAD_CONFIG_NO_MOTOR;
+                break;
+            }
+            const char align[6] = {0, 1, -1, -1, -1, -1};
+            if (padSetActAlign(port, 0, align) == 1) {
+                s_padConfig[port] = PAD_CONFIG_WAIT_ALIGN;
+            } else {
+                s_configRetry[port] = 60;
+            }
+            break;
+        }
+        case PAD_CONFIG_WAIT_ALIGN:
+            if (request == PAD_RSTAT_COMPLETE) {
+                s_padConfig[port] = PAD_CONFIG_STOP;
+            } else {
+                s_padConfig[port] = PAD_CONFIG_ALIGN;
+                s_configRetry[port] = 60;
+            }
+            break;
+        case PAD_CONFIG_STOP:
+            /* A reconnected controller must start with both motors off. */
+            if (padSetActDirect(port, 0, s_motorOff) == 1) {
+                s_motorOn[port] = false;
+                s_stopPending[port] = false;
+                s_padConfig[port] = PAD_CONFIG_READY;
+                printf("[PS2 PAD] port=%d DualShock rumble ready\n", port);
+            } else {
+                s_configRetry[port] = 60;
+            }
+            break;
+        case PAD_CONFIG_READY:
+            /* If a motor write failed, clear it before advertising again. */
+            if (s_stopPending[port] && padSetActDirect(port, 0, s_motorOff) == 1) {
+                s_motorOn[port] = false;
+                s_stopPending[port] = false;
+            }
+            break;
+        case PAD_CONFIG_NO_MOTOR:
+            break;
+    }
+    return true;
+}
+
+static void pad_query(int port, OSContStatus* status) {
+    bool present = pad_poll(port);
+    status->type = present ? CONT_TYPE_NORMAL : 0;
+    status->status = present && s_padConfig[port] == PAD_CONFIG_READY &&
+                     !s_stopPending[port] ? CONT_CARD_ON : 0;
+    status->errno = present ? 0 : CONT_NO_RESPONSE_ERROR;
 }
 
 /* ───────────────────────────────────────────────────────────────── *
@@ -145,30 +251,29 @@ s32 osContInit(struct OSMesgQueue* mq, u8* numControllers, OSContStatus* status)
     if (numControllers) *numControllers = 0;
 
     if (!s_padInitDone) {
-        padInit(0);
-        s_padInitDone = true;
+        s_padInitDone = (padInit(0) == 1);
     }
 
     for (int i = 0; i < PS2_PORTS; i++) {
-        if (!s_portOpen[i]) {
+        if (s_padInitDone && !s_portOpen[i]) {
             memset(s_padBuf[i], 0, sizeof(s_padBuf[i]));
             s_portOpen[i] = (padPortOpen(i, 0, s_padBuf[i]) != 0);
             if (s_portOpen[i]) {
-                pad_configure(i);
+                pad_forget(i);
             }
         }
         /* libultra returns a port bitmask, not a controller count. */
-        if (numControllers && s_portOpen[i]) *numControllers |= (1u << i);
+        OSContStatus portStatus;
+        pad_query(i, &portStatus);
+        if (numControllers && !portStatus.errno) *numControllers |= (1u << i);
+        if (status) status[i] = portStatus;
     }
 
     /* El juego pregunta por 4 puertos (los de N64); los 2 que no existen
      * se reportan como desconectados. */
     if (status) {
-        for (int i = 0; i < MAX_CONTROLLERS; i++) {
-            bool present = (i < PS2_PORTS) && s_portOpen[i];
-            status[i].type   = present ? CONT_TYPE_NORMAL : 0;
-            status[i].status = 0;
-            status[i].errno  = present ? 0 : CONT_NO_RESPONSE_ERROR;
+        for (int i = PS2_PORTS; i < MAX_CONTROLLERS; i++) {
+            pad_query(i, &status[i]);
         }
     }
 
@@ -206,18 +311,13 @@ void osContGetReadData(OSContPad* pad) {
         pad[port].stick_y = 0;
         pad[port].errno   = 0;
 
-        if (port >= PS2_PORTS || !s_portOpen[port]) {
-            pad[port].errno = CONT_NO_RESPONSE_ERROR;
-            continue;
-        }
-
-        int state = padGetState(port, 0);
-        if (state != PAD_STATE_STABLE && state != PAD_STATE_FINDCTP1) {
+        if (!pad_poll(port)) {
             pad[port].errno = CONT_NO_RESPONSE_ERROR;
             continue;
         }
 
         if (padRead(port, 0, &s_padStatus[port]) == 0) {
+            pad_stop_motor(port);
             pad[port].errno = CONT_NO_RESPONSE_ERROR;
             continue;
         }
@@ -243,8 +343,9 @@ void osContGetReadData(OSContPad* pad) {
         if (btns & PAD_R1)        n64 |= N64_R_TRIG;
 
         /* ── Botones C desde el stick derecho ───────────────── */
-        int rx = (int)s_padStatus[port].rjoy_h - 128;
-        int ry = (int)s_padStatus[port].rjoy_v - 128;
+        bool analog = (s_padStatus[port].mode & 0x0F) >= 3;
+        int rx = analog ? (int)s_padStatus[port].rjoy_h - 128 : 0;
+        int ry = analog ? (int)s_padStatus[port].rjoy_v - 128 : 0;
         if (rx >  C_STICK_THRESHOLD) n64 |= N64_C_RIGHT;
         if (rx < -C_STICK_THRESHOLD) n64 |= N64_C_LEFT;
         if (ry >  C_STICK_THRESHOLD) n64 |= N64_C_DOWN;
@@ -266,8 +367,8 @@ void osContGetReadData(OSContPad* pad) {
 
         /* ── Stick izquierdo ────────────────────────────────── */
         /* PS2: 0..255, centro 128. N64: -128..127, Y hacia arriba. */
-        pad[port].stick_x = apply_deadzone((int)s_padStatus[port].ljoy_h - 128);
-        pad[port].stick_y = apply_deadzone(128 - (int)s_padStatus[port].ljoy_v);
+        pad[port].stick_x = analog ? apply_deadzone((int)s_padStatus[port].ljoy_h - 128) : 0;
+        pad[port].stick_y = analog ? apply_deadzone(128 - (int)s_padStatus[port].ljoy_v) : 0;
     }
 }
 
@@ -283,10 +384,7 @@ s32 osContStartQuery(struct OSMesgQueue* mq) {
 void osContGetQuery(OSContStatus* status) {
     if (!status) return;
     for (int i = 0; i < MAX_CONTROLLERS; i++) {
-        bool present = (i < PS2_PORTS) && s_portOpen[i];
-        status[i].type   = present ? CONT_TYPE_NORMAL : 0;
-        status[i].status = 0;
-        status[i].errno  = present ? 0 : CONT_NO_RESPONSE_ERROR;
+        pad_query(i, &status[i]);
     }
 }
 
@@ -296,17 +394,34 @@ s32 osContSetCh(u8 ch) {
 }
 
 /* ───────────────────────────────────────────────────────────────── *
- *  Acceso para el módulo de vibración (io/ps2_controller.c)
+ *  Acceso para osMotorInit / __osMotorAccess (osMisc.c)
  * ───────────────────────────────────────────────────────────────── */
-bool ps2_pad_is_open(int port) {
-    return (port >= 0 && port < PS2_PORTS) && s_portOpen[port];
+bool ps2_pad_rumble_ready(int port) {
+    return pad_poll(port) && s_padConfig[port] == PAD_CONFIG_READY && !s_stopPending[port];
+}
+
+s32 ps2_pad_set_rumble(int port, bool on) {
+    if (!ps2_pad_rumble_ready(port)) return 1; /* PFS_ERR_NOPACK */
+    if (s_motorOn[port] == on) return 0;
+
+    /* RumbleMgr already turns N64 strength into on/off pulses. */
+    const char actuators[6] = {on ? 1 : 0, on ? (char)0xFF : 0, 0, 0, 0, 0};
+    if (padSetActDirect(port, 0, actuators) != 1) {
+        s_stopPending[port] = true;
+        return 4; /* PFS_ERR_CONTRFAIL */
+    }
+    s_motorOn[port] = on;
+    return 0;
 }
 
 void ps2_pad_shutdown(void) {
     for (int i = 0; i < PS2_PORTS; i++) {
         if (s_portOpen[i]) {
+            /* Do not leave an active command behind when ending PADMAN. */
+            padSetActDirect(i, 0, s_motorOff);
             padPortClose(i, 0);
             s_portOpen[i] = false;
+            pad_forget(i);
         }
     }
     if (s_padInitDone) {

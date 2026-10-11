@@ -4,6 +4,96 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Caché de iluminación y versión con vibración — 2026-10-11
+
+- Se corrige la instrumentación para que la caché de 256 entradas registre
+  hits y reconstrucciones con el mismo coste que las candidatas de 512/1024.
+  Los contadores sólo avanzan durante el perfilado; no se añaden lecturas
+  del reloj al juego normal.
+- Referencia nueva: `build/PS2/perf-scenes/20261011-134417-449`, 256 entradas.
+  Las candidatas `20261011-140014-951` (512) y `20261011-135150-107` (1024)
+  pasan, con la misma ROM, configuración, semilla, muestras, secuencia de
+  geometría y capturas por vista. Las tarjetas del jugador permanecen
+  deshabilitadas en la prueba y su archivo no cambia.
+
+  | Caché RGB | RAM | Traducción por vista (ms) | FPS por vista |
+  | --- | --- | --- | --- |
+  | 256 | 3 KiB | 35,06 / 32,40 / 39,06 | 19,46 / 19,76 / 19,10 |
+  | 512 | 6 KiB | 34,71 / 32,09 / 38,74 | 19,46 / 19,77 / 19,16 |
+  | 1024 | 12 KiB | 34,48 / 31,97 / 38,65 | 19,48 / 19,82 / 19,06 |
+
+- Se conserva la capacidad de 1024: reduce la traducción un 1,1–1,6 % y las
+  reconstrucciones RGB de 1279/1306/1386 a 772/821/904 por fotograma perfilado,
+  sin alterar alpha ni los cálculos originales. Consume 9 KiB adicionales.
+  La mejora de tiempo es pequeña y no demuestra una ganancia sostenida de
+  FPS ni 20 estables. Estas cámaras próximas a la casa tampoco sustituyen
+  la vista física más pesada ni una prueba caminando por el mapa.
+- La caché independiente de normales de la sesión anterior pasa su oracle,
+  pero `20261010-144111-786` no obtiene hits y aumenta la traducción cerca
+  de 0,9 %. `PS2_NORMAL_VECTOR_REUSE` permanece desactivado, igual que la
+  candidata de invalidación por color que no dio ganancia.
+- `floor-production-smoke-20261011-140625` pasa con 1024 entradas y comprueba
+  colisiones/reemplazo, claves completas, cambios de luces, alpha, suelo,
+  transparencias, audio y SRAM. El script smoke usa la capacidad del header
+  de producción por defecto; permite un override explícito para comparar.
+- Se repite `tools/test_ps2_pad_rumble.py`: PASS. La revisión confirma que
+  `PadMgr_UpdateRumble` descubre el dispositivo mediante `CONT_CARD_ON` y
+  utiliza la API de motor integrada. Falta comprobar la sensación de
+  vibración en un mando físico.
+
+## Sesión física posterior y pruebas repetibles — 2026-10-10
+
+- Se conserva `build/PS2/hardware-runtime/compare-physical-20261008-203055`
+  antes de cambiar archivos del USB. Sus 195 muestras contienen las tres
+  filas SAMPLE/USB/AUDIO completas, continuas y ordenadas; no se detectan
+  sectores antiguos en la cola de esta sesión. Esto no demuestra que el
+  fallo intermitente de escritura de sesiones anteriores esté resuelto.
+- Las vistas pesadas siguen cerca de 12–13 FPS. Los perfiles 1200/1500
+  transforman 4439 vértices y registran 1816 comandos de triángulos; la
+  traducción ronda 57,50–61,45 ms. No hay una mejora clara de FPS frente
+  a la sesión anterior. La reducción de subidas de texturas explica más
+  que la reducción total de tiempo: no se atribuye esa diferencia a la
+  escritura directa de puntos. Los tramos finales de 18–20 FPS dibujan
+  vistas más ligeras. El inventario y sus transiciones se excluyen del
+  análisis de juego activo.
+- El siguiente ciclo de optimización usa PCSX2 y cámaras fijas, con ROM,
+  configuración y capturas propias de la prueba. La PS2 física se reserva
+  para comprobar los cambios relevantes, sin sustituir su validación por
+  cifras del emulador.
+- Se revisa la ocarina contra el código original local: el modo de toque
+  libre oculta deliberadamente el pentagrama y las notas, conservando a
+  Link y el escenario. Los modos de aprendizaje/reconocimiento sí dibujan
+  las notas. El usuario confirma que la confusión era sobre el toque libre;
+  no se cambia esa conducta del juego.
+- `tools/run_ps2_perf_scene.ps1` ejecuta tres vistas del bosque Kokiri con
+  guardado sintético, mandos y tarjetas deshabilitados, 30 fotogramas de
+  calentamiento y 120 medidos por vista. El punto de Link se apoya mediante
+  la colisión cargada. `Play_Init` cambiaba la semilla con el reloj: el ELF
+  de prueba intercepta también esa llamada y comprueba la semilla efectiva.
+  El perfilado se limita a los fotogramas 60/120 y se excluye de los tiempos
+  normales. Capturas y filas se escriben después del tramo medido.
+- La referencia válida `build/PS2/perf-scenes/20261010-141140-235` pasa y
+  mide 19,46 / 19,76 / 19,06 FPS, con traducción de 34,98 / 32,36 / 38,96 ms.
+  Su repetición `20261010-141648-933` conserva la geometría de cada fotograma,
+  las capturas y los tiempos. Las versiones iniciales de la prueba se
+  conservan para diagnóstico, pero no sirven como referencia: primero el
+  punto de Link flotaba y después la semilla aún dependía del reloj.
+- La candidata de invalidación por colores pasa 25 casos/150 puntos y el
+  smoke completo `floor-production-smoke-20261010-140500`. La comparación
+  `20261010-141505-782` conserva exactamente geometría y capturas, pero no
+  retiene texturas en estas vistas y añade aproximadamente 0,2–0,3 % al
+  tiempo de traducción. `PS2_COLOR_INVALIDATION_REUSE` queda desactivado;
+  no se presenta como una mejora de rendimiento.
+- Vibración: `osContGetQuery` anuncia `CONT_CARD_ON` sólo después de
+  confirmar modo analógico, alineación de actuadores y motores apagados.
+  Antes el juego no descubría el Rumble Pak. La negociación avanza por
+  consultas, sin espera activa; `osMotorInit` valida el puerto y el estado
+  de `OSPfs`, y los pulsos originales se envían a ambos motores. Desconexión,
+  errores y cierre intentan apagar los motores; reconexión empieza apagada.
+  `tools/test_ps2_pad_rumble.py` pasa las pruebas de detección, solicitudes
+  asíncronas fallidas, mando digital, pulsos, reconexión y cierre. Compilan
+  las estructuras EE reales; todavía falta sentir la vibración en hardware.
+
 ## Comparación de texturas, escritura directa y sincronizaciones vacías — 2026-10-08
 
 - La sesión `build/PS2/hardware-runtime/traversal-physical-20261008-164351`
