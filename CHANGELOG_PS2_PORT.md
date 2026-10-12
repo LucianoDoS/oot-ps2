@@ -4,6 +4,48 @@ Este documento resume todo lo revisado, corregido y verificado sobre el
 port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
 trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
 
+## Sol del castillo, pruebas repetibles y preparación de publicación — 2026-10-12
+
+- Se reproduce el sol dividido en tres partes con `castle_gate`, tres cámaras
+  originales de la entrada de Hyrule, hora fija y guardado sintético. La prueba
+  conserva por tarea gráfica la cámara, el entorno, la geometría y sus capturas;
+  no toca la partida del jugador. El avance original de diez ticks del entorno
+  se tiene en cuenta al comprobar la hora.
+- La lista original del sol usa descriptores I8 para sus tiras empaquetadas I4.
+  La compatibilidad queda limitada a sus selectores, dimensiones, máscaras,
+  clamp y dos fuentes exactas. Mezcla por separado las intensidades diurna y
+  vespertina, tintes y alfa. No cambia la cancelación genérica de las hadas.
+  La captura `20261011-192833-141/sun.png` muestra un sol completo. Pasan
+  49.152 comprobaciones de canales, mutación, alfa y caché.
+- Referencia posterior a la corrección: 18,8420 / 14,6955 / 19,9798 FPS;
+  traducción de 40,58 / 56,62 / 25,43 ms. La caché RGB de 4096, proyección
+  diferida y LTO no aportaron una mejora útil y no se activan. La separación
+  del bucle VTX queda opt-in: 18,8429 / 14,7528 / 19,9793 FPS, con imagen y
+  geometría idénticas; la diferencia es pequeña y no certifica una ganancia.
+- Una candidata VU0 con multiplicaciones/sumas separadas falla la equivalencia
+  exacta en 208 de 512 casos. El primer desajuste se explica por el truncado
+  distinto de ADD entre FPU y VU en PCSX2, con un ULP de diferencia. Permanece
+  desactivada y su diagnóstico se ejecuta sólo bajo opción explícita. No se
+  reduce la exigencia del oráculo para presentar esa candidata como aprobada.
+- La división experimental ELF/DAT inventaría 223 inicializadores privados,
+  260.948 bytes y 165 relocaciones MIPS de 32 bits. El generador reconstruye
+  el mismo DAT desde dos enlaces con 156 direcciones de destino distintas:
+  usa relocaciones de los objetos, no adivina punteros por sus valores.
+  Pasan 32 casos del cargador C en host y tres rechazos de metadatos alterados.
+- En PCSX2 con HostFs pasan los cuatro casos de arranque: datos válidos,
+  ausentes, corruptos y truncados. La prueba valida el logo, no una partida
+  completa ni el hardware real. El catálogo confiable está dentro del ELF;
+  el DAT no controla direcciones y se comprueba entero antes de escribir.
+- Los mismos cuatro casos pasan por USB nativo emulado en
+  `external-checks/20261012-141801-338`, conservando los archivos de la imagen
+  y la tarjeta del jugador. `floor-production-smoke-20261012-142716` pasa
+  con los defaults del renderer: 120 fotogramas enviados, sol, 192 estados
+  VTX, suelo, alfa, audio y SRAM. VU0 aparece como SKIP explícito.
+- El repositorio público es `LucianoDoS/oot-ps2`. ROM, DAT privados, BIOS,
+  tarjetas, partidas y registros no se publican. La release binaria continúa
+  pendiente; [PUBLISHING_PS2.md](PUBLISHING_PS2.md) separa los requisitos
+  técnicos y la revisión de licencias de los componentes.
+
 ## Cinemática del título y conexión del mando — 2026-10-11
 
 - `tools/run_ps2_perf_scene.ps1 -Mode title_cinematic` mide 480 fotogramas

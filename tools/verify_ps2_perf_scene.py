@@ -20,8 +20,13 @@ def metrics(values):
 def inspect(root):
     manifest = json.loads((root/'fixture.json').read_text(encoding='utf-8-sig'))
     mode = manifest.get('mode', 'house_path')
-    assert mode in ('house_path', 'title_cinematic'), 'Unknown fixture mode'
+    assert mode in ('house_path', 'title_cinematic', 'castle_gate'), 'Unknown fixture mode'
     cinematic = mode == 'title_cinematic'
+    castle = mode == 'castle_gate'
+    if castle:
+        assert manifest['schema'] == 5 and manifest['scene'] == 95 and manifest['entrance'] == 0x47e, 'Incorrect castle identity'
+        assert manifest['camera_fixture_version'] == 4 and manifest['camera'] == 'gate_hill_sun', 'Incorrect castle cameras'
+        assert 0 <= manifest['day_time'] <= 65535 and manifest['environment_frame_aligned'], 'Invalid castle environment identity'
     assert manifest['views'] == (1 if cinematic else 3), 'Incorrect view count for mode'
     if cinematic:
         assert manifest['schema'] == 4 and 300 <= manifest['frames'] <= 600, 'Invalid cinematic window'
@@ -56,6 +61,13 @@ def inspect(root):
         assert all(row['triangles'] > 0 and row['submitted'] > 0 and row['translateUs'] > 0 for row in rows), f'View {view}: empty geometry/timing records'
         assert all(row['invalid'] == row['textureFailed'] == 0 for row in rows), f'View {view}: invalid geometry or failed texture uploads'
         motion = []
+        if castle:
+            environment = [pairs(line) for line in text.splitlines() if line.startswith(f'[PS2 PERF SCENE ENVIRONMENT] view={view} ')]
+            assert [row['frame'] for row in environment] == expected, 'Missing castle environment samples'
+            # Environment_Update advances the retail daytime by ten ticks
+            # after the harness resets it, consistently on every task.
+            actual_day_time = manifest.get('environment_day_time', (manifest['day_time']+10)&65535)
+            assert all(row['scene'] == 95 and row['room'] == 0 and row['dayTime'] == actual_day_time for row in environment), 'Castle environment changed during timing'
         if cinematic:
             motion = [pairs(line) for line in text.splitlines() if line.startswith(f'[PS2 PERF SCENE MOTION] view={view} ')]
             assert [row['frame'] for row in motion] == expected, 'Missing/duplicate/out-of-order cinematic motion records'
@@ -107,6 +119,9 @@ def inspect(root):
                            timing_us={key:metrics([row[key] for row in (cadence if key == 'intervalUs' else clean)])
                                       for key in ['translateUs','submitUs','presentUs','intervalUs']})
         view_report['fps'] = 1e6 / view_report['timing_us']['intervalUs']['mean']
+        if castle:
+            view_report['environment_sequence_sha256'] = hashlib.sha256(json.dumps(environment, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+            view_report['sun_screen_milli'] = [environment[-1]['screenX'], environment[-1]['screenY']]
         if cinematic:
             view_report['motion_sequence_sha256'] = hashlib.sha256(json.dumps(motion, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
             view_report['cutscene_frames'] = [motion[0]['cutsceneFrame'], motion[-1]['cutsceneFrame']]
@@ -144,6 +159,7 @@ def main():
             for before, after in zip(baseline['views'], report['views']):
                 geometry_equal = before['camera'] == after['camera'] and before['geometry_histogram'] == after['geometry_histogram'] and before.get('geometry_sequence_sha256') == after['geometry_sequence_sha256']
                 motion_equal = before.get('motion_sequence_sha256') == after.get('motion_sequence_sha256')
+                motion_equal = motion_equal and before.get('environment_sequence_sha256') == after.get('environment_sequence_sha256')
                 sampling_equal = all(before.get(key) == after.get(key) for key in ['profiled_indices','timed_indices','cadence_indices'])
                 comparable = fixture_equal and runtime_equal and geometry_equal and sampling_equal and motion_equal
                 comparisons.append(dict(view=after['view'], camera_geometry_equal=geometry_equal, comparable=comparable,

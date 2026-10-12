@@ -26,6 +26,8 @@ extern int ps2_texture_window_smoke(void);
 extern int ps2_offscreen_smoke(void);
 extern int ps2_frame_capture_smoke(void);
 extern int ps2_flame_smoke(void);
+extern int ps2_sun_smoke(void);
+extern int ps2_vertex_batch_smoke(void);
 extern int ps2_token_flame_smoke(void);
 extern int ps2_jewel_smoke(void);
 extern int ps2_triangle_packet_smoke(void);
@@ -1373,6 +1375,8 @@ int ps2_renderer_smoke(void) {
     failures += ps2_offscreen_smoke();
     failures += ps2_frame_capture_smoke();
     failures += ps2_flame_smoke();
+    failures += ps2_sun_smoke();
+    failures += ps2_vertex_batch_smoke();
     failures += ps2_token_flame_smoke();
     failures += ps2_jewel_smoke();
     failures += ps2_vertex_index_smoke();

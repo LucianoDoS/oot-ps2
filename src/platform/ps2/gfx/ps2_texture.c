@@ -1256,6 +1256,19 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
     u32 lookupStart = ps2_gfx_profile_enter();
 
     const u8* src = (const u8*)tile->addr;
+    const TileDescriptor* second = &rdp->tile[(rdp->textureTile + 1) & 7];
+    const u8* secondSrc = rdp->textureLoads[second->tmem].source;
+    if (!secondSrc) secondSrc = second->addr;
+    /* The retail sun resources are packed I4 strips. Their display list
+     * carries the I8 load aliases, unlike ordinary single-source I8 images.
+     * Restrict the packed decoder to this exact two-cycle material/layout. */
+    bool sunPair = ps2_combiner_sun(rdp) && tile == &rdp->tile[rdp->textureTile] &&
+        tile->fmt == G_IM_FMT_I && tile->siz == G_IM_SIZ_8b && tile->width == 64 &&
+        (tile->height == 32 || tile->height == 17) && tile->cms == 2 && tile->cmt == 2 &&
+        tile->masks == 6 && tile->maskt == 5 && !tile->uls && !tile->ult &&
+        !tile->shifts && !tile->shiftt && secondSrc && second->fmt == tile->fmt &&
+        second->siz == tile->siz && second->width == tile->width && second->height == tile->height &&
+        !second->uls && !second->ult && !second->shifts && !second->shiftt;
     int w = texture_source_extent(tile->width, tile->masks);
     int h = texture_source_extent(tile->height, tile->maskt);
     int sourceHeight=h;
@@ -1267,6 +1280,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         if (h == 0) return;
     }
     u32 rowBytes = (w * (4u << tile->siz) + 7) / 8;
+    if (sunPair) rowBytes = (w+1)/2;
     int uploadW, uploadH;
     unsigned mirror = mirrored_dimensions(tile, w, h, &uploadW, &uploadH);
     bool tokenPair=token_flame_tiles(tile,rdp);
@@ -1285,6 +1299,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
      * RGBA32 splits each row over two TMEM banks. LOADTILE instead retains
      * the RAM image stride recorded at load time. */
     if (!sourceStride && tile->line) sourceStride = tile->line * (tile->siz == G_IM_SIZ_32b ? 16u : 8u);
+    if (sunPair) sourceStride = rowBytes;
     TextureCacheEntry key = {0};
     key.source = (uintptr_t)tile->addr;
     key.stride = sourceStride;
@@ -1296,9 +1311,6 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
     ps2_combiner_constants(rdp, &key.prim, &key.env);
     if (ps2_combiner_dynamic_alpha(rdp)) key.prim &= 0xffffff00u;
     key.cycle = (rdp->otherMode.hi >> 20) & 3;
-    const TileDescriptor* second = &rdp->tile[(rdp->textureTile + 1) & 7];
-    const u8* secondSrc = rdp->textureLoads[second->tmem].source;
-    if (!secondSrc) secondSrc = second->addr;
     bool pathPair = ps2_combiner_path_lerp(rdp) && tile == &rdp->tile[rdp->textureTile] &&
         tile->fmt == G_IM_FMT_RGBA && tile->siz == G_IM_SIZ_16b && secondSrc &&
         second->fmt == tile->fmt && second->siz == tile->siz &&
@@ -1314,13 +1326,14 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         second->width==32 && second->height==32 && second->shifts==1 && second->shiftt==1 &&
         !second->cms && !second->cmt && !second->masks && second->maskt==5;
     emeraldPair=emeraldPair && secondSrc;
-    if (pathPair || flamePair || tokenPair || emeraldPair) {
+    if (pathPair || flamePair || tokenPair || emeraldPair || sunPair) {
         key.source2 = (uintptr_t)secondSrc;
         key.stride2 = rdp->textureLoads[second->tmem].stride;
         if (flamePair && !key.stride2) key.stride2=second->line?second->line*8:32;
         if (tokenPair && !key.stride2) key.stride2=second->line?second->line*8:32;
         if (emeraldPair && !key.stride2) key.stride2=32;
         key.lodFrac = rdp->primLodFrac;
+        if (sunPair) { key.stride2=rowBytes; key.prim=rdp->primColor; key.env=rdp->envColor; }
         if (flamePair || tokenPair || emeraldPair) {
             key.uls2=second->uls; key.ult2=second->ult;
             key.prim=rdp->primColor; key.env=rdp->envColor;
@@ -1339,7 +1352,7 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
         {src, rowBytes, sourceStride, sourceHeight, false}, {0}
     };
     unsigned spanCount = 1;
-    if (pathPair) {
+    if (pathPair || sunPair) {
         spans[1] = (PS2TextureSourceSpan){secondSrc, rowBytes, key.stride2, h, false};
         spanCount = 2;
     }
@@ -1401,9 +1414,23 @@ void ps2_texture_upload(TileDescriptor* tile, RDPState* rdp) {
 
     /* Map RGBA16 channels while decoding them, avoiding a full RGBA scratch
      * write/read pass. The two-source path retains its combined-alpha math. */
-    const CombinerLookup* mapping = pathPair || flamePair || tokenPair || emeraldPair ? NULL : combiner_lookup(rdp);
+    const CombinerLookup* mapping = pathPair || flamePair || tokenPair || emeraldPair || sunPair ? NULL : combiner_lookup(rdp);
     bool mappedRGBA16 = !pathPair && !flamePair && !tokenPair && !emeraldPair && tile->fmt == G_IM_FMT_RGBA && tile->siz == G_IM_SIZ_16b;
-    bool mappedCompact = flamePair || tokenPair || emeraldPair || (!pathPair && convert_compact_mapped(src, s_convBuf, w*h, tile, mapping));
+    bool mappedCompact = flamePair || tokenPair || emeraldPair || sunPair || (!pathPair && convert_compact_mapped(src, s_convBuf, w*h, tile, mapping));
+    if (sunPair) {
+        unsigned blend=rdp->envColor&255;
+        for (int y=0;y<h;y++) for (int x=0;x<w;x++) {
+            unsigned a=src[y*rowBytes+x/2], b=secondSrc[y*key.stride2+x/2];
+            a=((x&1)?a&15:a>>4)*17; b=((x&1)?b&15:b>>4)*17;
+            int intensity=a+((int)b-(int)a)*(int)blend/255;
+            u8* pixel=s_convBuf+(y*w+x)*4;
+            for (unsigned c=0;c<3;c++) {
+                int p=(rdp->primColor>>((3-c)*8))&255, e=(rdp->envColor>>((3-c)*8))&255;
+                pixel[c]=e+(p-e)*intensity/255;
+            }
+            pixel[3]=intensity*(rdp->primColor&255)/255*128/255;
+        }
+    }
     if (flamePair) convert_flame(src,secondSrc,key.stride2,second,rdp);
     if (tokenPair) convert_token_flame(src,secondSrc,rowBytes,key.stride2,tile,rdp);
     if (emeraldPair) convert_emerald(src,secondSrc,key.stride2,tile,second,rdp);
@@ -1650,7 +1677,7 @@ void rdp_settilesize(u32 w0, u32 w1, RDPState* rdp) {
     t->width  = ((t->lrs >> 2) - (t->uls >> 2)) + 1;
     t->height = ((t->lrt >> 2) - (t->ult >> 2)) + 1;
     t->gsTextureLoaded = false;
-    if ((ps2_combiner_flame(rdp) || ps2_combiner_token_flame(rdp) || ps2_combiner_jewel(rdp)) && tile_idx == ((rdp->textureTile+1)&7))
+    if ((ps2_combiner_flame(rdp) || ps2_combiner_token_flame(rdp) || ps2_combiner_jewel(rdp) || ps2_combiner_sun(rdp)) && tile_idx == ((rdp->textureTile+1)&7))
         rdp->tile[rdp->textureTile].gsTextureLoaded = false;
 }
 
@@ -1674,7 +1701,7 @@ void rdp_loadtexture(u8 op, u32 w0, u32 w1, RDPState* rdp) {
             rdp->tile[i].gsTextureLoaded = false;
         }
     }
-    if ((ps2_combiner_path_lerp(rdp) || ps2_combiner_flame(rdp) || ps2_combiner_token_flame(rdp) || ps2_combiner_jewel(rdp)) &&
+    if ((ps2_combiner_path_lerp(rdp) || ps2_combiner_flame(rdp) || ps2_combiner_token_flame(rdp) || ps2_combiner_jewel(rdp) || ps2_combiner_sun(rdp)) &&
         rdp->tile[(rdp->textureTile + 1) & 7].tmem == tmem)
         rdp->tile[rdp->textureTile].gsTextureLoaded = false;
 }

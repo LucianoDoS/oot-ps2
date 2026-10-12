@@ -326,12 +326,33 @@ DEPS += $(BUILD_DIR)/generated/ps2_usb_boot.d
 endif
 endif
 ROM_LDFLAGS := -Wl,-T,$(BUILD_DIR)/generated/actor_overlays.ld $(ROM_LDFLAGS_EXTRA)
+ifeq ($(PS2_EXTERNAL_ASSETS),1)
+ifneq ($(PS2_USB_BOOT):$(PS2_RUNTIME_DIAGNOSTIC):$(PS2_PERF_SCENE_BENCH),1::)
+$(error PS2_EXTERNAL_ASSETS currently requires plain PS2_USB_BOOT=1, without diagnostic/benchmark wrappers)
+endif
+OBJS := $(filter-out $(BUILD_DIR)/src/platform/ps2/ps2_main_usb.o,$(OBJS))
+OBJS += $(BUILD_DIR)/src/platform/ps2/ps2_main_usb_external.o $(BUILD_DIR)/src/platform/ps2/ps2_release_data.o
+DEPS += $(BUILD_DIR)/src/platform/ps2/ps2_main_usb_external.d $(BUILD_DIR)/src/platform/ps2/ps2_release_data.d
+endif
 ifneq ($(OOT_UPSTREAM),)
 OBJS += $(BUILD_DIR)/generated/rom_metadata.o
+ifeq ($(PS2_EXTERNAL_ASSETS),1)
+OBJS += $(BUILD_DIR)/generated/public/save_icon_data.o
+else
 OBJS += $(BUILD_DIR)/generated/save_icon_data.o
+endif
 $(BUILD_DIR)/src/platform/ps2/io/ps2_save_icon.o: CFLAGS += -DPS2_HAS_SAVE_ICON=1
 ROM_LDFLAGS += -Wl,-T,$(BUILD_DIR)/generated/rom_segments.ld
 endif
+endif
+
+# A separate test ELF exercises real Play_Init/Update/Destroy without changing
+ifeq ($(PS2_GFX_LTO),1)
+PS2_GFX_LTO_INPUTS := $(filter-out $(BUILD_DIR)/src/platform/ps2/gfx/ps2_gfx_profile.o $(BUILD_DIR)/src/platform/ps2/gfx/ps2_frame_capture.o,$(filter $(BUILD_DIR)/src/platform/ps2/gfx/%.o,$(OBJS)))
+PS2_GFX_LTO_OBJS := $(patsubst $(BUILD_DIR)/src/platform/ps2/gfx/%.o,$(BUILD_DIR)/src/platform/ps2/gfx_lto/%.o,$(PS2_GFX_LTO_INPUTS))
+OBJS := $(filter-out $(PS2_GFX_LTO_INPUTS),$(OBJS)) $(PS2_GFX_LTO_OBJS)
+DEPS += $(PS2_GFX_LTO_OBJS:.o=.d)
+ROM_LDFLAGS += -flto -O3
 endif
 
 # A separate test ELF exercises real Play_Init/Update/Destroy without changing
@@ -392,7 +413,14 @@ DEPS += $(BUILD_DIR)/tools/ps2_perf_scene.d $(BUILD_DIR)/tools/ps2_perf_scene_ca
 PS2_PERF_SCENE_FRAMES ?= 120
 PS2_PERF_SCENE_WARMUP ?= 30
 PS2_PERF_SCENE_TITLE_CINEMATIC ?= 0
-$(BUILD_DIR)/tools/ps2_perf_scene.o $(BUILD_DIR)/tools/ps2_perf_scene_capture.o: CFLAGS += -DPS2_PERF_SCENE_FRAMES=$(PS2_PERF_SCENE_FRAMES) -DPS2_PERF_SCENE_WARMUP=$(PS2_PERF_SCENE_WARMUP) -DPS2_PERF_SCENE_TITLE_CINEMATIC=$(PS2_PERF_SCENE_TITLE_CINEMATIC)
+PS2_PERF_SCENE_CASTLE_GATE ?= 0
+PS2_PERF_SCENE_DAY_TIME ?= 43690
+PS2_PERF_SCENE_LIGHT_BITS ?= 10
+PS2_VERTEX_BATCH_FAST ?= 0
+PS2_VERTEX_VU0 ?= 0
+$(BUILD_DIR)/src/platform/ps2/gfx/f3dex2_ps2.o: CFLAGS += -DPS2_VERTEX_BATCH_FAST=$(PS2_VERTEX_BATCH_FAST) -DPS2_VERTEX_VU0=$(PS2_VERTEX_VU0)
+$(BUILD_DIR)/src/platform/ps2/gfx/ps2_lighting.o: CFLAGS += -DPS2_LIGHT_RGB_CACHE_BITS=$(PS2_PERF_SCENE_LIGHT_BITS)
+$(BUILD_DIR)/tools/ps2_perf_scene.o $(BUILD_DIR)/tools/ps2_perf_scene_capture.o: CFLAGS += -DPS2_PERF_SCENE_FRAMES=$(PS2_PERF_SCENE_FRAMES) -DPS2_PERF_SCENE_WARMUP=$(PS2_PERF_SCENE_WARMUP) -DPS2_PERF_SCENE_TITLE_CINEMATIC=$(PS2_PERF_SCENE_TITLE_CINEMATIC) -DPS2_PERF_SCENE_CASTLE_GATE=$(PS2_PERF_SCENE_CASTLE_GATE) -DPS2_PERF_SCENE_DAY_TIME=$(PS2_PERF_SCENE_DAY_TIME)
 ROM_LDFLAGS += -Wl,--wrap=ConsoleLogo_Init,--wrap=GameState_Update,--wrap=GameState_Destroy,--wrap=GameState_ReqPadData,--wrap=Room_SetupFirstRoom,--wrap=Camera_Update,--wrap=Rand_Seed,--wrap=ps2_capture_frame,--wrap=rdp_to_gs_exec,--wrap=rdp_to_gs_submit,--wrap=rdp_to_gs_present,--wrap=ps2_gfx_profile_begin
 endif
 ifeq ($(PS2_SKULLTULA_TRACE),1)
@@ -566,6 +594,20 @@ $(BUILD_DIR)/generated/save_icon_data.c: tools/generate_ps2_save_icon.py \
 
 $(BUILD_DIR)/generated/save_icon_data.o: $(BUILD_DIR)/generated/save_icon_data.c
 	$(Q)$(CC) $(CFLAGS) $(PLATFORM_INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/generated/public/save_icon_data.c: tools/generate_ps2_public_icon.py tools/generate_ps2_save_icon.py
+	@python3 tools/generate_ps2_public_icon.py --output $(BUILD_DIR)/generated/public
+
+$(BUILD_DIR)/generated/public/save_icon_data.o: $(BUILD_DIR)/generated/public/save_icon_data.c
+	$(Q)$(CC) $(CFLAGS) $(PLATFORM_INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/src/platform/ps2/ps2_main_usb_external.o: src/platform/ps2/ps2_main.c
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CFLAGS) -DPS2_USB_BOOT=1 -DPS2_EXTERNAL_ASSETS=1 $(PLATFORM_INCLUDES) -Iinclude -Isrc $(DEPFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/src/platform/ps2/gfx_lto/%.o: src/platform/ps2/gfx/%.c
+	@mkdir -p $(dir $@)
+	$(Q)$(CC) $(CFLAGS) -flto -O3 -Iinclude/ps2 $(PLATFORM_INCLUDES) $(DEPFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/generated/rom_metadata.c $(BUILD_DIR)/generated/rom_segments.ld \
 $(BUILD_DIR)/generated/assets/audio/sequence_sizes.h \

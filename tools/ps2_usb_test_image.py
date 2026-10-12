@@ -16,6 +16,7 @@ def main():
     parser.add_argument('--image', type=Path, required=True)
     parser.add_argument('--data', type=Path)
     parser.add_argument('--locale', type=Path)
+    parser.add_argument('--native-assets', type=Path)
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
     # Include optional language data beside the converted image in a full
@@ -38,6 +39,8 @@ def main():
                 shutil.copyfileobj(source, dest)
             if args.locale:
                 image.writebytes('OOTPS2/ESP.DAT',args.locale.read_bytes())
+            if args.native_assets:
+                image.writebytes('OOTPS2/PS2DATA.DAT', args.native_assets.read_bytes())
         print('Created private FAT32 image; no physical drive formatted.')
     else:
         if not args.output:
@@ -62,11 +65,15 @@ def main():
                 report['data_unchanged'] = digest.hexdigest() == expected
             if args.locale:
                 report['locale_unchanged']=image.readbytes('OOTPS2/ESP.DAT')==args.locale.read_bytes()
+            if args.native_assets:
+                report['native_assets_unchanged'] = image.readbytes('OOTPS2/PS2DATA.DAT') == args.native_assets.read_bytes()
         (args.output / 'image-check.json').write_text(json.dumps(report, indent=2) + '\n')
         if args.data and not report['data_unchanged']:
             raise RuntimeError('The USB driver changed the test data image.')
         if args.locale and not report['locale_unchanged']:
             raise RuntimeError('The USB driver changed the language archive.')
+        if args.native_assets and not report['native_assets_unchanged']:
+            raise RuntimeError('The USB driver changed the native asset archive.')
 
 
 if __name__ == '__main__':

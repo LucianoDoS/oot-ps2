@@ -1,6 +1,6 @@
 param(
     [switch]$SkipBuild,
-    [ValidateSet('house_path','title_cinematic')][string]$Mode = 'house_path',
+    [ValidateSet('house_path','title_cinematic','castle_gate')][string]$Mode = 'house_path',
     [int]$TimeoutSeconds = 120,
     [string]$FixtureRoot = 'build\PS2-perf-scene',
     [string]$Baseline = '',

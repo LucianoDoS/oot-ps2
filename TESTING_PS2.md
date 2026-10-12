@@ -89,6 +89,29 @@ fotogramas ni la fidelidad completa. Son tiempos del EE emulado con datos por
 HostFs; no acreditan el rendimiento de USB o PS2 física, todas las escenas,
 estabilidad caminando ni una tasa de FPS garantizada.
 
+### Sol y rendimiento de la entrada del castillo
+
+```sh
+PS2_PERF_SCENE_MODE=castle_gate bash tools/build_ps2_perf_scene.sh
+```
+
+```powershell
+./tools/run_ps2_perf_scene.ps1 -Mode castle_gate -SkipBuild -TimeoutSeconds 150
+```
+
+El fixture mide tres cámaras con la entrada original 0x047e, escena 95,
+hora 16:00 fija y guardado sintético. Desactiva mandos y ambas tarjetas.
+Guarda tiempos, secuencia de geometría, entorno por tarea y captura del GS.
+`-Baseline <summary.json>` exige la misma identidad y muestreo para comparar.
+El entorno original avanza diez ticks antes de dibujar; se valida ese valor.
+
+La referencia con el sol corregido obtiene 18,84 / 14,70 / 19,98 FPS en
+PCSX2. No demuestra 20 estables ni un resultado en hardware. El oráculo del
+sol compara 49.152 canales; el de bucles VTX conserva 192 estados exactos.
+VU0 permanece desactivado: `PS2_SMOKE_VU0=1` ejecuta su diagnóstico separado,
+que ha fallado la comparación exacta en 208 de 512 casos. Un SKIP de esa
+candidata en la batería normal no significa que VU0 haya pasado.
+
 ### Paquetes de triángulos y caché de animaciones USB
 
 ```powershell

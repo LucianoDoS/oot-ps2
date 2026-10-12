@@ -124,6 +124,17 @@
 #define G_MTX_NOPUSH      0x00
 #define G_MTX_PUSH        0x01
 
+/* Experimental macro-mode transform. The ordinary build remains scalar
+ * until EE output, frame timing and physical hardware have been compared. */
+#ifndef PS2_VERTEX_VU0
+#define PS2_VERTEX_VU0 0
+#endif
+#if defined(_EE) && (PS2_VERTEX_VU0 || defined(PS2_RENDERER_SMOKE_CAPTURE))
+#define PS2_VERTEX_VU0_AVAILABLE 1
+#else
+#define PS2_VERTEX_VU0_AVAILABLE 0
+#endif
+
 /* ───────────────────────────────────────────────────────────────── *
  *  Utilidades de matrices
  * ───────────────────────────────────────────────────────────────── */
@@ -179,15 +190,7 @@ static void project_vertex(RSPVertex* v, const RSPState* rsp) {
     }
 }
 
-static void transform_vertex(RSPVertex* v, const RSPState* rsp) {
-    const float* mvp = rsp->mvp;
-    float x = (float)v->ox, y = (float)v->oy, z = (float)v->oz;
-
-    v->cx = mvp[0]*x + mvp[4]*y + mvp[ 8]*z + mvp[12];
-    v->cy = mvp[1]*x + mvp[5]*y + mvp[ 9]*z + mvp[13];
-    v->cz = mvp[2]*x + mvp[6]*y + mvp[10]*z + mvp[14];
-    v->cw = mvp[3]*x + mvp[7]*y + mvp[11]*z + mvp[15];
-
+static void finish_transform_vertex(RSPVertex* v, const RSPState* rsp) {
     /* Flags de recorte ANTES de dividir (con w todavía válido) */
     v->clipFlags = 0;
     if (v->cx < -v->cw) v->clipFlags |= 0x01;
@@ -207,6 +210,90 @@ static void transform_vertex(RSPVertex* v, const RSPState* rsp) {
 #endif
     if (project) project_vertex(v, rsp);
     else { v->sx = v->sy = 0; v->sz = 1; }
+}
+
+static void transform_vertex(RSPVertex* v, const RSPState* rsp) {
+    const float* mvp = rsp->mvp;
+    float x = (float)v->ox, y = (float)v->oy, z = (float)v->oz;
+
+    v->cx = mvp[0]*x + mvp[4]*y + mvp[ 8]*z + mvp[12];
+    v->cy = mvp[1]*x + mvp[5]*y + mvp[ 9]*z + mvp[13];
+    v->cz = mvp[2]*x + mvp[6]*y + mvp[10]*z + mvp[14];
+    v->cw = mvp[3]*x + mvp[7]*y + mvp[11]*z + mvp[15];
+    finish_transform_vertex(v, rsp);
+}
+
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+static bool s_vu0TestEnabled;
+static F3DEX2VertexVU0TestStats s_vu0TestStats;
+void f3dex2_test_vu0_enabled(bool enabled) { s_vu0TestEnabled = enabled; }
+F3DEX2VertexVU0TestStats f3dex2_test_vu0_stats(bool reset) {
+    F3DEX2VertexVU0TestStats result = s_vu0TestStats;
+    if (reset) memset(&s_vu0TestStats, 0, sizeof(s_vu0TestStats));
+    return result;
+}
+#endif
+
+#if PS2_VERTEX_VU0_AVAILABLE
+static bool prepare_vu0_matrix(float alignedMvp[16], const RSPState* rsp) {
+    /* RSPState's MVP is only float-aligned. Never feed it directly to LQC2.
+     * Keep special exponent/subnormal handling on the old scalar path:
+     * testing the stored bits avoids the EE's non-IEEE arithmetic quirks. */
+    memcpy(alignedMvp, rsp->mvp, sizeof(float) * 16);
+    for (unsigned i = 0; i < 16; i++) {
+        u32 bits;
+        memcpy(&bits, &alignedMvp[i], sizeof(bits));
+        u32 exponent = bits & 0x7f800000u;
+        if (exponent == 0x7f800000u || (!exponent && (bits & 0x007fffffu))) return false;
+    }
+    return true;
+}
+
+static void transform_vertex_vu0(RSPVertex* v, const RSPState* rsp, const float* alignedMvp) {
+    float input[4] __attribute__((aligned(16))) = {(float)v->ox, (float)v->oy, (float)v->oz, 1};
+    float output[4] __attribute__((aligned(16)));
+    /* Single-owner contract: only the graphics worker uses VU0. The linked
+     * audio/interrupt/kernel helpers contain no COP2 operations. VF context
+     * preservation by thread scheduling is deliberately not assumed. Reload
+     * every input and store the result in one block; nothing stays live in VF
+     * between vertices or across C calls. Adding another VU0 user requires
+     * synchronization, including interrupt handlers.
+     *
+     * Each lane retains ((m0*x + m4*y) + m8*z) + m12. Separate MUL/ADD avoids
+     * the accumulator/FMA rounding of the SDK's vector_apply implementation.
+     * No ACC/Q/VI registers, microprograms, VIF DMA or interrupt masking.
+     * Macro-mode VF hazards are interlocked; GCC does not allocate VF regs.
+     * PS2SDK primary implementation: ee/math3d/src/math3d.c. */
+    __asm__ volatile(
+        "lqc2 $vf1, 0x00(%1)\n"
+        "lqc2 $vf2, 0x10(%1)\n"
+        "lqc2 $vf3, 0x20(%1)\n"
+        "lqc2 $vf4, 0x30(%1)\n"
+        "lqc2 $vf5, 0x00(%2)\n"
+        "vmulx.xyzw $vf6, $vf1, $vf5\n"
+        "vmuly.xyzw $vf7, $vf2, $vf5\n"
+        "vadd.xyzw $vf6, $vf6, $vf7\n"
+        "vmulz.xyzw $vf7, $vf3, $vf5\n"
+        "vadd.xyzw $vf6, $vf6, $vf7\n"
+        "vadd.xyzw $vf6, $vf6, $vf4\n"
+        "sqc2 $vf6, 0x00(%3)\n"
+        : "=m"(output)
+        : "r"(alignedMvp), "r"(input), "r"(output), "m"(input),
+          "m"(*(const float (*)[16])alignedMvp)
+        : "memory");
+    v->cx = output[0]; v->cy = output[1]; v->cz = output[2]; v->cw = output[3];
+    finish_transform_vertex(v, rsp);
+}
+#endif
+
+static inline __attribute__((always_inline)) void transform_vertex_selected(
+    RSPVertex* v, const RSPState* rsp, const float* vu0Mvp) {
+#if PS2_VERTEX_VU0_AVAILABLE
+    if (vu0Mvp) { transform_vertex_vu0(v, rsp, vu0Mvp); return; }
+#else
+    (void)vu0Mvp;
+#endif
+    transform_vertex(v, rsp);
 }
 
 static void generate_texture_coordinates(RSPVertex* v, const RSPState* rsp) {
@@ -237,6 +324,57 @@ static void generate_texture_coordinates(RSPVertex* v, const RSPState* rsp) {
  *    w1        = dirección SEGMENTADA del array
  * ───────────────────────────────────────────────────────────────── */
 static void invalidate_run_vertices(unsigned first, unsigned count);
+#ifndef PS2_VERTEX_BATCH_FAST
+#define PS2_VERTEX_BATCH_FAST 0
+#endif
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+static bool s_vertexBatchReference;
+void f3dex2_test_vertex_batch_reference(bool enabled) { s_vertexBatchReference = enabled; }
+#endif
+
+static inline __attribute__((always_inline)) void read_vertex(RSPVertex* v, const u8* src) {
+    /* Keep the native/BE and unaligned input rules of ASSET_S16. GCC already
+     * combines their alignment checks, so no typed alias of asset RAM is used. */
+    v->ox = ASSET_S16(src + 0); v->oy = ASSET_S16(src + 2); v->oz = ASSET_S16(src + 4);
+    v->flag = ASSET_U16(src + 6);
+    v->tc_s = ASSET_S16(src + 8); v->tc_t = ASSET_S16(src + 10);
+    v->cr = src[12]; v->cg = src[13]; v->cb = src[14]; v->ca = src[15];
+    v->valid = true;
+}
+
+static void load_vertices_unprofiled(RSPVertex* vertices, const u8* src, int count,
+                                    const RSPState* rsp, const float* vu0Mvp) {
+    /* A VTX command has one geometry mode. The regular frame path has no
+     * timer barriers between decode/transform/texgen/light; the separately
+     * instrumented loop below retains the original per-vertex counters. */
+    bool texgen = (rsp->geometryMode & (G_LIGHTING | G_TEXTURE_GEN)) ==
+                  (G_LIGHTING | G_TEXTURE_GEN);
+    for (int i = 0; i < count; i++, src += 16) {
+        RSPVertex* v = &vertices[i];
+        read_vertex(v, src);
+        transform_vertex_selected(v, rsp, vu0Mvp);
+        if (texgen) generate_texture_coordinates(v, rsp);
+        ps2_light_apply_prepared_vertex(v, rsp);
+    }
+}
+
+static void load_vertices_profiled(RSPVertex* vertices, const u8* src, int count,
+                                  const RSPState* rsp, const float* vu0Mvp) {
+    for (int i = 0; i < count; i++, src += 16) {
+        RSPVertex* v = &vertices[i];
+        read_vertex(v, src);
+        u32 start = ps2_gfx_profile_enter();
+        transform_vertex_selected(v, rsp, vu0Mvp);
+        ps2_gfx_profile_leave(GFX_PROFILE_TRANSFORM, start);
+        start = ps2_gfx_profile_enter();
+        generate_texture_coordinates(v, rsp);
+        ps2_gfx_profile_leave(GFX_PROFILE_TEXGEN, start);
+        start = ps2_gfx_profile_enter();
+        ps2_light_apply_prepared_vertex(v, rsp);
+        ps2_gfx_profile_leave(GFX_PROFILE_LIGHT, start);
+    }
+}
+
 void f3dex2_vtx(u32 w0, u32 w1, RSPState* rsp) {
     int count = (int)((w0 >> 12) & 0xFF);
     int vend  = (int)((w0 >>  1) & 0x7F);
@@ -266,47 +404,41 @@ void f3dex2_vtx(u32 w0, u32 w1, RSPState* rsp) {
     }
 
     ps2_light_prepare_batch(rsp);
-    for (int i = 0; i < count; i++) {
-        RSPVertex* v = &rsp->vtx[v0 + i];
+    const float* vu0Mvp = NULL;
+#if PS2_VERTEX_VU0_AVAILABLE
+    float alignedMvp[16] __attribute__((aligned(16)));
+    bool useVu0 = PS2_VERTEX_VU0;
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+    useVu0 = s_vu0TestEnabled;
+#endif
+    if (useVu0 && prepare_vu0_matrix(alignedMvp, rsp)) vu0Mvp = alignedMvp;
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+    if (useVu0) {
+        if (vu0Mvp) { s_vu0TestStats.vectorBatches++; s_vu0TestStats.vectorVertices += count; }
+        else s_vu0TestStats.fallbackBatches++;
+    }
+#endif
+#endif
+    bool fast = PS2_VERTEX_BATCH_FAST && !gPS2GfxProfileActive;
+#ifdef PS2_RENDERER_SMOKE_CAPTURE
+    /* Exercise the candidate even while the production flag remains off. */
+    fast = !gPS2GfxProfileActive && !s_vertexBatchReference;
+#endif
+    if (fast) load_vertices_unprofiled(&rsp->vtx[v0], src, count, rsp, vu0Mvp);
+    else load_vertices_profiled(&rsp->vtx[v0], src, count, rsp, vu0Mvp);
 
-        /* Vtx de N64 = 16 bytes:
-         *   s16 x,y,z;  u16 flag;  s16 s,t;  u8 r,g,b,a  */
-        v->ox   = ASSET_S16(src + 0);
-        v->oy   = ASSET_S16(src + 2);
-        v->oz   = ASSET_S16(src + 4);
-        v->flag = ASSET_U16(src + 6);
-        v->tc_s = ASSET_S16(src + 8);
-        v->tc_t = ASSET_S16(src + 10);
-        v->cr   = src[12];
-        v->cg   = src[13];
-        v->cb   = src[14];
-        v->ca   = src[15];
-        v->valid = true;
-
-        u32 start = ps2_gfx_profile_enter();
-        transform_vertex(v, rsp);
-        ps2_gfx_profile_leave(GFX_PROFILE_TRANSFORM, start);
-        start = ps2_gfx_profile_enter();
-        generate_texture_coordinates(v, rsp);
-        ps2_gfx_profile_leave(GFX_PROFILE_TEXGEN, start);
-        start = ps2_gfx_profile_enter();
-        ps2_light_apply_prepared_vertex(v, rsp);
-        ps2_gfx_profile_leave(GFX_PROFILE_LIGHT, start);
-
-        /* Bounded diagnostics for room geometry, independent of actor vertices. */
-        static unsigned roomTrace;
-        if (i == 0 && (w1 >> 24) == 3 && roomTrace++ < 8) {
-            printf("[PS2 ROOM VTX] addr=%08x pos=%d,%d,%d clip=%f,%f,%f,%f screen=%f,%f mode=%08x\n",
-                w1, v->ox, v->oy, v->oz, v->cx, v->cy, v->cz, v->cw,
-                v->sx, v->sy, rsp->geometryMode);
-            printf("[PS2 ROOM MVP] %f,%f,%f,%f / %f,%f,%f,%f / %f,%f,%f,%f / %f,%f,%f,%f\n",
-                rsp->mvp[0], rsp->mvp[1], rsp->mvp[2], rsp->mvp[3],
-                rsp->mvp[4], rsp->mvp[5], rsp->mvp[6], rsp->mvp[7],
-                rsp->mvp[8], rsp->mvp[9], rsp->mvp[10], rsp->mvp[11],
-                rsp->mvp[12], rsp->mvp[13], rsp->mvp[14], rsp->mvp[15]);
-        }
-
-        src += 16;
+    /* Bounded diagnostics for room geometry, independent of actor vertices. */
+    static unsigned roomTrace;
+    if ((w1 >> 24) == 3 && roomTrace++ < 8) {
+        const RSPVertex* v = &rsp->vtx[v0];
+        printf("[PS2 ROOM VTX] addr=%08x pos=%d,%d,%d clip=%f,%f,%f,%f screen=%f,%f mode=%08x\n",
+            w1, v->ox, v->oy, v->oz, v->cx, v->cy, v->cz, v->cw,
+            v->sx, v->sy, rsp->geometryMode);
+        printf("[PS2 ROOM MVP] %f,%f,%f,%f / %f,%f,%f,%f / %f,%f,%f,%f / %f,%f,%f,%f\n",
+            rsp->mvp[0], rsp->mvp[1], rsp->mvp[2], rsp->mvp[3],
+            rsp->mvp[4], rsp->mvp[5], rsp->mvp[6], rsp->mvp[7],
+            rsp->mvp[8], rsp->mvp[9], rsp->mvp[10], rsp->mvp[11],
+            rsp->mvp[12], rsp->mvp[13], rsp->mvp[14], rsp->mvp[15]);
     }
 }
 

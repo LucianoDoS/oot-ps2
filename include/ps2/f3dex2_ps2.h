@@ -28,6 +28,12 @@ void f3dex2_test_capture(bool enabled);
 const GSPRIMSTQPOINT* f3dex2_test_points(unsigned* count);
 /* Force the original initial viewport calculation for differential tests. */
 void f3dex2_test_geometry_reference(bool enabled);
+/* Force the historical per-vertex timer/texgen loop for the VTX oracle. */
+void f3dex2_test_vertex_batch_reference(bool enabled);
+typedef struct { u32 vectorBatches, fallbackBatches, vectorVertices; } F3DEX2VertexVU0TestStats;
+/* Opt-in VU0 is independently selectable from the VTX loop specialization. */
+void f3dex2_test_vu0_enabled(bool enabled);
+F3DEX2VertexVU0TestStats f3dex2_test_vu0_stats(bool reset);
 void f3dex2_test_index_reference(bool enabled);
 /* Keep the historical temporary-plus-copy path for the batch-tail oracle. */
 void f3dex2_test_batch_copy_reference(bool enabled);

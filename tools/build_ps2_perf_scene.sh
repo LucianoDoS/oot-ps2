@@ -4,12 +4,23 @@ cd "$(dirname "$0")/.."
 source tools/ps2_env.sh
 mode="${PS2_PERF_SCENE_MODE:-house_path}"
 case "$mode" in
-    house_path) title=0; default_frames=120 ;;
-    title_cinematic) title=1; default_frames=480 ;;
-    *) echo 'Invalid mode (house_path or title_cinematic).' >&2; exit 1 ;;
+    house_path) title=0; castle=0; default_frames=120 ;;
+    title_cinematic) title=1; castle=0; default_frames=480 ;;
+    castle_gate) title=0; castle=1; default_frames=120 ;;
+    *) echo 'Invalid mode (house_path, title_cinematic or castle_gate).' >&2; exit 1 ;;
 esac
 frames="${PS2_PERF_SCENE_FRAMES:-$default_frames}"
 warmup="${PS2_PERF_SCENE_WARMUP:-30}"
+day_time="${PS2_PERF_SCENE_DAY_TIME:-43690}"
+light_bits="${PS2_PERF_SCENE_LIGHT_BITS:-10}"
+gfx_lto="${PS2_GFX_LTO:-0}"
+vertex_fast="${PS2_VERTEX_BATCH_FAST:-0}"
+vertex_vu0="${PS2_VERTEX_VU0:-0}"
+[[ "$vertex_vu0" =~ ^(0|1)$ ]] || { echo 'Invalid VU0 flag.' >&2; exit 1; }
+[[ "$vertex_fast" =~ ^(0|1)$ ]] || { echo 'Invalid vertex fast flag.' >&2; exit 1; }
+[[ "$gfx_lto" =~ ^(0|1)$ ]] || { echo 'Invalid graphics LTO flag.' >&2; exit 1; }
+[[ "$light_bits" =~ ^(8|9|10|11|12)$ ]] || { echo 'Invalid lighting cache size.' >&2; exit 1; }
+[[ "$day_time" =~ ^[0-9]+$ && "$day_time" -le 65535 ]] || { echo 'Invalid day time.' >&2; exit 1; }
 image="${PS2_PERF_SCENE_IMAGE:-build/PS2-ntsc12/oot.z64}"
 target="${PS2_PERF_SCENE_TARGET:-oot_ps2_perf_scene.elf}"
 [[ "$frames" =~ ^[0-9]+$ && "$warmup" =~ ^[0-9]+$ && "$frames" -ge 60 && "$frames" -le 600 && "$warmup" -ge 30 ]] || {
@@ -22,15 +33,18 @@ fi
 # Frame counts are test-only compile flags; rebuild their two owned objects
 # even when make does not notice a changed command-line variable.
 rm -f build/PS2-ntsc12/tools/ps2_perf_scene.o build/PS2-ntsc12/tools/ps2_perf_scene_capture.o
+rm -f build/PS2-ntsc12/src/platform/ps2/gfx/ps2_lighting.o
+rm -f build/PS2-ntsc12/src/platform/ps2/gfx/f3dex2_ps2.o
 make PLATFORM=PS2 OOT_VERSION=NTSC_1_2 BUILD_DIR=build/PS2-ntsc12 \
     OOT_UPSTREAM="${OOT_UPSTREAM:-$HOME/oot-ps2-tools/oot-upstream}" \
     PS2_PERF_SCENE_BENCH=1 PS2_PERF_SCENE_FRAMES="$frames" PS2_PERF_SCENE_WARMUP="$warmup" \
-    PS2_PERF_SCENE_TITLE_CINEMATIC="$title" \
-    TARGET="$target" -j2
+    PS2_PERF_SCENE_TITLE_CINEMATIC="$title" PS2_PERF_SCENE_CASTLE_GATE="$castle" \
+    PS2_PERF_SCENE_DAY_TIME="$day_time" PS2_PERF_SCENE_LIGHT_BITS="$light_bits" \
+    PS2_GFX_LTO="$gfx_lto" PS2_VERTEX_BATCH_FAST="$vertex_fast" PS2_VERTEX_VU0="$vertex_vu0" TARGET="$target" -j2
 mkdir -p build/PS2-perf-scene
 cp "build/PS2-ntsc12/$target" build/PS2-perf-scene/oot_ps2_perf_scene.elf
 cp "$image" build/PS2-perf-scene/oot.z64
-python3 - "$frames" "$warmup" "$mode" <<'PY'
+python3 - "$frames" "$warmup" "$mode" "$day_time" "$light_bits" "$vertex_fast" "$vertex_vu0" "$gfx_lto" <<'PY'
 import hashlib, json, pathlib, sys
 root = pathlib.Path('build/PS2-perf-scene')
 def digest(name): return hashlib.sha256((root/name).read_bytes()).hexdigest()
@@ -38,6 +52,9 @@ manifest = dict(schema=3, views=3, frames=int(sys.argv[1]), warmup=int(sys.argv[
                 entrance=0x211, scene=85, seed=0x12345678, profile_every=60,
                 day_time=32768, camera_fixture_version=2,
                 seed_override=True, profile_alignment='fixture_frame',
+                light_rgb_cache_bits=int(sys.argv[5]),
+                vertex_batch_fast=bool(int(sys.argv[6])), vertex_vu0=bool(int(sys.argv[7])),
+                graphics_lto=bool(int(sys.argv[8])),
                 elf_sha256=digest('oot_ps2_perf_scene.elf'), image_sha256=digest('oot.z64'),
                 synthetic_save=True, real_ps2_validated=False)
 if sys.argv[3] == 'title_cinematic':
@@ -45,5 +62,10 @@ if sys.argv[3] == 'title_cinematic':
                     day_time=None, camera_fixture_version=3, camera='original_moving',
                     title_initializer='TitleSetup_Init', cutscene_index=0xfff3,
                     link_age=0, game_mode=1, motion_frame_aligned=True)
+elif sys.argv[3] == 'castle_gate':
+    manifest.update(schema=5, mode='castle_gate', entrance=0x47e, scene=95,
+                    day_time=int(sys.argv[4]), camera_fixture_version=4,
+                    camera='gate_hill_sun', environment_frame_aligned=True,
+                    environment_day_time=(int(sys.argv[4])+10)&65535)
 (root/'fixture.json').write_text(json.dumps(manifest, indent=2)+'\n')
 PY

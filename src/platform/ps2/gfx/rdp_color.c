@@ -235,7 +235,7 @@ static void combiner_sources(const RDPState* rdp, int cycle, bool alpha, u8 s[4]
 typedef struct {
     u32 w0, w1, type, blend, primMask, envMask;
     u32 lookupPrimMask[4], lookupEnvMask[4];
-    bool valid, shade[2], dynamicAlpha, textureLerp, pathLerp;
+    bool valid, shade[2], dynamicAlpha, textureLerp, pathLerp, sun;
     u8 sources[2][2][4];
 } CombinerAnalysis;
 
@@ -284,6 +284,8 @@ static void build_combiner_analysis(CombinerAnalysis* cache, const RDPState* rdp
     cache->w0 = rdp->combiner.w0; cache->w1 = rdp->combiner.w1;
     cache->type = type; cache->blend = blend; cache->valid = true;
     cache->pathLerp = type == 1 && cache->w0 == 0xfc262a04u && cache->w1 == 0x1f5893f8u;
+    /* SETUPDL_54: independent day/evening intensities, then tint/alpha. */
+    cache->sun = type == 1 && cache->w0 == 0xfc262a60u && cache->w1 == 0x150c937fu;
     int cycles = type == 1 ? 2 : 1;
     for (int cycle = 0; cycle < cycles; cycle++) for (int alpha = 0; alpha < 2; alpha++) {
         u8* sources = cache->sources[cycle][alpha];
@@ -392,6 +394,9 @@ bool ps2_combiner_texture_lerp(const RDPState* rdp) {
 }
 bool ps2_combiner_path_lerp(const RDPState* rdp) {
     return combiner_analysis(rdp)->pathLerp;
+}
+bool ps2_combiner_sun(const RDPState* rdp) {
+    return combiner_analysis(rdp)->sun;
 }
 
 bool ps2_combiner_flame(const RDPState* rdp) {

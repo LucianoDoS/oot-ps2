@@ -271,6 +271,7 @@ bool ps2_combiner_texture_lerp(const RDPState* rdp);
 bool ps2_combiner_path_lerp(const RDPState* rdp);
 bool ps2_combiner_flame(const RDPState* rdp);
 bool ps2_combiner_jewel(const RDPState* rdp);
+bool ps2_combiner_sun(const RDPState* rdp);
 bool ps2_combiner_token_flame(const RDPState* rdp);
 typedef struct {
     u32 lookups, lastHits, savedHits, rebuilds, storageBytes;

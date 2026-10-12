@@ -12,8 +12,8 @@
  * 1024 entries use 12 KiB, 9 KiB more than the previous direct map. */
 #define PS2_LIGHT_RGB_CACHE_BITS 10
 #endif
-#if PS2_LIGHT_RGB_CACHE_BITS < 8 || PS2_LIGHT_RGB_CACHE_BITS > 10
-#error "RGB lighting cache supports 256, 512 or 1024 entries"
+#if PS2_LIGHT_RGB_CACHE_BITS < 8 || PS2_LIGHT_RGB_CACHE_BITS > 12
+#error "RGB lighting cache supports powers of two from 256 to 4096 entries"
 #endif
 
 typedef struct {

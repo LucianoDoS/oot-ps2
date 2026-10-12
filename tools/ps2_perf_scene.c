@@ -33,17 +33,31 @@ static ActorEntry sPlayerEntry;
 static Vec3f sAnchor, sEye, sAt;
 static Vec3f sUp = { 0.0f, 1.0f, 0.0f };
 static s16 sBaseYaw;
+#if PS2_PERF_SCENE_CASTLE_GATE
+#define FIXED_SCENE SCENE_HYRULE_CASTLE
+#define FIXED_ENTRANCE ENTR_HYRULE_CASTLE_4
+#define FIXED_TIME PS2_PERF_SCENE_DAY_TIME
+#else
+#define FIXED_SCENE SCENE_KOKIRI_FOREST
+#define FIXED_ENTRANCE ENTR_KOKIRI_FOREST_3
+#define FIXED_TIME CLOCK_TIME(12, 0)
+#endif
 
 static void prepare_view(GameState* state) {
     SaveContext_Init();
     gSaveContext.fileNum = 0xff;
     gSaveContext.save.linkAge = LINK_AGE_CHILD;
-    gSaveContext.save.dayTime = CLOCK_TIME(12, 0);
+    gSaveContext.save.dayTime = FIXED_TIME;
     Rand_Seed(PS2_PERF_SCENE_SEED);
-    MapSelect_LoadGame((MapSelectState*)state, ENTR_KOKIRI_FOREST_3);
+    MapSelect_LoadGame((MapSelectState*)state, FIXED_ENTRANCE);
+#if PS2_PERF_SCENE_CASTLE_GATE
+    /* Debug inventory remains synthetic, but retain the child's pre-flight
+     * castle population instead of the debug-save Zelda escape event. */
+    CLEAR_EVENTCHKINF(EVENTCHKINF_ZELDA_FLED_CASTLE);
+#endif
     sFrames = sCaptureRequested = sAnchorSettled = gPerfCaptureDone = gPerfViewComplete = 0;
     osSyncPrintf("[PS2 PERF SCENE BEGIN] view=%u scene=%u entrance=%04x warmup=%u frames=%u seed=12345678\n",
-        sView, SCENE_KOKIRI_FOREST, ENTR_KOKIRI_FOREST_3, PS2_PERF_SCENE_WARMUP, PS2_PERF_SCENE_FRAMES);
+        sView, FIXED_SCENE, FIXED_ENTRANCE, PS2_PERF_SCENE_WARMUP, PS2_PERF_SCENE_FRAMES);
 }
 #endif
 
@@ -57,13 +71,36 @@ void __wrap_Rand_Seed(u32 requested) {
 
 u32 __wrap_Room_SetupFirstRoom(PlayState* play, RoomContext* roomCtx) {
 #if !PS2_PERF_SCENE_TITLE_CINEMATIC
-    if (play->sceneId != SCENE_KOKIRI_FOREST || !play->playerEntry) {
+    if (play->sceneId != FIXED_SCENE || !play->playerEntry) {
         sFailures++;
         osSyncPrintf("[PS2 PERF SCENE] FAIL wrong scene or missing spawn\n");
         return __real_Room_SetupFirstRoom(play, roomCtx);
     }
     sPlayerEntry = *play->playerEntry;
     sBaseYaw = sPlayerEntry.rot.y;
+#if PS2_PERF_SCENE_CASTLE_GATE
+    /* Entrance 4 is the original spawn just outside the toll gate. Its source
+     * coordinates are (913,1109,2937), yaw 0x4000, room 0. Do not relocate it
+     * across a guard or an exit; raycast below will settle the original floor. */
+    sAnchor = (Vec3f){ sPlayerEntry.pos.x, sPlayerEntry.pos.y, sPlayerEntry.pos.z };
+    if (sView == 0) {
+        sEye = (Vec3f){ sAnchor.x - 220.0f, sAnchor.y + 100.0f, sAnchor.z };
+        sAt = (Vec3f){ sAnchor.x + 160.0f, sAnchor.y + 60.0f, sAnchor.z };
+    } else if (sView == 1) {
+        sEye = (Vec3f){ sAnchor.x, sAnchor.y + 100.0f, sAnchor.z + 220.0f };
+        sAt = (Vec3f){ sAnchor.x, sAnchor.y + 175.0f, sAnchor.z - 900.0f };
+    } else {
+        /* The retail sun trajectory; aim below it so its disc and foreground
+         * can share the frame. Captures must prove visibility/occlusion. */
+        f32 sx = -Math_SinS(FIXED_TIME - CLOCK_TIME(12, 0)) * 3000.0f;
+        f32 sy = Math_CosS(FIXED_TIME - CLOCK_TIME(12, 0)) * 3000.0f;
+        f32 sz = Math_CosS(FIXED_TIME - CLOCK_TIME(12, 0)) * 500.0f;
+        sEye = (Vec3f){ sAnchor.x - sx * (220.0f / 3000.0f), sAnchor.y + 100.0f,
+                       sAnchor.z - sz * (220.0f / 3000.0f) };
+        sAt = (Vec3f){ sEye.x + sx * 0.1f, sEye.y + sy * 0.1f - 100.0f,
+                      sEye.z + sz * 0.1f };
+    }
+#else
     /* Move forward from the house entrance onto the village path. The anchor
      * and all camera coordinates are recorded for visual fixture review. */
     sPlayerEntry.pos.x += (s16)(Math_SinS(sBaseYaw) * 350.0f);
@@ -73,6 +110,7 @@ u32 __wrap_Room_SetupFirstRoom(PlayState* play, RoomContext* roomCtx) {
     sEye = (Vec3f){ sAnchor.x - Math_SinS(yaw) * 220.0f, sAnchor.y + 100.0f,
                    sAnchor.z - Math_CosS(yaw) * 220.0f };
     sAt = (Vec3f){ sAnchor.x, sAnchor.y + 45.0f, sAnchor.z };
+#endif
     play->playerEntry = &sPlayerEntry;
 #endif
     return __real_Room_SetupFirstRoom(play, roomCtx);
@@ -81,7 +119,7 @@ u32 __wrap_Room_SetupFirstRoom(PlayState* play, RoomContext* roomCtx) {
 Vec3s __wrap_Camera_Update(Camera* camera) {
     Vec3s result = __real_Camera_Update(camera);
 #if !PS2_PERF_SCENE_TITLE_CINEMATIC
-    if (camera->play->sceneId == SCENE_KOKIRI_FOREST && camera->status == CAM_STAT_ACTIVE) {
+    if (camera->play->sceneId == FIXED_SCENE && camera->status == CAM_STAT_ACTIVE) {
         /* Actor culling reads camera fields as well as the view matrix. */
         camera->eye = camera->eyeNext = sEye;
         camera->at = sAt;
@@ -112,7 +150,11 @@ void __wrap_ConsoleLogo_Init(GameState* gameState) {
     gameState->running = false;
     SET_NEXT_GAMESTATE(gameState, TitleSetup_Init, TitleSetupState);
 #else
+#if PS2_PERF_SCENE_CASTLE_GATE
+    osSyncPrintf("[PS2 PERF SCENE CONFIG] views=3 mode=castle_gate cards=disabled input=disabled hostROM=1 syntheticSave=1 profileEvery=60 fixtureFrameAligned=1 seedOverride=1 dayTime=%u camera=gateHillSun\n", (unsigned)FIXED_TIME);
+#else
     osSyncPrintf("[PS2 PERF SCENE CONFIG] views=3 cards=disabled input=disabled hostROM=1 syntheticSave=1 profileEvery=60 fixtureFrameAligned=1 seedOverride=1\n");
+#endif
     prepare_view(gameState);
 #endif
 }
@@ -141,10 +183,10 @@ void __wrap_GameState_Update(GameState* state) {
                 }
                 sAnchorSettled = 1;
                 /* Thousandths preserve the sub-unit camera offsets in logs. */
-                osSyncPrintf("[PS2 PERF SCENE CAMERA] view=%u playerMilli=%d,%d,%d yaw=%d eyeMilli=%d,%d,%d atMilli=%d,%d,%d fov=60 time=32768 settled=1\n",
+                osSyncPrintf("[PS2 PERF SCENE CAMERA] view=%u playerMilli=%d,%d,%d yaw=%d eyeMilli=%d,%d,%d atMilli=%d,%d,%d fov=60 time=%u settled=1\n",
                     sView, (int)(sAnchor.x * 1000), (int)(sAnchor.y * 1000), (int)(sAnchor.z * 1000), sBaseYaw,
                     (int)(sEye.x * 1000), (int)(sEye.y * 1000), (int)(sEye.z * 1000),
-                    (int)(sAt.x * 1000), (int)(sAt.y * 1000), (int)(sAt.z * 1000));
+                    (int)(sAt.x * 1000), (int)(sAt.y * 1000), (int)(sAt.z * 1000), (unsigned)FIXED_TIME);
             }
             player->actor.freezeTimer = 3;
             player->actor.world.pos = sAnchor;
@@ -152,7 +194,7 @@ void __wrap_GameState_Update(GameState* state) {
             player->actor.speed = 0;
             player->actor.velocity = (Vec3f){ 0, 0, 0 };
         }
-        gSaveContext.save.dayTime = gSaveContext.skyboxTime = CLOCK_TIME(12, 0);
+        gSaveContext.save.dayTime = gSaveContext.skyboxTime = FIXED_TIME;
     }
 #endif
     __real_GameState_Update(state);
@@ -169,6 +211,23 @@ void __wrap_GameState_Update(GameState* state) {
     unsigned slot = state->gfxCtx->gfxPoolIdx & 1;
     gPerfTaskTags[slot] = (PS2PerfTaskTag){ .root=state->gfxCtx->workBuffer,
         .view=sView, .frame=sFrames, .capture=capture };
+#if PS2_PERF_SCENE_CASTLE_GATE
+    /* Post-draw environment values belong to this graphics task. Projection is
+     * recorded rather than asserted visible: walls may legitimately hide sun. */
+    Vec3f sun = { play->view.eye.x + play->envCtx.sunPos.x,
+                 play->view.eye.y + play->envCtx.sunPos.y,
+                 play->view.eye.z + play->envCtx.sunPos.z }, screen;
+    Play_GetScreenPos(play, &sun, &screen);
+    gPerfTaskTags[slot].environment = (PS2PerfEnvironmentTag){
+        .scene=play->sceneId, .room=play->roomCtx.curRoom.num,
+        .dayTime=gSaveContext.save.dayTime, .sunDisabled=play->envCtx.sunMoonDisabled,
+        .skyboxDisabled=play->envCtx.skyboxDisabled, .skyboxConfig=play->envCtx.skyboxConfig,
+        .cutsceneState=play->csCtx.state,
+        .sunX=(int)(play->envCtx.sunPos.x*1000), .sunY=(int)(play->envCtx.sunPos.y*1000),
+        .sunZ=(int)(play->envCtx.sunPos.z*1000), .screenX=(int)(screen.x*1000),
+        .screenY=(int)(screen.y*1000), .glareMilli=(int)(play->envCtx.glareAlpha*1000),
+        .flareMilli=(int)(play->envCtx.lensFlareAlphaScale*1000) };
+#endif
 #if PS2_PERF_SCENE_TITLE_CINEMATIC
     /* Buffered with the matching display-list task, then emitted after the
      * timing window. Do not alter the original camera, actors, or clock. */
@@ -193,7 +252,7 @@ void __wrap_GameState_Update(GameState* state) {
 #if PS2_PERF_SCENE_TITLE_CINEMATIC
                   SCENE_HYRULE_FIELD && gSaveContext.gameMode == GAMEMODE_TITLE_SCREEN &&
 #else
-                  SCENE_KOKIRI_FOREST &&
+                  FIXED_SCENE &&
 #endif
                   !play->roomCtx.status &&
                   play->roomCtx.curRoom.segment && gPerfCaptureDone == 1;

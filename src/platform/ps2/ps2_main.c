@@ -52,6 +52,10 @@
 #include "ps2/ps2_actor_overlays.h"
 #include "ps2_types.h"
 #include "rdp_to_gs.h"
+#ifdef PS2_EXTERNAL_ASSETS
+#include <debug.h>
+#include "ps2_release_data.h"
+#endif
 #ifdef PS2_USB_BOOT
 #include "ps2_usb_boot.h"
 #include "ps2_boot_trace.h"
@@ -326,6 +330,16 @@ int main(int argc, char* argv[]) {
     printf("  OoT PS2 Port - Build " __DATE__ "\n");
     printf("=================================\n\n");
 
+#ifdef PS2_EXTERNAL_ASSETS
+    /* Restore native .data before actor overlays snapshot their initial state. */
+    ps2_init_all();
+    if (!ps2_release_data_load(ps2_usb_data_path())) {
+        init_scr();
+        scr_printf("OoT PS2: PS2DATA.DAT falta o no corresponde a este ELF.\n");
+        scr_printf("Genera tus datos locales y copia PS2DATA.DAT junto a OOT.Z64.\n");
+        for (;;) SleepThread();
+    }
+#endif
     BOOT_STAGE("ACTORES: conservando datos iniciales");
     if (!ps2_actor_overlays_init()) {
         printf("[OoT-PS2] Cannot preserve initial actor overlay data\n");
@@ -336,7 +350,9 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     BOOT_STAGE("ACTORES: datos iniciales conservados");
+#ifndef PS2_EXTERNAL_ASSETS
     ps2_init_all();
+#endif
 
     /* Cede el control a la cadena de arranque real del juego
      * (bootproc -> idle -> Main -> Graph). Ver ps2_boot.c. */

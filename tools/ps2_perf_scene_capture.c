@@ -22,6 +22,9 @@ typedef struct {
 #if PS2_PERF_SCENE_TITLE_CINEMATIC
     PS2PerfMotionTag motion;
 #endif
+#if PS2_PERF_SCENE_CASTLE_GATE
+    PS2PerfEnvironmentTag environment;
+#endif
 } PerfFrame;
 static PerfFrame sFrames[PS2_PERF_SCENE_FRAMES];
 static PerfFrame sPending;
@@ -63,6 +66,9 @@ void __wrap_rdp_to_gs_submit(void) {
 #if PS2_PERF_SCENE_TITLE_CINEMATIC
     sPending.motion = sTag.motion;
 #endif
+#if PS2_PERF_SCENE_CASTLE_GATE
+    sPending.environment = sTag.environment;
+#endif
     __real_rdp_to_gs_submit();
     sSubmitted = osGetTime();
 }
@@ -91,6 +97,13 @@ void __wrap_rdp_to_gs_present(void) {
                 sTag.view, f->frame, m->scene, m->room, m->gameMode, m->linkAge, m->cutsceneState, m->cutsceneFrame,
                 m->riding, m->horseDrawable, m->eyeX, m->eyeY, m->eyeZ, m->atX, m->atY, m->atZ,
                 m->fovMilli, m->playerX, m->playerY, m->playerZ);
+#endif
+#if PS2_PERF_SCENE_CASTLE_GATE
+            const PS2PerfEnvironmentTag* e = &f->environment;
+            printf("[PS2 PERF SCENE ENVIRONMENT] view=%u frame=%u scene=%u room=%u dayTime=%u sunDisabled=%u skyboxDisabled=%u skyboxConfig=%u cutsceneState=%u sunX=%d sunY=%d sunZ=%d screenX=%d screenY=%d glareMilli=%d flareMilli=%d\n",
+                sTag.view, f->frame, e->scene, e->room, e->dayTime, e->sunDisabled, e->skyboxDisabled,
+                e->skyboxConfig, e->cutsceneState, e->sunX, e->sunY, e->sunZ, e->screenX, e->screenY,
+                e->glareMilli, e->flareMilli);
 #endif
         }
         printf("[PS2 PERF SCENE MEASURED] %s view=%u count=%u expected=%u captureOutsideTiming=1\n",
