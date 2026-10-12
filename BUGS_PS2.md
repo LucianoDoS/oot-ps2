@@ -1,185 +1,186 @@
-# Fallos y límites encontrados por las pruebas
+# Issues and limitations found by testing
 
-## Idioma y frecuencia del logo
+## Language and logo frame rate
 
-El selector permite inglés/español mediante `ESP.DAT` junto a OOT.Z64. Pasan
-la selección real, la conservación de las partidas al escribir la opción,
-su recarga en SRAM y la apertura de un diálogo traducido con USB nativo emulado.
-No están traducidos todos los textos escritos en código ni los créditos.
-Falta comprobar la persistencia del idioma en una memory card física.
+The file select screen supports English/Spanish through `ESP.DAT` alongside OOT.Z64.
+Actual selection, preserving saves when writing the option, reloading it from SRAM
+and opening translated dialogue pass with emulated native USB.
+Not all text written in code or the credits is translated.
+Language persistence on a physical memory card still needs verification.
 
-El mínimo de dos vblank del planificador mantenía el logo en 30 FPS pese a
-pedir uno. Ahora sólo esa pantalla admite un vblank: la prueba real de
-presentación mide 59,9 FPS en PCSX2. El menú y el juego mantienen 30/20.
-Falta la comprobación del logo en hardware.
+The scheduler's minimum of two vblanks kept the logo at 30 FPS despite
+requesting one. Only that screen now allows one vblank: the actual presentation
+test measures 59.9 FPS in PCSX2. The menu and game retain 30/20.
+Hardware verification of the logo remains pending.
 
-## Pantalla negra al arrancar en PS2 real
+## Black screen at startup on real PS2
 
-Estado: arranque corregido y confirmado por el usuario. El primer
-OOTPS2.ELF quedaba negro en una SCPH-90010 con convertidor AV a HDMI.
-La variante USB incluye mensajes antes de iniciar el GS y un BOOT.LOG junto
-a los datos; BOOTTEST muestra el final del registro tras reiniciar.
+Status: startup fixed and confirmed by the user. The first
+OOTPS2.ELF showed a black screen on an SCPH-90010 with an AV-to-HDMI converter.
+The USB variant includes messages before starting the GS and a BOOT.LOG next
+to the data; BOOTTEST displays the end of the log after a restart.
 
-El segundo intento alcanza todos los módulos, GS, mando, guardado, audio,
-vblank y apertura de datos. Completa `Setup_Init` (`0x003a7708` en ese ELF),
-pero no completa `ConsoleLogo_Init` (`0x00486b60`, instancia de 488 bytes).
-Se conserva el archivo físico en
+The second attempt reaches all modules, GS, controller, saving, audio,
+vblank and data opening. It completes `Setup_Init` (`0x003a7708` in that ELF),
+but does not complete `ConsoleLogo_Init` (`0x00486b60`, instance of 488 bytes).
+The physical file is preserved in
 `build/PS2/hardware-boot/scph90010-before-cache/BOOT.LOG`.
 
-Se encuentra y corrige un fallo independiente de caché: `osInvalDCache`
-ignoraba el rango e invalidaba toda la caché de datos, descartando posibles
-escrituras pendientes de pilas, colas y payloads producidos por CPU. Ahora
-sincroniza las líneas del rango mediante SyncDCache. Una prueba con modelo
-CPU/RAM detecta la pérdida de vecinos de la implementación anterior y acepta
-la nueva. BOOTTEST prueba además vecinos, alias físico y estado de interrupciones.
-En PCSX2 pasan la prueba y el logo hasta el primer fotograma. El usuario
-confirma que la versión corregida inicia y permite entrar a jugar. Se conserva
-el nuevo BOOT.LOG físico en `build/PS2/hardware-boot/scph90010-first-gameplay`.
+A separate cache bug is found and fixed: `osInvalDCache` ignored the range
+and invalidated the entire data cache, potentially discarding pending writes
+to stacks, queues and CPU-produced payloads. It now synchronizes the range's
+lines through SyncDCache. A CPU/RAM model test detects neighboring data loss
+with the previous implementation and accepts the new one. BOOTTEST also
+tests neighbors, the physical alias and interrupt state.
+The test and logo through the first frame pass in PCSX2. The user confirms
+that the corrected version starts and allows gameplay. The new physical
+BOOT.LOG is preserved in `build/PS2/hardware-boot/scph90010-first-gameplay`.
 
-## Pausas, suelo y audio en la consola
+## Pauses, floor and audio on the console
 
-Estado: las olas del suelo se corrigen con UV centradas en la segunda capa,
-confirmado por el usuario en la SCPH-90010 con FLOOR v3. El juego habitual
-incorpora automáticamente la corrección. Las cargas se recuperan solas después
-de esperar y sigue pendiente mejorar el audio durante FPS bajos.
-DIAG.ELF añade DIAG.LOG con cargas, tiempos de USB, vídeo y cola de
-audio. La caché USB se amplía y separa las lecturas de muestras de las cargas;
-se añade lectura anticipada acotada y se evita el seek consecutivo redundante.
-La reserva de audio USB aumenta a 60 ms. DIAG224.ELF permite comparar un render
-de 640x224 con líneas duplicadas, manteniendo la señal NTSC entrelazada del
-convertidor. Los ELF normales conservan 640x448. La comparación física a 224
-líneas sigue mostrando las mismas olas. Se corrige una pérdida independiente
-de precisión al truncar las UV interpoladas en cada plano del recorte. Pasan
-256 cámaras y las pruebas del suelo, pero el usuario confirma que esa
-corrección por sí sola no cambió las olas.
-La comparación física de FLOOR v1 conserva las olas con perspectiva forzada;
-omitir la segunda capa las elimina pero pierde parte del suelo. El log confirma
-perspectiva activa y los modos en Kokiri, sin errores USB ni pérdidas. FLOOR v2
-tampoco cambia las olas con profundidad de sólo lectura y un margen mínimo.
-Sus 130 muestras no contienen errores USB ni registros perdidos. Se observa
-una coordenada de la segunda capa de 32 píxeles que supera el rango ±2047
-del GS. FLOOR v3 recupera la profundidad original y centra las UV de la segunda
-capa mediante repeticiones completas por triángulo. Arriba selecciona esa
-prueba; derecha recupera las UV anteriores. Instrucciones y límites en
-`PS2_FLOOR_DIAGNOSTIC.md`. El usuario confirma que arriba elimina las olas.
-La captura `build/PS2/hardware-runtime/floor-v3-confirmed-20261005-184050`
-registra 58 coordenadas fuera de rango antes del ajuste y cero después en
-24 fotogramas muestreados, sin errores USB ni pérdidas de registros. Quedan
-pendientes otras zonas y circunstancias; no es una validación de todo el juego.
-Uso y límites generales en `PS2_HARDWARE.md`.
+Status: floor waves are corrected by centered UVs in the second layer,
+confirmed by the user on the SCPH-90010 with FLOOR v3. The normal game
+applies the correction automatically. Loads recover on their own after
+waiting, and improving audio during low FPS remains pending.
+DIAG.ELF adds DIAG.LOG with loads, USB timings, video and audio queue data.
+The USB cache is expanded and separates sample reads from game loads;
+bounded read-ahead is added and redundant consecutive seeks are avoided.
+The USB audio reserve increases to 60 ms. DIAG224.ELF allows comparison
+with a 640x224 render with duplicated lines, retaining the converter's
+interlaced NTSC signal. Normal ELFs retain 640x448. The physical comparison
+at 224 lines still shows the same waves. A separate precision loss caused
+by truncating interpolated UVs at each clipping plane is fixed.
+256 cameras and the floor tests pass, but the user confirms that this
+correction alone did not change the waves.
+The physical FLOOR v1 comparison retains waves with forced perspective;
+omitting the second layer eliminates them but loses part of the floor.
+The log confirms active perspective and the modes in Kokiri, without USB
+errors or losses. FLOOR v2 also does not change the waves with read-only
+depth and a minimal offset. Its 130 samples contain no USB errors or lost
+records. A coordinate in the second layer with 32 pixels is observed
+exceeding the GS's ±2047 range. FLOOR v3 restores the original depth and
+centers second-layer UVs through whole repeats per triangle. Up selects
+that test; Right restores the previous UVs. Instructions and limitations
+are in `PS2_FLOOR_DIAGNOSTIC.md`. The user confirms that Up eliminates the waves.
+The capture `build/PS2/hardware-runtime/floor-v3-confirmed-20261005-184050`
+records 58 out-of-range coordinates before adjustment and zero after in
+24 sampled frames, without USB errors or lost records. Other areas and
+conditions remain pending; this is not a validation of the entire game.
+General usage and limitations are in `PS2_HARDWARE.md`.
 
-El usuario confirma que la última revisión funciona bien y sitúa las caídas
-de FPS principalmente en zonas grandes. La revisión de paquetes GS conserva
-los registros del SDK con menos bytes por vértice y reutiliza TEX0/PRIM/TEX1
-por grupo de triángulos. La caché USB de animaciones mantiene 256 KiB de
-datos de juego separados de las muestras. Pasan las pruebas de equivalencia
-y las lecturas intercaladas; falta medir la mejora en la PS2 real. Esto no
-garantiza 20 FPS en todas las vistas ni elimina las primeras cargas.
+The user confirms that the latest revision works well and identifies FPS
+drops mainly in large areas. The GS packet revision retains the SDK
+registers with fewer bytes per vertex and reuses TEX0/PRIM/TEX1 per triangle
+group. The USB animation cache keeps 256 KiB of game data separate from
+samples. Equivalence tests and interleaved reads pass; improvement still
+needs to be measured on real PS2. This does not guarantee 20 FPS in every
+view or eliminate initial loads.
 
-## Pantalla negra después del logo con DIAG224
+## Black screen after the logo with DIAG224
 
-Estado: arranque corregido y confirmado en la última comparación física.
-El primer DIAG224 llegaba al
-primer fotograma del logo, pero DIAG.LOG sólo conserva su cabecera de 346 bytes;
-no hay muestras periódicas. Se conservan ambos registros en
-`build/PS2/hardware-runtime/scph90010-diag224-20261005-140823`.
-No demuestran si falló la salida de vídeo, el juego o el nuevo hilo del registro.
+Status: startup fixed and confirmed in the latest physical comparison.
+The first DIAG224 reached the first logo frame, but DIAG.LOG preserves
+only its 346-byte header; there are no periodic samples. Both logs are
+preserved in `build/PS2/hardware-runtime/scph90010-diag224-20261005-140823`.
+They do not establish whether video output, the game or the new logging
+thread failed.
 
-Se elimina la espera usleep sin comprobación del logger: ahora un semáforo lo
-despierta desde el hilo de vblank. Se guarda el arranque del logger inmediatamente,
-se registra su entrada y se detiene el registro si falla la espera. Una ausencia
-de avance del Timer 0 permite muestras con tiempo aproximado de retrace, marcadas
-con clockFallback=1. Primero se comprobó DIAG.ELF con el vídeo normal de 448
-líneas; después se confirmó también el arranque de DIAG224 y su carga de Kokiri.
+The logger's unchecked usleep wait is removed: a semaphore now wakes it
+from the vblank thread. Logger startup is saved immediately, its entry is
+logged, and logging stops if the wait fails. A lack of Timer 0 progress
+allows samples with approximate retrace timing, marked with clockFallback=1.
+DIAG.ELF was first checked with normal 448-line video; DIAG224 startup and
+its Kokiri load were then confirmed as well.
 
-El segundo intento físico, DIAG.ELF con 448 líneas, también queda negro. Su
-BOOT.LOG termina en `REGISTRO: iniciando hilo por vblank`; DIAG.LOG conserva
-sólo la cabecera v2 de 433 bytes. Registros privados verificados en
+The second physical attempt, DIAG.ELF with 448 lines, also shows a black screen.
+Its BOOT.LOG ends with `REGISTRO: iniciando hilo por vblank`; DIAG.LOG
+preserves only the v2 header of 433 bytes. Private logs were verified in
 `build/PS2/hardware-runtime/scph90010-diag448-20261005-143535`.
-El bloqueo está dentro del inicio del logger; no demuestra un fallo del modo 224.
+The lockup is inside logger startup; it does not demonstrate a 224-mode failure.
 
-La prueba nueva con una imagen FAT32 y el controlador USB emulado, sin HostFs,
-reproduce corrupción del texto y errores USBHDFSD durante los volcados, aunque
-el juego continúa. BOOT.LOG v2 y DIAG.LOG v3 escriben sectores de 512 bytes desde
-buffers alineados y mantienen alineado el archivo; los reintentos de una escritura
-parcial también conservan la alineación del buffer. BOOTTEST elimina el relleno
-para mostrar las últimas diez etapas. Se añaden hitos separados del primer lote.
-El usuario confirma que esta revisión permite pasar la intro, abrir el menú
-y entrar a su partida en la SCPH-90010.
-La prueba nativa del controlador USB en PCSX2 ya pasa en
-`build/PS2/usb-stack-checks/20261005-151055-633/report.json`: ambos registros
-íntegros, datos sin cambios, cargas de escena y fotogramas posteriores al logo.
+The new test with a FAT32 image and the emulated USB driver, without HostFs,
+reproduces text corruption and USBHDFSD errors during flushes, although the
+game continues. BOOT.LOG v2 and DIAG.LOG v3 write 512-byte sectors from
+aligned buffers and keep the file aligned; retries after partial writes
+also preserve buffer alignment. BOOTTEST removes padding to display the
+last ten stages. Separate milestones for the first batch are added.
+The user confirms that this revision passes the intro, opens the menu
+and enters their save on the SCPH-90010.
+The native USB driver test in PCSX2 now passes in
+`build/PS2/usb-stack-checks/20261005-151055-633/report.json`: both logs
+intact, data unchanged, scene loads and frames after the logo.
 
-## Pantalla negra al salir de la casa con DIAG.ELF
+## Black screen when leaving the house with DIAG.ELF
 
-Estado: corregido en la prueba automática y confirmado físicamente por el usuario.
-El último registro físico conserva muestras hasta 205 segundos: después de
-salir de la casa, los fotogramas se detienen y continúan el audio y los volcados,
-sin lecturas ni errores USB. Evidencia privada con hashes comprobados en
+Status: fixed in the automated test and physically confirmed by the user.
+The latest physical log preserves samples through 205 seconds: after
+leaving the house, frames stop while audio and log flushes continue,
+without reads or USB errors. Private evidence with verified hashes is in
 `build/PS2/hardware-runtime/scph90010-house-exit-20261005-153103`.
 
-La prueba del controlador USB reproduce que Graph termina tras destruir la
-casa. El wrapper de Play_Init alteraba su identidad en la comparación externa
-de Graph_GetNextGameState, mientras que la transición interna de Play_Update
-asignaba Play_Init original. El diagnóstico ahora envuelve GameState_Init;
-conserva la identidad de los callbacks y puede continuar a la siguiente escena.
-La prueba casa → Kokiri → casa completa 120 actualizaciones en cada escena,
-sin errores USB ni pérdidas del registro, en
+The USB driver test reproduces Graph ending after destroying the house.
+The Play_Init wrapper changed its identity in Graph_GetNextGameState's
+external comparison, while Play_Update's internal transition assigned
+the original Play_Init. The diagnostic now wraps GameState_Init;
+it preserves callback identities and can continue to the next scene.
+The house → Kokiri → house test completes 120 updates in each scene,
+without USB errors or lost records, in
 `build/PS2/usb-stack-checks/20261005-155909-872/report.json`.
-El usuario confirma ahora la salida y el juego hasta conseguir la espada en
-la SCPH-90010. Los registros se conservan en
+The user now confirms leaving the house and gameplay through obtaining
+the sword on the SCPH-90010. Logs are preserved in
 `build/PS2/hardware-runtime/scph90010-first-sword-20261005-162143`.
-Esta corrección del diagnóstico no corrige por sí sola las olas del suelo.
+This diagnostic fix does not itself correct the floor waves.
 
-## Cadencia del logo Nintendo 64
+## Nintendo 64 logo cadence
 
-Estado: corregida y medida en PCSX2 con USB nativo. El mínimo de dos vblank
-del planificador impedía aplicar R_UPDATE_RATE=1. Se elimina sólo durante
-el logo; la prueba de presentación mide 59,9 FPS después del calentamiento.
-El selector conserva 30 FPS y el juego 20. Falta medir la cadencia física.
+Status: corrected and measured in PCSX2 with native USB. The scheduler's
+minimum of two vblanks prevented R_UPDATE_RATE=1 from taking effect.
+It is removed only during the logo; the presentation test measures
+59.9 FPS after warmup. The file select screen retains 30 FPS and the game 20.
+Physical cadence still needs measurement.
 
-## Campo de Entrenamiento Gerudo, sala 2
+## Gerudo Training Ground, room 2
 
-Estado: pendiente. El nuevo recorrido de salas encuentra una excepción de
-lectura en el primer fotograma. Se reproduce también arrancando sólo ese caso,
-sin haber cargado salas anteriores:
+Status: pending. The new room traversal finds a read exception in the
+first frame. It is also reproduced when starting only this case,
+without loading previous rooms:
 
 ```powershell
 ./tools/run_ps2_room_smoke.ps1 -Start 201 -Count 1
 ```
 
-El registro sitúa la lectura en `EnGoroiwa_TeleportToWaypoint` y
-`EnGoroiwa_FaceNextWaypoint`, actor de las rocas móviles. El banco de la escena
-describe una ruta, pero dos actores de la sala solicitan índices 0 y 1.
-El segundo descriptor sigue en un bloque no descrito del conversor, con su
-puntero en el orden de bytes original. Esta es una pista concreta de conversión;
-falta verificar la ruta completa y su movimiento antes de darla por corregida.
+The log locates the read in `EnGoroiwa_TeleportToWaypoint` and
+`EnGoroiwa_FaceNextWaypoint`, the moving boulder actor. The scene bank
+describes one path, but two room actors request indices 0 and 1.
+The second descriptor remains in a block not described by the converter,
+with its pointer in the original byte order. This is a concrete conversion
+lead; the full path and its movement still need verification before the
+issue can be considered fixed.
 
-Registros privados: `build/PS2/room-regression/20261004-220503-633/runtime.log`
-y `build/PS2/room-regression/20261004-223054-332/runtime.log`.
+Private logs: `build/PS2/room-regression/20261004-220503-633/runtime.log`
+and `build/PS2/room-regression/20261004-223054-332/runtime.log`.
 
-## Capturas oscuras o sin geometría visible
+## Dark captures or no visible geometry
 
-Estado: requieren revisión de cámara. La galería conserva capturas de salas
-individuales con puntos sintéticos; algunas quedan fuera de la geometría,
-delante de paredes o en salas que sólo sirven a una cinemática. Los casos con
-más del 65 % de píxeles casi negros o menos de 32 colores se marcan para revisar.
-Un resultado de carga correcto no certifica que la imagen sea fiel al original.
+Status: camera review required. The gallery retains captures of individual
+rooms from synthetic positions; some are outside the geometry, in front
+of walls or in rooms used only for a cutscene. Cases with more than
+65 % nearly black pixels or fewer than 32 colors are flagged for review.
+A successful load does not certify that the image is faithful to the original.
 
-## Geometría ocultada por una demostración
+## Geometry hidden by a demonstration
 
-En `hiral_demo`, `DemoKankyo_Init` asigna NULL a `curRoom.segment` para ocultar
-el fondo. La primera prueba lo marcó como FAIL pese a tener actores, eventos
-y captura completos. El diagnóstico admite esa geometría oculta sólo en
-`SCENE_CUTSCENE_MAP`, con el buffer de carga presente y las demás condiciones
-correctas. Esto cambia sólo el criterio de la prueba, no el juego ni la escena.
+In `hiral_demo`, `DemoKankyo_Init` sets `curRoom.segment` to NULL to hide
+the background. The first test marked this as FAIL despite complete actors,
+events and capture. The diagnostic allows this hidden geometry only in
+`SCENE_CUTSCENE_MAP`, with the load buffer present and all other conditions
+correct. This changes only the test criterion, not the game or scene.
 
-## Cobertura pendiente
+## Remaining coverage
 
-Los recorridos inicializan salas con una edad elegida por escena y prueban
-funciones de estado. No resuelven cada puzle, combate, diálogo, transición
-natural, cambio de edad ni final. En PS2 real están confirmados la
-comprobación inicial de datos y el arranque a la partida; quedan los fallos
-de carga, vídeo/audio y la comprobación del guardado físico. El Árbol Deku y el audio
-en PCSX2 se mantienen como casos confirmados por el usuario. El trabajo
-actual retoma el rendimiento y las cargas USB, especialmente en zonas grandes.
+The traversals initialize rooms with an age chosen per scene and test state
+functions. They do not solve every puzzle, combat, dialogue, natural transition,
+age change or ending. On real PS2, initial data validation and startup into
+a save are confirmed; loading issues, video/audio and physical saving verification
+remain. The Deku Tree and audio in PCSX2 remain user-confirmed cases.
+Current work returns to performance and USB loading, especially in large areas.

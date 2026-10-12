@@ -1,393 +1,391 @@
-# Primera prueba en PS2 real
+# First test on real PS2
 
-Paquete privado para arrancar desde un USB FAT32 mediante Free McBoot y
-wLaunchELF. El usuario ya confirma el arranque y la entrada a la partida en
-una consola real. Los resultados de PCSX2 no certifican todos los casos en hardware.
+Private package for booting from a FAT32 USB drive through Free McBoot and
+wLaunchELF. The user already confirms startup and entering a save on a real
+console. PCSX2 results do not certify every case on hardware.
 
-Primera prueba del usuario: en una SCPH-90010, conectada mediante un
-convertidor AV a HDMI, BOOTTEST muestra `DATOS OK`. El primer juego quedaba negro;
-tras corregir la invalidación global de caché, inicia y permite jugar.
-Quedan pausas de carga que se recuperan y distorsión del audio cuando caen los
-FPS. Las olas del suelo al mover la cámara ya se corrigen al centrar las
-coordenadas de la segunda capa; el usuario confirma la solución en esta
-consola con FLOOR v3. OOTPS2.ELF aplica ese cálculo automáticamente, sin
-seleccionar modos. El guardado físico sigue pendiente.
+User's first test: on an SCPH-90010 connected through an AV-to-HDMI converter,
+BOOTTEST displays `DATOS OK`. The first game showed a black screen;
+after fixing global cache invalidation, it starts and allows gameplay.
+Recoverable loading pauses and audio distortion when FPS drops remain.
+Floor waves when moving the camera are now corrected by centering the second
+layer's coordinates; the user confirms the solution on this console with
+FLOOR v3. OOTPS2.ELF applies this calculation automatically, without selecting
+modes. Physical saving remains pending.
 
-La última revisión del registro ya permite cargar la partida en hardware.
-Se corrigió además un fallo propio de DIAG.ELF que terminaba la partida al
-salir de la casa: el registro alteraba la identidad de una función de
-inicialización. La prueba automática casa → Kokiri → casa pasa con el
-controlador USB nativo de PCSX2. El usuario confirma la salida en la consola
-y continúa hasta conseguir la espada. Los registros de esa sesión se conservan
-en `build/PS2/hardware-runtime/scph90010-first-sword-20261005-162143`, sin errores
-USB ni pérdidas de registros.
+The latest log review now allows loading the save on hardware.
+A DIAG.ELF-specific bug that ended gameplay when leaving the house was also
+fixed: logging changed an initialization function's identity.
+The automated house → Kokiri → house test passes with PCSX2's native USB
+driver. The user confirms leaving the house on the console and continues
+through obtaining the sword. Logs from that session are preserved in
+`build/PS2/hardware-runtime/scph90010-first-sword-20261005-162143`, without
+USB errors or lost records.
 
-1. Copia la carpeta `OOTPS2` completa a la raíz del USB.
-2. En wLaunchELF abre `mass:/OOTPS2/BOOTTEST.ELF`.
-3. Espera el resultado. Debe aparecer `DATOS OK`, `MEMORIA OK` y el estado de la memory card
-   del puerto 1. El diagnóstico sólo consulta la tarjeta; no guarda ni formatea.
-   Si aparece `ERROR MEMORIA`, comunica el número de prueba y no continúes.
-4. Reinicia la consola, vuelve a wLaunchELF y abre
+1. Copy the entire `OOTPS2` folder to the USB drive's root.
+2. In wLaunchELF, open `mass:/OOTPS2/BOOTTEST.ELF`.
+3. Wait for the result. It should display `DATOS OK`, `MEMORIA OK` and the
+   status of the memory card in port 1. The diagnostic only queries the card;
+   it does not save or format. If `ERROR MEMORIA` appears, report the test
+   number and do not continue.
+4. Restart the console, return to wLaunchELF and open
    `mass:/OOTPS2/OOTPS2.ELF`.
-   Esta versión muestra la etapa de arranque antes de activar el vídeo del
-   juego. Si se detiene ahí, anota la última etapa visible.
-5. Comprueba el logo, el título, el mando, la música y la carga de una partida.
-   Después prueba Kokiri y el interior del Árbol Deku.
-6. Para comprobar el guardado, usa una partida de prueba en una tarjeta PS2
-   con espacio libre en el puerto 1. Guarda desde el juego, reinicia y verifica
-   que puedes recuperar ese progreso. Revisa también su icono en la BIOS.
+   This version displays the boot stage before activating the game's video.
+   If it stops there, note the last visible stage.
+5. Check the logo, title, controller, music and loading a save.
+   Then test Kokiri and the Deku Tree interior.
+6. To check saving, use a test save on a PS2 card with free space in port 1.
+   Save from the game, restart and verify that you can recover that progress.
+   Also check its icon in the BIOS.
 
-El ELF incorpora USBD y USBHDFSD del SDK y vuelve a cargarlos después de
-reiniciar el IOP. No necesita archivos IRX externos. Si wLaunchELF facilita su
-ruta de arranque, busca `OOT.Z64` en esa misma carpeta; la ruta predeterminada
-es `mass:/OOTPS2/OOT.Z64`. Los nombres del paquete deben conservarse.
+The ELF embeds the SDK's USBD and USBHDFSD and reloads them after resetting
+the IOP. It does not need external IRX files. If wLaunchELF supplies its
+boot path, it looks for `OOT.Z64` in the same folder; the default path is
+`mass:/OOTPS2/OOT.Z64`. Package filenames must be preserved.
 
-`OOT.Z64` contiene los datos **convertidos para este port**. Una ROM original
-con el mismo nombre no sirve. El arranque comprueba su tamaño y doce bloques
-distribuidos mediante CRC32; esto detecta archivos equivocados y parte de la
-corrupción, pero no sustituye el SHA256 completo de `HASHES.sha256`.
+`OOT.Z64` contains data **converted for this port**. An original ROM with
+the same name will not work. Startup checks its size and twelve distributed
+blocks using CRC32; this detects incorrect files and some corruption,
+but does not replace the full SHA256 in `HASHES.sha256`.
 
-Ante un error de datos, el juego muestra una explicación en pantalla y no
-inicia la partida. Reinicia para regresar al lanzador.
+On a data error, the game displays an explanation and does not start
+gameplay. Restart to return to the launcher.
 
-Si queda negro después de activar el vídeo, reinicia y abre BOOTTEST.ELF
-otra vez. Mostrará las diez últimas etapas de `mass:/OOTPS2/BOOT.LOG`, sin
-modificar ese archivo. Comunica la última línea o toma una foto de la pantalla.
-También se puede leer el archivo desde el PC. Cada nuevo arranque del juego
-reemplaza BOOT.LOG después de validar los datos; BOOTTEST lo conserva.
-Si no aparece ningún mensaje desde el principio y BOOTTEST indica que no hay
-registro, informa de ese caso: el juego podría no haber llegado a su entrada.
+If the screen goes black after activating video, restart and open BOOTTEST.ELF
+again. It will display the last ten stages of `mass:/OOTPS2/BOOT.LOG` without
+modifying that file. Report the last line or photograph the screen.
+The file can also be read from the PC. Each new game startup replaces
+BOOT.LOG after validating the data; BOOTTEST preserves it.
+If no message appears from the beginning and BOOTTEST reports no log,
+report that case: the game may not have reached its entry point.
 
-El registro se limita a etapas del arranque, estados del juego y su primer
-fotograma. Desactiva el texto de diagnóstico antes de que gsKit controle la
-pantalla. No escribe un registro en cada fotograma. Si el USB no permite crear
-el archivo, muestra esa condición mientras aún está activa la pantalla de texto.
+Logging is limited to boot stages, game states and the first frame.
+It disables diagnostic text before gsKit takes control of the screen.
+It does not write a log every frame. If the USB drive cannot create the
+file, it displays that condition while the text screen is still active.
 
-La primera pantalla negra se localiza antes de completar la inicialización
-del logo Nintendo 64. Esta versión corrige la invalidación global de caché y
-registra la reserva, carga del segmento, matrices, vista y buffer SRAM del logo.
-El usuario confirma que ahora arranca. Se elimina el mínimo de dos vblank
-del planificador sólo durante el logo. Una prueba de presentación real con
-USB nativo emulado mide 59,9 FPS después de los primeros 30 fotogramas;
-el selector conserva 30 y el juego 20. El registro automático físico de la
-SCPH-90010 confirma tres intervalos del logo a 59,9–60 FPS.
+The first black screen is located before completing Nintendo 64 logo
+initialization. This version fixes global cache invalidation and logs the
+logo allocation, segment load, matrices, view and SRAM buffer.
+The user confirms that it now starts. The scheduler's minimum of two vblanks
+is removed only during the logo. An actual presentation test with emulated
+native USB measures 59.9 FPS after the first 30 frames; file select retains
+30 and gameplay 20. The SCPH-90010's physical automatic log confirms three
+logo intervals at 59.9–60 FPS.
 
-## Español y rendimiento
+## Spanish and performance
 
-El paquete añade `ESP.DAT`. En el selector abre Options/Opciones, baja a
-LANGUAGE/IDIOMA y elige Español con izquierda o derecha. Pulsa B para guardar
-la opción y volver. Incluye diálogos, fuente y texturas de menús; algunos textos
-escritos en código y los créditos conservan inglés. Datos y créditos completos:
-[PS2_LANGUAGE.md](PS2_LANGUAGE.md).
+The package adds `ESP.DAT`. In file select, open Options/Opciones, move down
+to LANGUAGE/IDIOMA and choose Español with left or right. Press B to save
+the option and return. It includes dialogue, the font and menu textures;
+some text written in code and the credits remain in English. Full data
+and credits: [PS2_LANGUAGE.md](PS2_LANGUAGE.md).
 
-El juego reutiliza las coordenadas y la preparación de textura del suelo
-dentro de cada grupo de triángulos. Conserva la corrección física de las olas
-y pasa la comparación de los puntos enviados al GS. Esto reduce cálculos
-repetidos, pero todavía hay que medir la mejora de FPS en la consola y no
-certifica 20 FPS estables en todas las vistas. DIAG.ELF toma una muestra de
-los componentes del render cada 60 fotogramas para localizar los costes que
-quedan. Para comparar el rendimiento habitual usa OOTPS2.ELF: el registro
-de diagnóstico añade trabajo y escrituras USB.
+The game reuses floor coordinates and texture preparation within each
+triangle group. It retains the physical wave correction and passes the
+comparison of points sent to the GS. This reduces repeated calculations,
+but the FPS improvement still needs measurement on the console and does
+not certify stable 20 FPS in every view. DIAG.ELF samples render components
+every 60 frames to locate remaining costs. Use OOTPS2.ELF to compare normal
+performance: diagnostic logging adds work and USB writes.
 
-La segunda sesión automática de la SCPH-90010, conservada en
-`build/PS2/hardware-runtime/auto-play-physical-20261006-194851`, confirma lotes
-de 4 KiB y una pausa máxima de escritura de 128 ms frente a 949 ms en la
-sesión anterior. El último minuto sin lecturas ni escrituras solapadas registra
-una mediana de 13,45 FPS y 60,55 ms de traducción por fotograma; la cámara no
-está registrada, por lo que no certifica una ganancia comparable de FPS.
-Hay un sector de 512 bytes nulos alrededor del segundo 445, sin error de
-escritura comunicado. El analizador señala ese daño y el salto de las muestras
-443 a 446, y descarta sus líneas; el último minuto usado no contiene ese sector.
-La causa de esa escritura incompleta sigue pendiente. La revisión actual
-prepara envoltura, límites y filtro una vez por capa/material. Conserva el
-registro de cada uso del caché para no omitir una espera posterior del GS.
+The SCPH-90010's second automatic session, preserved in
+`build/PS2/hardware-runtime/auto-play-physical-20261006-194851`, confirms
+4 KiB batches and a maximum write pause of 128 ms versus 949 ms in the
+previous session. The last minute without reads or overlapping writes
+records a median of 13.45 FPS and 60.55 ms of translation per frame;
+the camera is not logged, so this does not certify a comparable FPS gain.
+There is a sector of 512 null bytes around second 445, without a reported
+write error. The analyzer flags that damage and the sample jump from
+443 to 446, and discards its lines; the last minute used does not contain
+that sector. The cause of the incomplete write remains pending.
+The current revision prepares wrapping, bounds and filtering once per
+layer/material. It retains logging of each cache use to avoid omitting
+a subsequent GS wait.
 
-## Registro de una partida y optimizaciones USB
+## Session logging and USB optimizations
 
-La caché de datos del juego retiene 256 KiB y reutiliza también las lecturas
-cortas de animaciones; mantiene una caché independiente de muestras de audio.
-Cada prelectura sigue limitada a 16 KiB. Reduce solicitudes repetidas al
-caminar y al reutilizar recursos, pero una zona nueva aún necesita leerse
-desde el USB. Los paquetes de triángulos también omiten las direcciones
-repetidas de los registros y reutilizan su preparación por material.
-La equivalencia pasa en el EE emulado; falta medir los FPS de esta revisión
-en la consola, especialmente en zonas grandes.
+The game data cache retains 256 KiB and also reuses short animation reads;
+it keeps a separate audio sample cache. Each read-ahead remains limited to
+16 KiB. This reduces repeated requests while walking and reusing resources,
+but a new area still needs to be read from USB. Triangle packets also omit
+repeated register addresses and reuse their preparation per material.
+Equivalence passes on the emulated EE; FPS for this revision still needs
+measurement on the console, especially in large areas.
 
-El juego USB habitual `mass:/OOTPS2/OOTPS2.ELF` registra ahora tu sesión
-automáticamente en `DIAG.LOG`, sin abrir otro programa. Incluye FPS cada
-segundo, identificadores de escenas y salas, tiempos de carga/USB, dibujo y
-observaciones de audio. La marca `AUTO-PLAY` aparece después de la fecha del
-encabezado. Usa un buffer RAM de 256 registros, escribe lotes cada 15 segundos
-y registra los tiempos generales sin activar los cronómetros por triángulo
-o vértice. No muestra un contador.
-Para recoger una caída basta con jugar en esa zona un minuto, guardar tu
-progreso y esperar al menos 20 segundos antes de apagar. Después conecta
-el USB al PC. El archivo se reemplaza al iniciar otra sesión; consérvalo primero.
+The normal USB game `mass:/OOTPS2/OOTPS2.ELF` now automatically logs your
+session in `DIAG.LOG`, without opening another program. It includes FPS
+every second, scene and room identifiers, load/USB timings, drawing and audio
+observations. The `AUTO-PLAY` marker appears after the header date.
+It uses a RAM buffer of 256 records, writes batches every 15 seconds and
+records overall timings without enabling timers per triangle or vertex.
+It does not display a counter.
+To collect a drop, play in that area for a minute, save your progress and
+wait at least 20 seconds before turning off. Then connect the USB drive
+to the PC. The file is replaced when starting another session; preserve it first.
 
-Para separar los costes del dibujo sin el indicador ni el muestreo frecuente
-de DIAG, abre `mass:/OOTPS2/PERF.ELF`. Incorpora las mismas optimizaciones y
-el registro automático, con una medición detallada sólo cada 300 fotogramas.
-Los otros 299 no leen los cronómetros por vértice/triángulo. La marca
-`[PS2 PERF SAMPLING] every=300` distingue esta sesión; los tiempos del fotograma
-muestreado incluyen el coste de los cronómetros y otras interrupciones,
-excluyendo la síntesis DSP registrada. Sirve para localizar costes, no para
-atribuir cada caída a una fase sin una comparación controlada. Usa una vista
-exterior lenta durante unos 30 segundos, camina un minuto, guarda y espera
-20 segundos antes de apagar. También reemplaza BOOT.LOG y DIAG.LOG al arrancar.
-El juego habitual OOTPS2.ELF conserva el perfilado detallado desactivado.
-La revisión actual añade `[PS2 COMBINER ANALYSIS PROFILE]`: cuenta las
-reconstrucciones y los análisis reutilizados al cambiar de material. Su tiempo
-está incluido en las otras fases y no debe sumarse de nuevo. La caché mantiene
-32 entradas y usa 2.716 bytes; conserva la validación de las claves y los
-colores dinámicos. Su ganancia de FPS debe comprobarse en la misma cámara.
-`[PS2 DRAW DETAIL PROFILE]` separa la búsqueda de claves, los paquetes GS
-y el reajuste del suelo; sus tiempos ya están incluidos en las otras fases.
-La sesión anterior contiene una línea dañada y dos muestras duplicadas.
-Se conservan los originales y el analizador excluye los intervalos duplicados;
-la causa de esa escritura sigue pendiente. La sesión reciente, conservada en
-`build/PS2/hardware-runtime/setup-physical-20261007-205251`, contiene 285
-muestras íntegras y 13 perfiles, sin certificar la corrección de ese fallo
-intermitente. Entre 111 y 126 segundos, 14 intervalos sin escrituras
-solapadas recogen 169 fotogramas a 11,9 FPS de mediana: traducción 68,02 ms,
-envío final 1,96 y presentación 13,11 por fotograma. No hay lecturas ni
-observaciones de cola de audio vacía; el renderer sigue siendo el coste
-sostenido. Los tiempos generales incluyen la ejecución de otros hilos.
-`[PS2 TEXTURE CONTENT]` distingue `smallBypass`, `largeBypass`, `mutations`,
-`newSnapshots`, `descriptorEvictions` y `overlapEvictions`: límites pequeños
-o grandes, cambios renovados, nuevas copias y expulsiones por descriptores
-o por espacio del anillo. `[PS2 DRAW SETUP PROFILE]` mide preparación inicial,
-aplicación de tiles y metadatos anteriores a la búsqueda. Sus tiempos están
-incluidos en envío/búsqueda. Los contadores describen el fotograma muestreado,
-no toda la sesión. En cinco perfiles grandes, 358 de 372 expulsiones (96,2 %)
-son de descriptores. La candidata amplía su número a 128, con 3.840 bytes
-adicionales de metadatos; mantiene el anillo de 128 KiB, los límites de
-256 bytes/16 KiB y la comparación de todos los bytes de ambas fuentes.
-También conserva 17 huellas de paleta en 72 bytes, más 12 de contadores:
-sólo invalida el banco y la paleta completa cuando cambia una entrada
-decodificada. Todas las cargas TLUT siguen leyendo RAM. No se ha aislado
-aún su parte del coste físico de metadatos, de 3,3–4,9 ms en esos cinco perfiles.
-`[PS2 PALETTE HASH PROFILE]` mide las huellas dentro de metadatos, excluyendo
-las actualizaciones TLUT. `[PS2 MATERIAL RUN PROFILE]` cuenta comandos que
-delimitan grupos; no todos corresponden a vaciar un lote con primitivas.
-Pasan la batería EE aislada, once pruebas del analizador y ambos recorridos
-con USB nativo emulado: logo a 59,9 FPS, opciones/diálogo en español y
-casa → Kokiri → casa. Las capturas conservan el menú; el diálogo sólo cambia
-35 píxeles del parpadeo de los ojos. Los registros, datos y tarjeta del jugador
-se verifican intactos. Las pruebas usan tarjetas desactivadas. Sus ciclos
-emulados no establecen una ganancia de FPS físicos ni del fotograma completo.
-Detalles: [CHANGELOG_PS2_PORT.md](CHANGELOG_PS2_PORT.md). La mejora en consola
-y los 20 FPS estables siguen pendientes. La sesión posterior de 255 muestras
-confirma cero expulsiones de descriptor en los perfiles grandes; su tramo
-sin lecturas registra 13 FPS y 60,83 ms de traducción. No se ha verificado
-idéntica cámara entre pruebas. La nueva candidata conserva el grupo al
-recorrer piezas y cargar vértices, invalidando sólo los slots sobrescritos.
-Sus 24 comparaciones de puntos/vértices y ambos recorridos con USB nativo
-emulado pasan; conserva las capturas, el logo a 59,9 FPS y las transiciones.
-Necesita una nueva medición física en la misma vista. PERF mide los límites
-que realmente cierran los grupos.
+To separate drawing costs without DIAG's indicator or frequent sampling,
+open `mass:/OOTPS2/PERF.ELF`. It includes the same optimizations and automatic
+logging, with detailed measurement only every 300 frames. The other 299 do
+not read the per-vertex/triangle timers. The marker
+`[PS2 PERF SAMPLING] every=300` identifies this session; sampled frame
+timings include timer overhead and other interruptions, excluding recorded
+DSP synthesis. It helps locate costs, not attribute every drop to a phase
+without a controlled comparison. Use a slow outdoor view for about
+30 seconds, walk for a minute, save and wait 20 seconds before turning off.
+It also replaces BOOT.LOG and DIAG.LOG at startup.
+The normal OOTPS2.ELF game keeps detailed profiling disabled.
+The current revision adds `[PS2 COMBINER ANALYSIS PROFILE]`: it counts
+rebuilds and reused analyses when changing materials. Its time is included
+in the other phases and must not be added again. The cache keeps 32 entries
+and uses 2,716 bytes; it retains key validation and dynamic colors.
+Its FPS gain must be checked with the same camera.
+`[PS2 DRAW DETAIL PROFILE]` separates key lookup, GS packets and floor
+rebasing; its timings are already included in the other phases.
+The previous session contains one damaged line and two duplicate samples.
+Originals are preserved and the analyzer excludes duplicate intervals;
+the cause of that write remains pending. The recent session, preserved in
+`build/PS2/hardware-runtime/setup-physical-20261007-205251`, contains
+285 intact samples and 13 profiles, without certifying that the intermittent
+issue is fixed. Between 111 and 126 seconds, 14 intervals without overlapping
+writes collect 169 frames at a median of 11.9 FPS: translation 68.02 ms,
+final submission 1.96 and presentation 13.11 per frame. There are no reads
+or observations of an empty audio queue; the renderer remains the sustained
+cost. Overall timings include execution of other threads.
+`[PS2 TEXTURE CONTENT]` distinguishes `smallBypass`, `largeBypass`, `mutations`,
+`newSnapshots`, `descriptorEvictions` and `overlapEvictions`: small or large
+limits, renewed changes, new copies and evictions due to descriptors or ring
+space. `[PS2 DRAW SETUP PROFILE]` measures initial preparation, tile application
+and metadata before lookup. Its timings are included in submission/lookup.
+The counters describe the sampled frame, not the entire session.
+In five large profiles, 358 of 372 evictions (96.2 %) are descriptor evictions.
+The candidate increases their count to 128, with 3,840 additional bytes of
+metadata; it retains the 128 KiB ring, 256 bytes/16 KiB limits and comparison
+of every byte from both sources. It also retains 17 palette fingerprints in
+72 bytes, plus 12 for counters: it only invalidates the bank and full palette
+when a decoded entry changes. All TLUT loads still read RAM. Its portion of
+the physical metadata cost, 3.3–4.9 ms in those five profiles, has not yet
+been isolated. `[PS2 PALETTE HASH PROFILE]` measures fingerprints within
+metadata, excluding TLUT updates. `[PS2 MATERIAL RUN PROFILE]` counts commands
+that delimit groups; not all correspond to flushing a batch with primitives.
+The isolated EE suite, eleven analyzer tests and both traversals with
+emulated native USB pass: logo at 59.9 FPS, options/dialogue in Spanish and
+house → Kokiri → house. Captures preserve the menu; the dialogue changes
+only 35 pixels from eye blinking. The player's logs, data and card are
+verified intact. Tests use disabled cards. Their emulated cycles do not
+establish a physical FPS gain or a full-frame gain.
+Details: [CHANGELOG_PS2_PORT.md](CHANGELOG_PS2_PORT.md). Console improvement
+and stable 20 FPS remain pending. The later session of 255 samples confirms
+zero descriptor evictions in large profiles; its no-read interval records
+13 FPS and 60.83 ms of translation. Identical cameras between tests have
+not been verified. The new candidate retains the group while traversing
+parts and loading vertices, invalidating only overwritten slots.
+Its 24 point/vertex comparisons and both traversals with emulated native
+USB pass; it preserves captures, the logo at 59.9 FPS and transitions.
+It needs a new physical measurement in the same view. PERF measures the
+boundaries that actually close groups.
 
-Para una prueba con contador visible abre `mass:/OOTPS2/DIAG.ELF`.
-Ejecuta el mismo juego con tu mando y guardado normal; crea `DIAG.LOG` junto a
-los archivos del juego. Desde la revisión FPS-HUD muestra también `FPS 20.0`
-en una esquina, actualizado aproximadamente cada segundo: mide los fotogramas
-presentados, no los 60 retraces de vídeo. Al arrancar muestra `FPS --.-` hasta
-la primera muestra. Un asterisco indica la estimación por retraces si el reloj
-del EE deja de avanzar. El contador continúa aunque el registro alcance su
-límite o falle una escritura. DIAG224.ELF incluye el mismo contador.
+For a test with a visible counter, open `mass:/OOTPS2/DIAG.ELF`.
+It runs the same game with your controller and normal save; it creates
+`DIAG.LOG` next to the game files. Since the FPS-HUD revision it also displays
+`FPS 20.0` in a corner, updated approximately every second: it measures
+presented frames, not the 60 video retraces. At startup it displays
+`FPS --.-` until the first sample. An asterisk indicates the estimate from
+retraces if the EE clock stops advancing. The counter continues even if
+the log reaches its limit or a write fails. DIAG224.ELF includes the same counter.
 
-Para medir una zona grande basta con mirar una vista lenta durante 20 segundos,
-caminar otros 20 y esperar diez antes de apagar. Anota el mínimo y el valor
-habitual del contador. Al volver a conectar el USB al PC, el encabezado
-`runtime log v3` con la marca `FPS-HUD` después de la fecha distingue esta
-prueba de los registros anteriores, conservando compatibilidad con el lector.
-El contador dibuja sprites sólidos después del juego: no carga fuentes ni
-texturas y no entra en el retrato del inventario. OOTPS2.ELF registra con menor
-frecuencia de escritura y sin añadir ese indicador a la imagen.
+To measure a large area, look at a slow view for 20 seconds, walk for another
+20 and wait ten before turning off. Note the minimum and typical counter
+values. When reconnecting the USB drive to the PC, the `runtime log v3`
+header with the `FPS-HUD` marker after the date identifies this test versus
+previous logs, while preserving reader compatibility.
+The counter draws solid sprites after the game: it does not load fonts or
+textures and does not enter the inventory portrait. OOTPS2.ELF logs with
+less frequent writes and without adding that indicator to the image.
 
-La primera sesión automática en consola confirma 12 FPS de mediana en el
-tramo final de Kokiri incluso en intervalos sin lecturas ni escritura del
-logger. La traducción gráfica ocupa 66,82 ms por fotograma, incluida la
-interrupción por otros hilos; no identifica todavía qué fase gráfica domina.
-La nueva comprobación de texturas acelera también las fuentes sin alineación
-a dieciséis bytes, conservando todos sus contenidos y la corrección del suelo.
-El resultado de esta revisión aún necesita compararse en esa misma vista.
+The first automatic console session confirms a median of 12 FPS in the
+final Kokiri interval, even during intervals without reads or logger writes.
+Graphics translation takes 66.82 ms per frame, including interruptions by
+other threads; it does not yet identify which graphics phase dominates.
+The new texture check also speeds up sources not aligned to sixteen bytes,
+preserving all their contents and the floor correction.
+This revision's result still needs comparison in the same view.
 
-BOOTTEST sigue siendo sólo la comprobación inicial.
+BOOTTEST remains only the initial check.
 
-DIAG.LOG registra etapas y errores del EE, cambios de estado, solicitudes y
-finalización de salas, lecturas lentas o fallidas, y muestras de rendimiento
-aproximadamente cada segundo. Incluye fotogramas presentados, tiempos de
-traducción/GS/presentación, ciclos de síntesis, bytes y esperas de lectura,
-aciertos de caché y observaciones de la cola de audio. `fps10=180` equivale a
-18 FPS. `zeroPolls` no es un contador exacto de faltas de audio en el IOP.
+DIAG.LOG records EE stages and errors, state changes, room requests and
+completion, slow or failed reads, and performance samples approximately
+every second. It includes presented frames, translation/GS/presentation
+timings, synthesis cycles, read bytes and waits, cache hits and audio queue
+observations. `fps10=180` means 18 FPS. `zeroPolls` is not an exact counter
+of audio underruns in the IOP.
 
-Si pasan dos muestras sin fotogramas terminados, registra STALL_SNAPSHOT:
-fase de inicialización/actualización/destrucción, escena y transición,
-cola gráfica, comando actual, estado y espera de los hilos EE y registros
-del GS/DMA. Después repite la captura en los intervalos 5, 10, 15… sin avance.
-Puede aparecer durante una carga larga normal; por sí sola no demuestra
-una excepción. El registro no cambia los callbacks de las escenas.
+If two samples pass without completed frames, it records STALL_SNAPSHOT:
+initialization/update/destruction phase, scene and transition, graphics
+queue, current command, EE thread state and waits, and GS/DMA registers.
+It then repeats the snapshot at intervals 5, 10, 15… without progress.
+This can appear during a normal long load; alone it does not prove an exception.
+Logging does not change scene callbacks.
 
-Los productores registran en RAM; un semáforo despierta el hilo del registro
-desde el vblank, sin usar usleep ni escribir archivos desde el vblank. Se guarda
-el estado inicial inmediatamente y después se escriben y cierran bloques
-cada cinco segundos en DIAG y cada quince en OOTPS2. BOOT.LOG v2 escribe sectores
-de 512 bytes; DIAG.LOG v3 agrupa hasta 4 KiB por llamada, con buffers alineados
-y tamaños/offsets múltiplos de 512. Los espacios al final de los lotes son normales.
-Las etapas de inicio del registro distinguen reloj, semáforo, hilo y apertura,
-escritura y cierre del primer lote. Si falla el reloj del port, clockFallback=1 marca un
-intervalo aproximado basado en retraces; no certifica los tiempos gráficos.
-El archivo se limita a 2 MiB; al llenarse registra
-`LOG_LIMIT` y continúa el juego sin registrar más. Una escritura que devuelve
-error detiene sólo el registro; un controlador USB bloqueado dentro de una llamada
-puede detener también las cargas. No guarda cada instrucción, triángulo o muestra de sonido.
-Una excepción que detenga todos los hilos puede impedir el último volcado.
-El logger puede introducir una pausa: `FLUSH durationMs` mide su propia escritura.
-La primera partida automática física registra un máximo de 949 ms. Agrupar
-sectores reduce llamadas; la segunda sesión con 4 KiB registra un máximo de
-128 ms. Sus sectores incompletos se señalan en el análisis y no se interpretan
-como mediciones válidas.
+Producers log in RAM; a semaphore wakes the logging thread from vblank,
+without using usleep or writing files from vblank. The initial state is
+saved immediately, then blocks are written and closed every five seconds
+in DIAG and every fifteen in OOTPS2. BOOT.LOG v2 writes 512-byte sectors;
+DIAG.LOG v3 groups up to 4 KiB per call, with aligned buffers and
+sizes/offsets that are multiples of 512. Spaces at the end of batches are normal.
+Logging startup stages distinguish the clock, semaphore, thread and first
+batch opening, writing and closing. If the port's clock fails, clockFallback=1
+marks an approximate interval based on retraces; it does not certify
+graphics timings. The file is limited to 2 MiB; when full, it logs
+`LOG_LIMIT` and the game continues without further logging.
+A write that returns an error stops only logging; a USB driver blocked
+inside a call can also stop loads. It does not log every instruction,
+triangle or audio sample. An exception that stops all threads may prevent
+the final flush. The logger can introduce a pause: `FLUSH durationMs`
+measures its own write. The first physical automatic session records a
+maximum of 949 ms. Grouping sectors reduces calls; the second session
+with 4 KiB records a maximum of 128 ms. Its incomplete sectors are flagged
+during analysis and are not interpreted as valid measurements.
 
-Prueba unos 20 segundos quieto, otros caminando, y entra/sal de una casa.
-Tras ver un fallo, espera al menos veinte segundos antes de apagar o reiniciar
-para que se cierre el siguiente bloque. Guarda tu progreso desde el juego si
-quieres conservarlo. Vuelve a conectar el USB al PC y conserva DIAG.LOG y
-BOOT.LOG antes de iniciar otra sesión: DIAG.ELF reemplaza su registro al arrancar.
-El ELF habitual también crea y reemplaza DIAG.LOG al arrancar.
+Test about 20 seconds standing still, another interval walking, and enter/leave
+a house. After observing an issue, wait at least twenty seconds before turning
+off or restarting so the next block can close. Save your progress from the game
+if you want to retain it. Reconnect the USB drive to the PC and preserve DIAG.LOG
+and BOOT.LOG before starting another session: DIAG.ELF replaces its log at startup.
+The normal ELF also creates and replaces DIAG.LOG at startup.
 
-Para comprobar el controlador USB en PCSX2 sin usar HostFs existe
-`tools/run_ps2_usb_stack_check.ps1`. Usa una imagen FAT32 privada de 128 MiB,
-el dispositivo de almacenamiento USB del emulador y los IRX incluidos en el ELF.
-No formatea el USB físico. Desactiva las tarjetas del jugador y comprueba los
-registros, errores del controlador y el SHA256 de los datos tras cerrar la prueba.
-La imagen y los resultados quedan en `build/PS2/usb-stack-checks`.
-Requiere el entorno Python local indicado por `-Python`, con `pyfatfs` y
-`setuptools<81`, además de la BIOS/configuración de prueba existente.
-La emulación de ese controlador no certifica la temporización del USB real.
+To check the USB driver in PCSX2 without using HostFs, there is
+`tools/run_ps2_usb_stack_check.ps1`. It uses a private FAT32 image of 128 MiB,
+the emulator's USB storage device and the IRXs embedded in the ELF.
+It does not format the physical USB drive. It disables the player's cards
+and checks logs, driver errors and the data's SHA256 after closing the test.
+The image and results are stored in `build/PS2/usb-stack-checks`.
+It requires the local Python environment specified by `-Python`, with
+`pyfatfs` and `setuptools<81`, plus the existing test BIOS/configuration.
+Emulating that driver does not certify real USB timing.
 
-Para la regresión de transiciones se compila por separado
-`bash tools/build_ps2_usb_transition_smoke.sh` y se ejecuta
+The transition regression is built separately with
+`bash tools/build_ps2_usb_transition_smoke.sh` and run with
 `tools/run_ps2_usb_stack_check.ps1 -Transition -Seconds 55`.
-Carga una partida sintética, completa 120 actualizaciones en casa, bosque
-Kokiri y casa, y utiliza las transiciones normales. No prueba el contacto
-con la puerta ni el progreso de una partida real y no forma parte del USB.
+It loads a synthetic save, completes 120 updates in the house, Kokiri Forest
+and house, and uses normal transitions. It does not test contact with the
+door or real-save progress, and is not part of the USB package.
 
-La sesión física `traversal-physical-20261008-164351` mantiene una vista a
-unos 13 FPS sin lecturas USB. Se aprovechan 224 muestras completas: el último
-sector de 512 bytes coincide con el registro anterior y se excluye junto a
-las líneas empalmadas. La causa de esa escritura sigue sin resolver.
-El perfil sigue señalando traducción y preparación del dibujo; los tiempos
-anidados no deben sumarse. PERF desglosa ahora sus límites por tipo de comando
-en dos líneas completas por fotograma muestreado, compatibles con el buffer
-del registro. El analizador sólo une ambas si pertenecen al mismo fotograma
-y no están duplicadas; no certifica por sí solo todos los daños de un archivo.
+The physical session `traversal-physical-20261008-164351` maintains a view
+at about 13 FPS without USB reads. 224 complete samples are used: the final
+512-byte sector matches the previous log and is excluded along with spliced
+lines. The cause of that write remains unresolved.
+The profile still points to translation and drawing preparation; nested
+timings must not be added together. PERF now breaks down its boundaries by
+command type in two complete lines per sampled frame, compatible with the
+log buffer. The analyzer combines them only if they belong to the same
+frame and are not duplicated; it does not itself certify every form of
+file damage.
 
-La candidata compara las texturas en bloques completos de 256 bytes y
-conserva la ruta anterior para las colas, sin saltarse contenido. Los puntos
-texturados de una capa se escriben directamente en la parte libre del lote;
-las dos capas del suelo conservan su orden. Los cuatro comandos RDP SYNC,
-ya ignorados por el intérprete, dejan de cortar los grupos; cargas, materiales,
-capturas y fin de la lista raíz siguen siendo límites. Pasan las comparaciones
-de puntos, paquetes y contenido en EE emulado. Los ahorros aislados no certifican todavía
-una mejora física de FPS ni los 20 estables; la siguiente prueba usa PERF.ELF.
-En las dos escenas del recorrido automático, los límites SYNC desaparecen,
-pero el siguiente cambio de material mantiene el total de grupos. Ese cambio
-no demuestra por sí solo un ahorro de lotes en esas escenas.
+The candidate compares textures in complete 256-byte blocks and retains
+the previous path for tails, without skipping content. Single-layer
+textured points are written directly into the free part of the batch;
+the two floor layers retain their order. The four RDP SYNC commands,
+already ignored by the interpreter, no longer split groups; loads, materials,
+captures and the end of the root list remain boundaries. Point, packet and
+content comparisons pass on the emulated EE. Isolated savings do not yet
+certify physical FPS improvement or stable 20 FPS; the next test uses PERF.ELF.
+In both scenes of the automated traversal, SYNC boundaries disappear,
+but the next material change keeps the total group count unchanged.
+That change alone does not demonstrate batch savings in those scenes.
 
-## Comparación del temblor del suelo
+## Comparing floor shaking
 
-`mass:/OOTPS2/DIAG224.ELF` ejecuta el mismo diagnóstico, pero dibuja a
-640x224 y duplica las líneas hasta 448. Conserva la señal NTSC entrelazada
-para probar con el mismo convertidor AV a HDMI. Tiene menos detalle vertical;
-es una comparación para identificar el origen del temblor, no una corrección
-confirmada de las texturas. OOTPS2.ELF y DIAG.ELF conservan el render a 640x448.
+`mass:/OOTPS2/DIAG224.ELF` runs the same diagnostic, but renders at
+640x224 and duplicates lines up to 448. It retains the interlaced NTSC signal
+to test with the same AV-to-HDMI converter. It has less vertical detail;
+it is a comparison to identify the source of shaking, not a confirmed
+texture correction. OOTPS2.ELF and DIAG.ELF retain rendering at 640x448.
 
-El primer DIAG224 quedaba negro después del logo por los fallos ya corregidos
-del diagnóstico. El usuario ya compara la versión revisada y las olas siguen
-igual. Su registro confirma render 640x224, salida de 448 líneas y carga del
-bosque Kokiri, sin errores USB ni pérdidas. Evidencia privada en
+The first DIAG224 showed a black screen after the logo due to the already
+fixed diagnostic bugs. The user now compares the revised version and the
+waves remain unchanged. Its log confirms 640x224 rendering, 448-line output
+and Kokiri Forest loading, without USB errors or losses. Private evidence in
 `build/PS2/hardware-runtime/scph90010-224-waves-20261005-163739`.
 
-Prueba el mismo suelo con Link y la cámara quietos y después caminando.
-Compara con lo observado en la versión normal. Indica si el temblor desaparece,
-disminuye o sigue igual y si cambia la imagen. Esta prueba permite contrastar
-el parpadeo entre líneas; no certifica que la conversión de texturas o profundidad
-sea correcta. DIAG.LOG incluye las dimensiones del render y de la salida de vídeo.
+Test the same floor with Link and the camera still, then while walking.
+Compare it with the normal version. Report whether the shaking disappears,
+decreases or remains unchanged and whether the image changes. This test
+helps compare flicker between lines; it does not certify correct texture
+or depth conversion. DIAG.LOG includes render and video output dimensions.
 
-DIAG224.ELF también reemplaza DIAG.LOG al iniciar. Conserva ese archivo en el
-PC antes de arrancar DIAG.ELF si quieres guardar los resultados de ambas sesiones.
+DIAG224.ELF also replaces DIAG.LOG at startup. Preserve that file on the PC
+before starting DIAG.ELF if you want to keep the results of both sessions.
 
-La siguiente revisión conserva fracciones en las coordenadas de textura de
-los vértices recortados. Antes las truncaba a un entero en cada plano del
-recorte, cambiando el mapeado con la cámara. Una prueba independiente de
-interpolación perspectiva pasa 256 cámaras y 1323 esquinas, junto a las pruebas
-de las dos capas del suelo. Esto demuestra la corrección del cálculo, pero el
-usuario ya confirma que las olas siguen igual después de esta revisión física.
+The next revision retains fractional texture coordinates for clipped vertices.
+It previously truncated them to an integer at each clipping plane, changing
+the mapping with the camera. An independent perspective interpolation test
+passes 256 cameras and 1323 corners, alongside the two-layer floor tests.
+This demonstrates the calculation's correctness, but the user now confirms
+that waves remain unchanged after this physical revision.
 
-La primera comparación adicional `mass:/OOTPS2/FLOOR.ELF` mantuvo las olas
-con perspectiva forzada; quitar la segunda capa las eliminó junto a parte de
-la textura. El log confirma los modos en Kokiri y perspectiva activa, sin
-errores USB ni pérdidas. Se conserva en
+The first additional comparison `mass:/OOTPS2/FLOOR.ELF` retained waves
+with forced perspective; removing the second layer eliminated them along
+with part of the texture. The log confirms modes in Kokiri and active
+perspective, without USB errors or losses. It is preserved in
 `build/PS2/hardware-runtime/floor-lab-result-20261005-175141`.
 
-La comparación física de FLOOR v2 tampoco mejora las olas al cambiar la
-profundidad de la segunda pasada. Registro conservado en
+The physical FLOOR v2 comparison also does not improve waves when changing
+second-pass depth. Log preserved in
 `build/PS2/hardware-runtime/floor-v2-result-20261005-181656`.
-FLOOR v3 permite alternar con la cruceta entre UV centradas de la segunda capa
-(arriba), una capa (izquierda) y las UV anteriores (derecha), sin reiniciar.
-Recupera la profundidad original; desplaza cada triángulo por repeticiones
-completas para reducir el tamaño de STQ y evitar el límite de texeles del GS.
-Registra el modo, máximos UV por fotograma muestreado y muestras UV/W/STQ/XYZ,
-incluidas dimensiones y desplazamientos de la segunda capa. Instrucciones en
-`PS2_FLOOR_DIAGNOSTIC.md` y `SUELO.txt` del paquete adicional. El ELF habitual
-ya incorpora automáticamente el mismo cálculo confirmado por el usuario.
-La captura física de FLOOR v3 se conserva con hashes en
+FLOOR v3 allows switching with the D-pad between centered second-layer UVs
+(Up), one layer (Left) and previous UVs (Right), without restarting.
+It restores the original depth; it shifts each triangle by whole repeats
+to reduce STQ magnitude and avoid the GS texel limit.
+It logs the mode, maximum UVs per sampled frame and UV/W/STQ/XYZ samples,
+including second-layer dimensions and shifts. Instructions are in
+`PS2_FLOOR_DIAGNOSTIC.md` and `SUELO.txt` in the additional package.
+The normal ELF now automatically incorporates the same user-confirmed calculation.
+The physical FLOOR v3 capture is preserved with hashes in
 `build/PS2/hardware-runtime/floor-v3-confirmed-20261005-184050`.
-Sus 24 fotogramas muestreados reducen el máximo UV de 2222.5 a 411.188 texeles,
-con 58 coordenadas originalmente fuera del rango ±2047 y ninguna después
-del ajuste. Los 105 intervalos no contienen errores USB, pérdidas o NUL.
-Esto documenta la vista comprobada; no certifica todo el juego en hardware.
+Its 24 sampled frames reduce maximum UVs from 2222.5 to 411.188 texels,
+with 58 coordinates originally outside ±2047 and none after adjustment.
+The 105 intervals contain no USB errors, losses or NUL.
+This documents the tested view; it does not certify the entire game on hardware.
 
-Para compilar una comparación sin escritura periódica, usa
-`PS2_USB_AUTO_LOG=0 bash tools/build_ps2_usb.sh`; por defecto el paquete USB
-incluye el registro automático solicitado. DIAG.ELF ofrece más muestras de
-render y el contador visible. Las escrituras de ambas variantes
-pueden introducir pausas adicionales: en las dos sesiones físicas anteriores
-un volcado tardó hasta 184 y 221 ms, respectivamente.
+To build a comparison without periodic writes, use
+`PS2_USB_AUTO_LOG=0 bash tools/build_ps2_usb.sh`; by default the USB package
+includes the requested automatic logging. DIAG.ELF offers more render
+samples and the visible counter. Writes from both variants can introduce
+additional pauses: in the two earlier physical sessions a flush took up
+to 184 and 221 ms, respectively.
 
-## Análisis del registro
+## Log analysis
 
-Análisis desde el PC:
+Analysis from the PC:
 ```powershell
 python tools/analyze_ps2_runtime_log.py D:\OOTPS2\DIAG.LOG --output build/PS2/hardware-runtime/report.json
 ```
 
-Los tres ELF del juego USB incluyen una caché de muestras de 256 KiB y otra de cargas de
-256 KiB. Las peticiones de carga de 8 KiB pueden reutilizar lecturas de 16 KiB;
-las cargas grandes no expulsan los sectores de audio. Se omiten seeks cuando
-la siguiente lectura empieza donde acabó la anterior. La lectura anticipada
-está limitada y respeta el final del archivo; las primeras cargas aún pueden tardar.
-El audio conserva 60 ms de reserva en la variante USB, frente a 20 ms anteriores,
-sin cambiar la frecuencia de síntesis ni repetir muestras. Estos cambios
-necesitan compararse en la consola; no corrigen por sí solos todo el lag ni
-el temblor del suelo. El ELF habitual de PCSX2 conserva su configuración.
+The three USB game ELFs include a 256 KiB sample cache and a 256 KiB load cache.
+8 KiB load requests can reuse 16 KiB reads; large loads do not evict audio
+sectors. Seeks are omitted when the next read starts where the previous one
+ended. Read-ahead is bounded and respects the end of the file; initial loads
+can still take time. Audio retains a 60 ms reserve in the USB variant,
+versus the previous 20 ms, without changing synthesis frequency or repeating
+samples. These changes need comparison on the console; they do not themselves
+fix all lag or floor shaking. The normal PCSX2 ELF retains its configuration.
 
-`MEMORIA OK` comprueba conservación de buffers vecinos y pila, publicación
-de bytes de CPU a RAM, lectura de bytes nuevos desde el alias físico y el
-estado de interrupciones. No comprueba todas las reservas del juego ni toda
-la RAM física. La ejecución en PCSX2 no certifica la caché del EE real.
+`MEMORIA OK` checks neighboring buffer and stack preservation, publishing
+CPU bytes to RAM, reading new bytes from the physical alias and interrupt
+state. It does not check every game allocation or all physical RAM.
+Execution in PCSX2 does not certify the real EE cache.
 
-El informe `package.json` verifica las direcciones estáticas del ELF dentro
-de los 32 MiB del EE. El espacio restante no garantiza por sí solo que todas
-las reservas dinámicas, pilas, IOP y VRAM funcionen en hardware.
+The `package.json` report checks the ELF's static addresses within the EE's
+32 MiB. Remaining space alone does not guarantee that all dynamic allocations,
+stacks, IOP and VRAM work on hardware.
 
-La comprobación del mando, audio, vídeo y guardado se hace jugando: BOOTTEST
-no los certifica. Ninguna herramienta copia una partida de PCSX2 a la tarjeta
-real automáticamente. La carpeta privada incluye recursos del juego y no
-debe subirse a GitHub; se publicarán sólo código y herramientas cuando se
-prepare esa fase.
+Controller, audio, video and saving are checked through gameplay: BOOTTEST
+does not certify them. No tool automatically copies a PCSX2 save to the real
+card. The private folder includes game resources and must not be uploaded
+to GitHub; only code and tools will be published when that phase is prepared.
 
-Referencia técnica de los controladores: [ps2sdk USBHDFSD](https://github.com/ps2dev/ps2sdk/tree/master/iop/usb/usbhdfsd).
-La agrupación evita repetir el RPC por cada sector; se conserva la interfaz
-POSIX del SDK. Referencia de la llamada subyacente:
+Driver technical reference: [ps2sdk USBHDFSD](https://github.com/ps2dev/ps2sdk/tree/master/iop/usb/usbhdfsd).
+Batching avoids repeating the RPC for each sector; the SDK's POSIX interface
+is retained. Reference for the underlying call:
 [ps2sdk fioWrite](https://github.com/ps2dev/ps2sdk/blob/master/ee/kernel/src/fileio.c).

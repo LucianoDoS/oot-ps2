@@ -1,36 +1,35 @@
-# Idioma del port
+# Port language
 
-En el selector de partidas entra en **Options / Opciones**. Baja hasta
-**LANGUAGE / IDIOMA** y usa izquierda o derecha para elegir **English** o
-**Español**. Pulsa B para volver: se guarda junto al sonido y la opción de
-fijar objetivo. No altera el formato ni los objetos de las partidas.
+In the file select screen, open **Options / Opciones**. Move down to
+**LANGUAGE / IDIOMA** and use left or right to choose **English** or
+**Español**. Press B to return: the selection is saved alongside the sound
+and targeting options. It does not change the save format or inventory items.
 
-La traducción requiere `ESP.DAT` junto a los datos convertidos `OOT.Z64`.
-El paquete privado USB lo incluye. Si falta o no pasa la comprobación, el
-juego conserva inglés y las opciones originales. En PCSX2 debe estar junto
-a `oot.z64` y el ELF. Se carga una vez en RAM; los glifos y los diálogos
-traducidos no provocan una lectura USB por letra.
+The translation requires `ESP.DAT` alongside the converted `OOT.Z64` data.
+The private USB package includes it. If it is missing or fails validation,
+the game retains English and the original options. In PCSX2 it must be next
+to `oot.z64` and the ELF. It is loaded into RAM once; translated glyphs and
+dialogue do not cause a USB read for each letter.
 
-La fila nueva usa una fuente sans serif de menú con tamaño y contorno uniformes,
-espaciado proporcional y formato IA8, en lugar de la fuente de los diálogos.
-El archivo de idioma tiene versión 2; el runtime rechaza la versión anterior
-que usaba etiquetas I8 para evitar interpretarlas con el formato equivocado.
+The new row uses a sans serif menu font with uniform size and outline,
+proportional spacing and IA8 format, rather than the dialogue font.
+The language file is version 2; the runtime rejects the previous version,
+which used I8 labels, to avoid interpreting them with the wrong format.
 
-La adaptación contiene 2.114 mensajes, la fuente con los caracteres españoles
-y 380 recursos de textura, incluidos menús y nombres. Conserva el código,
-modelos, colisiones y audio nativos del port. Las voces conservan el audio
-original. No se considera una traducción íntegra: algunos textos escritos
-en código y los créditos siguen en inglés; los identificadores ausentes
-conservan su mensaje original.
+The adaptation contains 2,114 messages, the font with Spanish characters
+and 380 texture resources, including menus and names. It retains the port's
+native code, models, collision and audio. Voices retain the original audio.
+It is not considered a complete translation: some text written in code and
+the credits remain in English; missing identifiers retain their original message.
 
-Los datos proceden de la traducción **eduardo_aj2 v2.2**, disponible mediante
-el parche `es.ppf` de [Patcher64Plus-Tool](https://github.com/Admentus64/Patcher64Plus-Tool).
-El archivo de idioma, los parches y las ROM usadas para generarlo son datos
-privados de compilación y no se incluyen en Git.
+The data comes from the **eduardo_aj2 v2.2** translation, available through
+the `es.ppf` patch in [Patcher64Plus-Tool](https://github.com/Admentus64/Patcher64Plus-Tool).
+The language file, patches and ROMs used to generate it are private build
+data and are not included in Git.
 
-Para regenerar el archivo se necesitan copias propias descomprimidas NTSC 1.0,
-original y traducida, la extracción original NTSC 1.2 y el manifiesto de datos
-convertidos del port. Con el Python del entorno de extracción:
+Regenerating the file requires your own decompressed NTSC 1.0 copies,
+original and translated, the original NTSC 1.2 extraction and the port's
+converted data manifest. Using the Python environment for extraction:
 
 ```sh
 python tools/prepare_ps2_spanish.py \
@@ -40,18 +39,18 @@ python tools/prepare_ps2_spanish.py \
   --menu-font /ruta/fuente-sans-serif-bold.ttf
 ```
 
-El entorno de generación necesita Pillow. La fuente del sistema sólo se usa
-para rasterizar cuatro etiquetas; su archivo TTF no se copia al port ni a Git.
-El informe registra su SHA256 para reproducir el aspecto de la fila.
+The generation environment requires Pillow. The system font is only used
+to rasterize four labels; its TTF file is not copied to the port or Git.
+The report records its SHA256 to reproduce the appearance of the row.
 
-La herramienta importa mensajes por identificador y exige que el nombre,
-segmento, offset, tamaño, dimensiones y formato de cada textura coincidan en
-los descriptores de ambas revisiones. El informe `ESP.json` registra hashes,
-recursos y la imagen convertida compatible. El empaquetador comprueba esa
-relación antes de copiar. No se debe sustituir OOT.Z64 por una ROM parcheada.
+The tool imports messages by identifier and requires each texture's name,
+segment, offset, size, dimensions and format to match in the descriptors
+for both revisions. The `ESP.json` report records hashes, resources and the
+compatible converted image. The packager checks that relationship before
+copying. OOT.Z64 must not be replaced with a patched ROM.
 
-Las pruebas EE cubren todos los registros, lecturas parciales, memoria vecina,
-fuente y retorno a inglés. Una prueba separada ejercita el logo real, la
-selección en opciones, la escritura/lectura del encabezado SRAM, un diálogo
-traducido y casa → Kokiri → casa, con tarjetas del jugador desactivadas.
-La persistencia de idioma en una tarjeta física todavía requiere comprobación.
+The EE tests cover all records, partial reads, neighboring memory, the font
+and switching back to English. A separate test exercises the actual logo,
+option selection, SRAM header writes/reads, translated dialogue and
+house → Kokiri → house, with the player's cards disabled.
+Language persistence on a physical card still requires verification.

@@ -1,352 +1,341 @@
-# Changelog — Revisión y corrección del port a PS2
+# Changelog — PS2 port review and fixes
 
-Este documento resume todo lo revisado, corregido y verificado sobre el
-port de Ocarina of Time a PS2. Está pensado para que puedas retomar el
-trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
+This document records everything reviewed, fixed, and verified in the
+Ocarina of Time PS2 port. It lets you resume work knowing exactly what
+changed, why it changed, and what remains to be done.
 
-## Sol del castillo, pruebas repetibles y preparación de publicación — 2026-10-12
+## Castle sun, repeatable tests, and publication preparation — 2026-10-12
 
-- Se reproduce el sol dividido en tres partes con `castle_gate`, tres cámaras
-  originales de la entrada de Hyrule, hora fija y guardado sintético. La prueba
-  conserva por tarea gráfica la cámara, el entorno, la geometría y sus capturas;
-  no toca la partida del jugador. El avance original de diez ticks del entorno
-  se tiene en cuenta al comprobar la hora.
-- La lista original del sol usa descriptores I8 para sus tiras empaquetadas I4.
-  La compatibilidad queda limitada a sus selectores, dimensiones, máscaras,
-  clamp y dos fuentes exactas. Mezcla por separado las intensidades diurna y
-  vespertina, tintes y alfa. No cambia la cancelación genérica de las hadas.
-  La captura `20261011-192833-141/sun.png` muestra un sol completo. Pasan
-  49.152 comprobaciones de canales, mutación, alfa y caché.
-- Referencia posterior a la corrección: 18,8420 / 14,6955 / 19,9798 FPS;
-  traducción de 40,58 / 56,62 / 25,43 ms. La caché RGB de 4096, proyección
-  diferida y LTO no aportaron una mejora útil y no se activan. La separación
-  del bucle VTX queda opt-in: 18,8429 / 14,7528 / 19,9793 FPS, con imagen y
-  geometría idénticas; la diferencia es pequeña y no certifica una ganancia.
-- Una candidata VU0 con multiplicaciones/sumas separadas falla la equivalencia
-  exacta en 208 de 512 casos. El primer desajuste se explica por el truncado
-  distinto de ADD entre FPU y VU en PCSX2, con un ULP de diferencia. Permanece
-  desactivada y su diagnóstico se ejecuta sólo bajo opción explícita. No se
-  reduce la exigencia del oráculo para presentar esa candidata como aprobada.
-- La división experimental ELF/DAT inventaría 223 inicializadores privados,
-  260.948 bytes y 165 relocaciones MIPS de 32 bits. El generador reconstruye
-  el mismo DAT desde dos enlaces con 156 direcciones de destino distintas:
-  usa relocaciones de los objetos, no adivina punteros por sus valores.
-  Pasan 32 casos del cargador C en host y tres rechazos de metadatos alterados.
-- En PCSX2 con HostFs pasan los cuatro casos de arranque: datos válidos,
-  ausentes, corruptos y truncados. La prueba valida el logo, no una partida
-  completa ni el hardware real. El catálogo confiable está dentro del ELF;
-  el DAT no controla direcciones y se comprueba entero antes de escribir.
-- Los mismos cuatro casos pasan por USB nativo emulado en
-  `external-checks/20261012-141801-338`, conservando los archivos de la imagen
-  y la tarjeta del jugador. `floor-production-smoke-20261012-142716` pasa
-  con los defaults del renderer: 120 fotogramas enviados, sol, 192 estados
-  VTX, suelo, alfa, audio y SRAM. VU0 aparece como SKIP explícito.
-- El repositorio público es `LucianoDoS/oot-ps2`. ROM, DAT privados, BIOS,
-  tarjetas, partidas y registros no se publican. La release binaria continúa
-  pendiente; [PUBLISHING_PS2.md](PUBLISHING_PS2.md) separa los requisitos
-  técnicos y la revisión de licencias de los componentes.
+- `castle_gate` reproduces the sun split into three parts, using three
+  original Hyrule entrance camera views, a fixed time, and a synthetic save.
+  The test preserves the camera, environment, geometry, and captures for each
+  graphics task; it does not touch the player's save. Time checks account for
+  the environment's original advance of ten ticks.
+- The original sun display list uses I8 descriptors for its packed I4 strips.
+  Compatibility is restricted to its exact selectors, dimensions, masks,
+  clamp settings, and two sources. It separately blends daytime and evening
+  intensities, tints, and alpha. Generic fairy cancellation is unchanged.
+  `20261011-192833-141/sun.png` shows a complete sun. All 49.152 channel,
+  mutation, alpha, and cache checks pass.
+- Post-fix baseline: 18,8420 / 14,6955 / 19,9798 FPS;
+  translation takes 40,58 / 56,62 / 25,43 ms. The 4096-entry RGB cache,
+  deferred projection, and LTO brought no useful improvement and remain
+  disabled. The split VTX loop is opt-in: 18,8429 / 14,7528 / 19,9793 FPS,
+  with identical images and geometry; this small difference does not
+  establish a performance gain.
+- A VU0 candidate using separate multiplications/additions fails exact
+  equivalence in 208 of 512 cases. The first mismatch comes from different
+  ADD truncation between the FPU and VU in PCSX2, with a one-ULP difference.
+  It remains disabled, and its diagnostic runs only when explicitly enabled.
+  The oracle's requirements are not relaxed to present this candidate as passing.
+- The experimental ELF/DAT split inventories 223 private initializers,
+  260.948 bytes, and 165 32-bit MIPS relocations. The generator reconstructs
+  the same DAT from two links with 156 different destination addresses:
+  it uses object relocations instead of guessing pointers from their values.
+  All 32 host C-loader cases and three altered-metadata rejection cases pass.
+- All four startup cases pass in PCSX2 with HostFs: valid, missing, corrupt,
+  and truncated data. The test validates the logo, not a complete playthrough
+  or real hardware. The trusted catalog is inside the ELF; the DAT does not
+  control addresses and is checked in full before any writes.
+- The same four cases pass through emulated native USB in
+  `external-checks/20261012-141801-338`, preserving the image's files and the
+  player's card. `floor-production-smoke-20261012-142716` passes with the
+  renderer defaults: 120 submitted frames, sun, 192 VTX states, floor, alpha,
+  audio, and SRAM. VU0 is explicitly marked SKIP.
+- The public repository is `LucianoDoS/oot-ps2`. ROMs, private DATs, BIOS
+  files, cards, saves, and logs are not published. The binary release remains
+  pending; [PUBLISHING_PS2.md](PUBLISHING_PS2.md) distinguishes technical
+  requirements from component license review.
 
-## Cinemática del título y conexión del mando — 2026-10-11
+## Title cinematic and controller connection — 2026-10-11
 
-- `tools/run_ps2_perf_scene.ps1 -Mode title_cinematic` mide 480 fotogramas
-  tras 30 de calentamiento, con el inicializador original del título,
-  Link montado en Epona y cámara en movimiento. Usa guardado sintético,
-  semilla fija, mandos y tarjetas deshabilitados. Registra el movimiento
-  con su tarea gráfica y escribe filas/captura después del tramo medido.
-  `-Baseline` exige la misma configuración, muestras, movimiento y geometría.
-- La comparación de iluminación del título (`20261011-150455-022`, 256;
-  `20261011-150919-846`, 1024) conserva imagen y movimiento, pero sólo
-  reduce la traducción un 0,82 % y apenas cambia los FPS (18,39 a 18,42).
-  El perfil identifica un coste mayor: las nueve máscaras del aura vuelven
-  a filtrar el mismo ruido de 32 × 32 texels.
-- `PS2_FLAME_NOISE_REUSE=1` conserva una cuadrícula filtrada de 64 × 64 y
-  una copia de los 1024 bytes cargados. Cada conversión compara todos esos
-  bytes; las claves incluyen fuente, stride y scroll. Máscara, tinte y LOD
-  se aplican después mediante el cálculo original. Preserva el vecino S
-  sin máscara, que continúa en la siguiente fila de TMEM. No depende sólo
-  de direcciones ni del número de fotograma. Consume 5184 bytes de caché
-  y 16 de estadísticas; los contadores del juego avanzan sólo al perfilar.
-- `20261011-153323-009` pasa frente a `20261011-150919-846`, con captura,
-  movimiento y secuencia de geometría iguales. Traducción media: 34,96 →
-  27,05 ms (−22,61 %); FPS medios: 18,42 → 19,91. El último bloque de
-  60 fotogramas pasa de 14,61 a 19,65 FPS. El perfil registra una construcción
-  y ocho reutilizaciones por fotograma con aura, manteniendo sus subidas GS.
-  Esto no certifica todavía 20 FPS estables en todas las zonas ni en PS2 real.
-- `floor-production-smoke-20261011-152438` pasa. El nuevo oráculo verifica
-  327680 canales contra referencia independiente: dos máscaras, tinte/LOD,
-  mutación dentro del mismo fotograma, padding, stride 32/40 y scroll
-  fraccional/envolvente. Las pruebas existentes de llama, Skulltula, suelo,
-  transparencias, audio y SRAM siguen pasando. La memory card del jugador
-  conserva su SHA-256 anterior.
-- Se añade un registro único `[PS2 TITLE PAD]` tras la selección inicial
-  de archivo, para comprobar en el arranque normal la máscara de mando y
-  que no quede fijado `fileNum=0xFEDC` por una petición asíncrona pendiente.
-  El juego normal registra `mask=03 fileNum=00ff` y ambos puertos listos
-  para vibración; el usuario confirma que puede pulsar Start y entrar.
-  Ejecutable abierto: SHA-256
+- `tools/run_ps2_perf_scene.ps1 -Mode title_cinematic` measures 480 frames
+  after 30 warm-up frames, using the original title initializer, Link riding
+  Epona, and a moving camera. It uses a synthetic save, fixed seed, and
+  disabled controllers and cards. Motion is recorded with its graphics task,
+  and rows/captures are written after the measured segment. `-Baseline`
+  requires matching configuration, samples, motion, and geometry.
+- The title lighting comparison (`20261011-150455-022`, 256;
+  `20261011-150919-846`, 1024) preserves images and motion, but reduces
+  translation by only 0,82 % and barely changes FPS (18,39 to 18,42).
+  Profiling identifies a larger cost: the nine aura masks filter the same
+  32 × 32 texel noise again.
+- `PS2_FLAME_NOISE_REUSE=1` retains a filtered 64 × 64 grid and a copy of
+  the 1024 loaded bytes. Each conversion compares all those bytes; keys
+  include source, stride, and scroll. Mask, tint, and LOD are then applied
+  through the original calculation. The unmasked S neighbor, which continues
+  into the next TMEM row, is preserved. Reuse does not depend solely on
+  addresses or frame numbers. It uses 5184 cache bytes and 16 statistics
+  bytes; game counters advance only while profiling.
+- `20261011-153323-009` passes against `20261011-150919-846`, with matching
+  capture, motion, and geometry sequence. Mean translation: 34,96 →
+  27,05 ms (−22,61 %); mean FPS: 18,42 → 19,91. The final 60-frame block
+  improves from 14,61 to 19,65 FPS. Profiling records one build and eight
+  reuses per aura frame, while preserving its GS uploads. This does not yet
+  establish stable 20 FPS in every area or on real PS2 hardware.
+- `floor-production-smoke-20261011-152438` passes. The new oracle checks
+  327680 channels against an independent reference: two masks, tint/LOD,
+  mutation within the same frame, padding, stride 32/40, and fractional/wrapped
+  scrolling. Existing flame, Skulltula, floor, transparency, audio, and SRAM
+  tests still pass. The player's memory card retains its previous SHA-256.
+- A single `[PS2 TITLE PAD]` log entry is added after initial file selection
+  to check the controller mask during normal startup and ensure a pending
+  asynchronous request does not leave `fileNum=0xFEDC` set. The normal game
+  logs `mask=03 fileNum=00ff`, with both ports ready for rumble; the user
+  confirms Start works and the save can be entered. Opened executable SHA-256:
   `8d25cbebe57dd96e2ae032eae423759a12e9e121b218fcabcfce630426b2b57d`.
 
-## Caché de iluminación y versión con vibración — 2026-10-11
+## Lighting cache and rumble-enabled build — 2026-10-11
 
-- Se corrige la instrumentación para que la caché de 256 entradas registre
-  hits y reconstrucciones con el mismo coste que las candidatas de 512/1024.
-  Los contadores sólo avanzan durante el perfilado; no se añaden lecturas
-  del reloj al juego normal.
-- Referencia nueva: `build/PS2/perf-scenes/20261011-134417-449`, 256 entradas.
-  Las candidatas `20261011-140014-951` (512) y `20261011-135150-107` (1024)
-  pasan, con la misma ROM, configuración, semilla, muestras, secuencia de
-  geometría y capturas por vista. Las tarjetas del jugador permanecen
-  deshabilitadas en la prueba y su archivo no cambia.
+- Instrumentation is corrected so the 256-entry cache records hits and
+  rebuilds at the same cost as the 512/1024 candidates. Counters advance only
+  during profiling; no clock reads are added to the normal game.
+- New baseline: `build/PS2/perf-scenes/20261011-134417-449`, 256 entries.
+  Candidates `20261011-140014-951` (512) and `20261011-135150-107` (1024)
+  pass with identical ROM, configuration, seed, samples, geometry sequence,
+  and captures per view. The player's cards stay disabled during the test,
+  and their file is unchanged.
 
-  | Caché RGB | RAM | Traducción por vista (ms) | FPS por vista |
+  | RGB cache | RAM | Translation per view (ms) | FPS per view |
   | --- | --- | --- | --- |
   | 256 | 3 KiB | 35,06 / 32,40 / 39,06 | 19,46 / 19,76 / 19,10 |
   | 512 | 6 KiB | 34,71 / 32,09 / 38,74 | 19,46 / 19,77 / 19,16 |
   | 1024 | 12 KiB | 34,48 / 31,97 / 38,65 | 19,48 / 19,82 / 19,06 |
 
-- Se conserva la capacidad de 1024: reduce la traducción un 1,1–1,6 % y las
-  reconstrucciones RGB de 1279/1306/1386 a 772/821/904 por fotograma perfilado,
-  sin alterar alpha ni los cálculos originales. Consume 9 KiB adicionales.
-  La mejora de tiempo es pequeña y no demuestra una ganancia sostenida de
-  FPS ni 20 estables. Estas cámaras próximas a la casa tampoco sustituyen
-  la vista física más pesada ni una prueba caminando por el mapa.
-- La caché independiente de normales de la sesión anterior pasa su oracle,
-  pero `20261010-144111-786` no obtiene hits y aumenta la traducción cerca
-  de 0,9 %. `PS2_NORMAL_VECTOR_REUSE` permanece desactivado, igual que la
-  candidata de invalidación por color que no dio ganancia.
-- `floor-production-smoke-20261011-140625` pasa con 1024 entradas y comprueba
-  colisiones/reemplazo, claves completas, cambios de luces, alpha, suelo,
-  transparencias, audio y SRAM. El script smoke usa la capacidad del header
-  de producción por defecto; permite un override explícito para comparar.
-- Se repite `tools/test_ps2_pad_rumble.py`: PASS. La revisión confirma que
-  `PadMgr_UpdateRumble` descubre el dispositivo mediante `CONT_CARD_ON` y
-  utiliza la API de motor integrada. Falta comprobar la sensación de
-  vibración en un mando físico.
-- La primera prueba interactiva detecta «NO CONTROLLER»: `EXECCMD` durante
-  el cambio de modo borraba temporalmente la máscara y el logo N64 fijaba
-  `fileNum=0xFEDC`. Se conserva una conexión previamente comprobada durante
-  la petición; una lectura pendiente devuelve overrun 4, que PadMgr trata
-  conservando la muestra anterior. Desconexión/error reales siguen devolviendo
-  8. La prueba host ahora incluye `PadSetup_Init` real, la máscara usada por
-  el título y un puerto ocupado cuya presencia nunca fue comprobada: PASS.
+- The 1024-entry capacity is retained: it reduces translation by 1,1–1,6 %
+  and RGB rebuilds from 1279/1306/1386 to 772/821/904 per profiled frame,
+  without changing alpha or the original calculations. It uses an additional
+  9 KiB. The small timing improvement does not demonstrate a sustained FPS
+  gain or stable 20 FPS. These views near the house do not replace the heavier
+  physical view or a test walking around the map.
+- The previous session's independent normal-vector cache passes its oracle,
+  but `20261010-144111-786` gets no hits and increases translation by about
+  0,9 %. `PS2_NORMAL_VECTOR_REUSE` remains disabled, as does the color-based
+  invalidation candidate that provided no gain.
+- `floor-production-smoke-20261011-140625` passes with 1024 entries and
+  checks collisions/replacement, complete keys, lighting changes, alpha,
+  floor, transparency, audio, and SRAM. The smoke script uses the production
+  header's capacity by default and allows an explicit override for comparison.
+- `tools/test_ps2_pad_rumble.py` is rerun: PASS. Review confirms that
+  `PadMgr_UpdateRumble` discovers the device through `CONT_CARD_ON` and uses
+  the integrated motor API. Rumble still needs to be felt on a physical controller.
+- The first interactive test detects “NO CONTROLLER”: `EXECCMD` during a
+  mode change temporarily cleared the mask, and the N64 logo set
+  `fileNum=0xFEDC`. A previously verified connection is retained during the
+  request; a pending read returns overrun 4, which PadMgr handles by keeping
+  the previous sample. Actual disconnections/errors still return 8. The host
+  test now includes real `PadSetup_Init`, the mask used by the title, and a busy
+  port whose presence was never verified: PASS.
 
-## Sesión física posterior y pruebas repetibles — 2026-10-10
+## Later physical session and repeatable tests — 2026-10-10
 
-- Se conserva `build/PS2/hardware-runtime/compare-physical-20261008-203055`
-  antes de cambiar archivos del USB. Sus 195 muestras contienen las tres
-  filas SAMPLE/USB/AUDIO completas, continuas y ordenadas; no se detectan
-  sectores antiguos en la cola de esta sesión. Esto no demuestra que el
-  fallo intermitente de escritura de sesiones anteriores esté resuelto.
-- Las vistas pesadas siguen cerca de 12–13 FPS. Los perfiles 1200/1500
-  transforman 4439 vértices y registran 1816 comandos de triángulos; la
-  traducción ronda 57,50–61,45 ms. No hay una mejora clara de FPS frente
-  a la sesión anterior. La reducción de subidas de texturas explica más
-  que la reducción total de tiempo: no se atribuye esa diferencia a la
-  escritura directa de puntos. Los tramos finales de 18–20 FPS dibujan
-  vistas más ligeras. El inventario y sus transiciones se excluyen del
-  análisis de juego activo.
-- El siguiente ciclo de optimización usa PCSX2 y cámaras fijas, con ROM,
-  configuración y capturas propias de la prueba. La PS2 física se reserva
-  para comprobar los cambios relevantes, sin sustituir su validación por
-  cifras del emulador.
-- Se revisa la ocarina contra el código original local: el modo de toque
-  libre oculta deliberadamente el pentagrama y las notas, conservando a
-  Link y el escenario. Los modos de aprendizaje/reconocimiento sí dibujan
-  las notas. El usuario confirma que la confusión era sobre el toque libre;
-  no se cambia esa conducta del juego.
-- `tools/run_ps2_perf_scene.ps1` ejecuta tres vistas del bosque Kokiri con
-  guardado sintético, mandos y tarjetas deshabilitados, 30 fotogramas de
-  calentamiento y 120 medidos por vista. El punto de Link se apoya mediante
-  la colisión cargada. `Play_Init` cambiaba la semilla con el reloj: el ELF
-  de prueba intercepta también esa llamada y comprueba la semilla efectiva.
-  El perfilado se limita a los fotogramas 60/120 y se excluye de los tiempos
-  normales. Capturas y filas se escriben después del tramo medido.
-- La referencia válida `build/PS2/perf-scenes/20261010-141140-235` pasa y
-  mide 19,46 / 19,76 / 19,06 FPS, con traducción de 34,98 / 32,36 / 38,96 ms.
-  Su repetición `20261010-141648-933` conserva la geometría de cada fotograma,
-  las capturas y los tiempos. Las versiones iniciales de la prueba se
-  conservan para diagnóstico, pero no sirven como referencia: primero el
-  punto de Link flotaba y después la semilla aún dependía del reloj.
-- La candidata de invalidación por colores pasa 25 casos/150 puntos y el
-  smoke completo `floor-production-smoke-20261010-140500`. La comparación
-  `20261010-141505-782` conserva exactamente geometría y capturas, pero no
-  retiene texturas en estas vistas y añade aproximadamente 0,2–0,3 % al
-  tiempo de traducción. `PS2_COLOR_INVALIDATION_REUSE` queda desactivado;
-  no se presenta como una mejora de rendimiento.
-- Vibración: `osContGetQuery` anuncia `CONT_CARD_ON` sólo después de
-  confirmar modo analógico, alineación de actuadores y motores apagados.
-  Antes el juego no descubría el Rumble Pak. La negociación avanza por
-  consultas, sin espera activa; `osMotorInit` valida el puerto y el estado
-  de `OSPfs`, y los pulsos originales se envían a ambos motores. Desconexión,
-  errores y cierre intentan apagar los motores; reconexión empieza apagada.
-  `tools/test_ps2_pad_rumble.py` pasa las pruebas de detección, solicitudes
-  asíncronas fallidas, mando digital, pulsos, reconexión y cierre. Compilan
-  las estructuras EE reales; todavía falta sentir la vibración en hardware.
+- `build/PS2/hardware-runtime/compare-physical-20261008-203055` is preserved
+  before changing USB files. Its 195 samples contain all three complete
+  SAMPLE/USB/AUDIO rows, continuous and ordered; no old sectors are detected
+  at this session's tail. This does not prove that the intermittent write
+  failure in earlier sessions is fixed.
+- Heavy views remain near 12–13 FPS. Profiles 1200/1500 transform 4439
+  vertices and record 1816 triangle commands; translation takes about
+  57,50–61,45 ms. There is no clear FPS gain over the previous session. Reduced
+  texture uploads explain more than the overall timing reduction: that
+  difference is not attributed to direct point writes. Final 18–20 FPS
+  segments draw lighter views. The inventory and its transitions are excluded
+  from active-gameplay analysis.
+- The next optimization cycle uses PCSX2 and fixed cameras, with a ROM,
+  configuration, and captures dedicated to the test. The physical PS2 is
+  reserved for checking relevant changes; emulator numbers do not replace
+  hardware validation.
+- The ocarina is checked against the local original code: free-play mode
+  deliberately hides the staff and notes while keeping Link and the scene
+  visible. Learning/recognition modes do draw the notes. The user confirms
+  the confusion concerned free play; this game behavior is unchanged.
+- `tools/run_ps2_perf_scene.ps1` runs three Kokiri Forest views with a
+  synthetic save, disabled controllers and cards, 30 warm-up frames, and
+  120 measured frames per view. Link's position is supported by loaded
+  collision. `Play_Init` changed the seed using the clock: the test ELF also
+  intercepts that call and checks the effective seed. Profiling is limited to
+  frames 60/120 and excluded from normal timings. Captures and rows are written
+  after the measured segment.
+- The valid baseline `build/PS2/perf-scenes/20261010-141140-235` passes,
+  measuring 19,46 / 19,76 / 19,06 FPS with translation of
+  34,98 / 32,36 / 38,96 ms. Repeat run `20261010-141648-933` preserves each
+  frame's geometry, captures, and timings. Initial test versions are kept for
+  diagnostics but are not valid baselines: Link's position first floated,
+  and the seed later still depended on the clock.
+- The color-based invalidation candidate passes 25 cases/150 points and the
+  complete `floor-production-smoke-20261010-140500`. Comparison
+  `20261010-141505-782` preserves geometry and captures exactly, but retains
+  no textures in these views and adds approximately 0,2–0,3 % to translation
+  time. `PS2_COLOR_INVALIDATION_REUSE` stays disabled; it is not presented as
+  a performance improvement.
+- Rumble: `osContGetQuery` reports `CONT_CARD_ON` only after confirming
+  analog mode, actuator alignment, and stopped motors. Previously, the game
+  did not discover the Rumble Pak. Negotiation advances through queries,
+  without busy waiting; `osMotorInit` validates the port and `OSPfs` state,
+  and original pulses are sent to both motors. Disconnection, errors, and
+  shutdown attempt to stop the motors; reconnection starts with them off.
+  `tools/test_ps2_pad_rumble.py` passes detection, failed asynchronous requests,
+  digital controller, pulse, reconnection, and shutdown tests. Real EE
+  structures compile; rumble still needs to be felt on hardware.
 
-## Comparación de texturas, escritura directa y sincronizaciones vacías — 2026-10-08
+## Texture comparison, direct writes, and empty synchronizations — 2026-10-08
 
-- La sesión `build/PS2/hardware-runtime/traversal-physical-20261008-164351`
-  coincide con el paquete entregado: PERF SHA256
+- Session `build/PS2/hardware-runtime/traversal-physical-20261008-164351`
+  matches the delivered package: PERF SHA256
   `3BBC47BF012FEB61A533DCE12BC306175CCC46EBF0C235461EA6B7EBA314A09E`.
-  Tiene 224 muestras completas fiables y 12 perfiles. El último sector,
-  offset 163.840 de 164.352 bytes, coincide byte a byte con el registro
-  anterior; empalma AUDIO 225 y contiene las muestras antiguas 234/235.
-  Se conserva el archivo original y se excluye esa cola. La escritura
-  intermitente sigue sin resolver; un contador de pérdidas cero no la descarta.
-- Entre 111 y 126 segundos, sin lecturas ni escrituras solapadas, quedan
-  13 intervalos/174 fotogramas: mediana 13 FPS, traducción 60,26 ms,
-  envío final 2,43 y presentación 12,37 por fotograma. No se observan colas
-  vacías de audio en esos intervalos. La cámara no está verificada idéntica;
-  el resultado no demuestra una mejora sostenida frente a la sesión anterior.
-  VTX/DL/END anidado ya no cierran grupos; el END raíz los vacía.
-  Permanecen 381/382 límites de otros estados.
-- Los perfiles grandes 1800/2100 gastan 34,50–39,01 ms en triángulos,
-  incluidos 29,11–33,55 ms en su preparación/envío. Comparan 376–379 kB
-  en 3,42–4,68 ms, sin nuevas copias, mutaciones o expulsiones. Las huellas
-  restantes sólo corresponden a texturas pequeñas no admitidas. La paleta
-  ocupa 0,163–0,173 ms; las subidas de 5/7 texturas cuestan 4,54–6,13 ms.
-  Son categorías anidadas, no tiempos independientes que se puedan sumar.
-- El comparador EE procesa ahora bloques completos de 256 bytes y conserva
-  la ruta de 64/16 bytes y escalar para las colas. No omite validación de
-  contenido, padding excluido, ninguna de las dos fuentes ni cambios de RAM.
-  No amplía el anillo de 128 KiB ni los 128 descriptores. El comparador de
-  128 bytes y el selector de referencia existen sólo en SMOKE. Los bloques
-  mayores tardan más en detectar una mutación temprana; las vistas pesadas
-  medidas no registran mutaciones, pero la corrección se comprueba igualmente.
-- Los triángulos texturados de una capa escriben sus puntos directamente
-  en la cola libre, evitando una copia de 144 bytes. Al llenarse el lote
-  conservan el temporal y el instante original del vaciado. El suelo de dos
-  capas, las capturas y los dibujos fallidos mantienen su orden; sólo se
-  compromete la cola cuando la textura carga. No se agrupan las capas del suelo.
-- El desglose previo a esta corrección, fixture
-  `usb-stack-checks/20261008-172657-381`, encuentra 248 de 302 límites
-  en los cuatro RDP SYNC del fotograma 600. Sus handlers ya eran vacíos;
-  ahora tampoco cortan el grupo. LOAD/TLUT, cambios de material, capturas,
-  objetivos y ENDDL raíz siguen vaciándolo antes de ejecutarse. No se
-  elimina ni difiere ninguna sincronización efectiva del GS.
-- Pasa `build/PS2/floor-production-smoke-20261008-174515`: 338.880
-  comparaciones y 14.256 huellas adicionales para los tres bloques, alineaciones,
-  cada byte, diferencias repetidas, colas, parejas y filas con padding; también
-  pasa la batería previa de 233.216/42.430. El desensamblado confirma guardias
-  de bloque/alineación, offsets finales y retorno a la ruta de cola. Los canarios
-  de la prueba certifican resultados, no por sí solos las lecturas descartadas.
-- En 20 grupos aislados el bloque de 256 supera al de 64: aproximadamente
-  17–29 % menos ciclos en fuentes individuales y 18–25 % en un recorrido
-  de 96 copias/48 KiB. La cola directa conserva 480 puntos y todos los bytes
-  de paquetes en cuatro casos con desbordamiento, recorte, cargas parciales
-  y fallo de textura. Con los cuatro SYNC, en 864 triángulos por ruta mide
-  929.009 ciclos anteriores y 863.926 directos. Son ensayos emulados de
-  operaciones aisladas, no ganancias de FPS del juego ni prueba física de 20 FPS estables.
-- Los 24 casos de recorrido de listas pasan con SYNC, ramas, matrices y
-  cargas parciales, completas y del slot final. El diferencial separado
-  ENV/PRIM conserva 12 puntos en orden tanto en materiales texturados como
-  de color; exige tres grupos donde la ruta anterior emitía cuatro.
-- PERF desglosa los límites restantes en 19 categorías, repartidas en dos
-  registros que caben en los 320 bytes del logger. Sólo cuenta en el fotograma
-  muestreado; las categorías suman `otherFences`. El analizador reúne partes
-  completas, únicas y del mismo fotograma; pasan sus 14 pruebas. El juego
-  habitual mantiene desactivados los cronómetros por operación.
+  It has 224 reliable complete samples and 12 profiles. The final sector,
+  offset 163.840 of 164.352 bytes, matches the previous log byte for byte;
+  it joins AUDIO 225 and contains old samples 234/235. The original file is
+  preserved, and that tail is excluded. Intermittent writing remains
+  unresolved; a zero loss counter does not rule it out.
+- Between 111 and 126 seconds, without overlapping reads or writes, there
+  are 13 intervals/174 frames: median 13 FPS, translation 60,26 ms, final
+  submission 2,43, and presentation 12,37 per frame. No empty audio queues
+  are observed in those intervals. The camera has not been verified identical;
+  the result does not establish a sustained improvement over the previous
+  session. Nested VTX/DL/END no longer close groups; root END flushes them.
+  There are still 381/382 boundaries from other states.
+- Large profiles 1800/2100 spend 34,50–39,01 ms on triangles, including
+  29,11–33,55 ms on preparation/submission. They compare 376–379 kB in
+  3,42–4,68 ms, with no new copies, mutations, or evictions. Remaining hashes
+  belong only to small ineligible textures. The palette takes 0,163–0,173 ms;
+  uploads of 5/7 textures cost 4,54–6,13 ms. These are nested categories,
+  not independent timings that can be added together.
+- The EE comparator now processes complete 256-byte blocks and retains the
+  64/16-byte and scalar tail paths. It skips no content validation, excluded
+  padding, either source, or RAM changes. It does not enlarge the 128 KiB ring
+  or its 128 descriptors. The 128-byte comparator and reference selector exist
+  only in SMOKE. Larger blocks take longer to detect an early mutation; the
+  measured heavy views record no mutations, but correctness is still checked.
+- Single-layer textured triangles write their points directly into the free
+  queue, avoiding a 144-byte copy. When a batch fills, they retain the temporary
+  buffer and original flush timing. Two-layer floor rendering, captures, and
+  failed draws keep their order; the queue is committed only when the texture
+  loads. Floor layers are not grouped together.
+- The breakdown before this fix, fixture
+  `usb-stack-checks/20261008-172657-381`, finds 248 of 302 boundaries in the
+  four RDP SYNC commands of frame 600. Their handlers were already empty;
+  now they no longer interrupt the group either. LOAD/TLUT, material changes,
+  captures, targets, and root ENDDL still flush the group before execution.
+  No effective GS synchronization is removed or deferred.
+- `build/PS2/floor-production-smoke-20261008-174515` passes: 338.880
+  comparisons and 14.256 additional hash checks for all three blocks,
+  alignments, every byte, repeated differences, tails, pairs, and padded rows;
+  the previous 233.216/42.430 suite also passes. Disassembly confirms block/
+  alignment guards, final offsets, and return to the tail path. Test canaries
+  establish results, but do not by themselves establish which reads were omitted.
+- In 20 isolated groups, the 256-byte block beats the 64-byte block:
+  approximately 17–29 % fewer cycles on individual sources and 18–25 % on a
+  traversal of 96 copies/48 KiB. The direct queue preserves 480 points and
+  every packet byte in four cases involving overflow, clipping, partial loads,
+  and texture failure. With all four SYNC commands, 864 triangles per path
+  take 929.009 cycles previously and 863.926 directly. These are emulated tests
+  of isolated operations, not game FPS gains or physical proof of stable 20 FPS.
+- All 24 display-list traversal cases pass with SYNC, branches, matrices, and
+  partial, complete, and final-slot loads. The separate ENV/PRIM differential
+  preserves 12 ordered points for both textured and color materials; it requires
+  three groups where the previous path emitted four.
+- PERF breaks remaining boundaries into 19 categories across two log entries
+  that fit within the logger's 320 bytes. It counts only in the sampled frame;
+  the categories sum to `otherFences`. The analyzer combines complete, unique
+  parts from the same frame; its 14 tests pass. Per-operation timers remain
+  disabled in the regular game.
 
 
-- Las pruebas finales con USB nativo emulado pasan en
-  `build/PS2/usb-stack-checks/20261008-201143-015` y
-  `build/PS2/usb-stack-checks/20261008-201419-773`: logo a 59,9 FPS,
-  opción y diálogo en español, casa–Kokiri–casa con 120 actualizaciones
-  por fase. Las cuatro capturas coinciden byte a byte con la referencia.
-  Las tarjetas del jugador permanecen desactivadas durante estos recorridos.
-- El perfil final confirma cero límites SYNC, pero los totales 135/302
-  no bajan en los fotogramas 300/600: el siguiente cambio real de estado
-  cierra el grupo. Por tanto este caso no demuestra un ahorro de lotes ni
-  FPS. La nueva clasificación permite estudiar esos materiales en hardware.
-- `build/PS2/compare-release-verification.json` vincula el ELF del smoke,
-  los ELF de ambos recorridos y sus informes mediante SHA256. Recalcula
-  independientemente la ventana física desde el log sin usar su resumen,
-  comprueba límites estáticos del ELF, los datos convertidos, el idioma y
-  la conservación del registro y la tarjeta. No certifica toda la memoria
-  dinámica ni los FPS reales de esta candidata.
+- Final emulated native USB tests pass in
+  `build/PS2/usb-stack-checks/20261008-201143-015` and
+  `build/PS2/usb-stack-checks/20261008-201419-773`: logo at 59,9 FPS, Spanish
+  option and dialogue, house–Kokiri–house with 120 updates per phase. All four
+  captures match the baseline byte for byte. The player's cards remain
+  disabled throughout these routes.
+- The final profile confirms zero SYNC boundaries, but totals 135/302 do
+  not fall in frames 300/600: the next actual state change closes the group.
+  This case therefore demonstrates neither fewer batches nor higher FPS.
+  The new classification allows these materials to be studied on hardware.
+- `build/PS2/compare-release-verification.json` links the smoke ELF, both
+  route ELFs, and their reports through SHA256. It independently recalculates
+  the physical window from the log without using its summary, checks static
+  ELF bounds, converted data, language, and preservation of the log and card.
+  It does not establish total dynamic memory use or this candidate's real FPS.
 - OOTPS2 SHA256: `886825B975700707D3BCE234FD59DDBB584787BD75A12B951D55919BF2E0FD80`.
   PERF SHA256: `7F3B97CE20E43041F42A7D62ABCA14C3ADF31F35027278D1268B6FD45266E540`.
 
-- Copiados y verificados los 12 archivos en `D:/OOTPS2`; respaldo en
-  `D:/OOTPS2-backup-20261008-201937`. La comprobación posterior
-  pasa con `copied=true`, registros físicos y tarjeta del jugador intactos.
-  Queda probar esta candidata en la misma vista pesada de la SCPH-90010.
+- All 12 files are copied and verified in `D:/OOTPS2`; backup:
+  `D:/OOTPS2-backup-20261008-201937`. The subsequent check passes with
+  `copied=true`, physical logs and the player's card intact. This candidate
+  still needs testing in the same heavy view on the SCPH-90010.
 
-## Reutilización al recorrer modelos y comprobación física de la caché — 2026-10-08
+## Reuse during model traversal and physical cache verification — 2026-10-08
 
-- Se conserva la sesión en
-  `build/PS2/hardware-runtime/retention-physical-20261007-214734`: 255 muestras
-  utilizables y 13 perfiles, sin daño, duplicados, pérdidas ni errores USB.
-  PERF coincide con el paquete anterior, SHA256
+- The session is preserved in
+  `build/PS2/hardware-runtime/retention-physical-20261007-214734`: 255 usable
+  samples and 13 profiles, without damage, duplicates, losses, or USB errors.
+  PERF matches the previous package, SHA256
   `8DA83A36DC6A5F724EEFC8687163D54F88463B7E25C43F4DA4E4D7E25573319B`.
-  Entre 111 y 126 segundos, excluyendo una escritura solapada, quedan
-  14 intervalos y 186 fotogramas: mediana 13 FPS, traducción 60,83 ms,
-  envío final 2,85 y presentación 12,01 por fotograma. No hay lecturas,
-  colas de audio vacías ni aumento de su contador de retrasos en ese tramo.
-  La cámara no está verificada idéntica: no se afirma una ganancia exacta
-  frente a los 11,9 FPS/68,02 ms anteriores ni 20 FPS estables.
-- En los perfiles grandes 1500/1800/2100 desaparecen las nuevas copias,
-  expulsiones de descriptor y solapamientos. Las 46/45/45 huellas restantes
-  pertenecen sólo al límite pequeño de admisión: 3.456/3.392/3.392 bytes,
-  frente a unos 117 KiB anteriores. La validación completa compara ahora
-  380–403 KiB y ocupa 3,66/3,82/4,92 ms; ampliar más la capacidad no elimina
-  ese trabajo. La paleta usa 166–168 µs, dentro de los metadatos; la lectura
-  y decodificación TLUT quedan fuera de esa medida. El coste mayor sigue
-  en los triángulos: 31,37–33,31 ms, incluido su envío de 25,84–27,80 ms.
-- Los tres perfiles grandes tienen 45 límites por VTX, tres por DL,
-  178 por ENDDL y 201 por otros estados. Son oportunidades de reutilización,
-  no una predicción del número de lotes que se ahorrará. La candidata conserva
-  un grupo al recorrer llamadas/saltos, matrices y cargas de vértices;
-  invalida exactamente los slots sobrescritos de color, puntos de ambas capas
-  y UV. Las cargas de 64 slots evitan desplazar una máscara por 64 bits.
-  Los paquetes pendientes contienen puntos copiados. Material, viewport,
-  niebla, objetivos de render, recorte de listas y fin raíz siguen cerrando
-  el grupo; se conserva también el cierre al abortar por la guardia.
-  Las dos capas del suelo siguen dibujándose por triángulo y en su orden.
-- Pasa la batería EE en `build/PS2/floor-production-smoke-20261008-142415`.
-  Veinticuatro casos comparan el intérprete anterior y el nuevo: llamadas
-  anidadas, saltos, matrices, cargas parciales/completas/slot 63, colores,
-  texturas, suelo, niebla, profundidad, decals, recorte y cambios de material.
-  Los puntos, vértices finales, orden y contadores de dibujo coinciden.
-  Se miden 1.778.485 ciclos de referencia y 1.258.149 reutilizados: es un
-  ensayo aislado emulado, no un aumento de FPS físicos. La mejora del juego
-  en consola sigue pendiente.
-- Pasan ambos recorridos con USB nativo emulado:
-  `build/PS2/usb-stack-checks/20261008-143259-045` (habitual) y
-  `build/PS2/usb-stack-checks/20261008-143554-364` (PERF). Conservan el logo
-  a 59,9 FPS, opciones/diálogo en español y casa → Kokiri → casa. Ambas
-  capturas coinciden con la versión entregada anterior; frente a la referencia
-  antigua sólo hay 35 píxeles de parpadeo en los ojos. Los registros son
-  íntegros y los perfiles nuevos aparecen completos sólo en PERF. Datos,
-  idioma y tarjeta del jugador conservan sus hashes; las tarjetas permanecen
-  desactivadas en las pruebas. El rango estático de OOTPS2 termina en
-  0x01223C70: no certifica el uso dinámico de memoria. La comprobación queda
-  en `build/PS2/traversal-release-verification.json`. Los ejecutables de
-  producción no contienen el helper que fuerza las barreras anteriores.
-- Paquete copiado y verificado en `D:\OOTPS2`, con 12 archivos y respaldo
-  de los sustituidos en `D:\OOTPS2-backup-20261008-143944`. BOOT.LOG y
-  DIAG.LOG conservan los hashes de la sesión archivada. OOTPS2 SHA256:
+  Between 111 and 126 seconds, excluding an overlapping write, there are
+  14 intervals and 186 frames: median 13 FPS, translation 60,83 ms, final
+  submission 2,85, and presentation 12,01 per frame. That segment has no
+  reads, empty audio queues, or increase in its delay counter. The camera
+  has not been verified identical: no exact gain over the previous
+  11,9 FPS/68,02 ms, or stable 20 FPS, is claimed.
+- Large profiles 1500/1800/2100 no longer show new copies, descriptor
+  evictions, or overlaps. The remaining 46/45/45 hashes belong solely to the
+  small admission threshold: 3.456/3.392/3.392 bytes, versus approximately
+  117 KiB previously. Full validation now compares 380–403 KiB and takes
+  3,66/3,82/4,92 ms; increasing capacity further does not remove that work.
+  The palette takes 166–168 µs, within metadata; TLUT reads and decoding
+  fall outside that measurement. Triangles remain the largest cost:
+  31,37–33,31 ms, including submission of 25,84–27,80 ms.
+- All three large profiles have 45 VTX boundaries, three DL boundaries,
+  178 ENDDL boundaries, and 201 from other states. These are reuse
+  opportunities, not a prediction of batches saved. The candidate retains
+  a group across calls/jumps, matrices, and vertex loads; it invalidates
+  exactly the overwritten color slots, points from both layers, and UVs.
+  Loads of 64 slots avoid shifting a mask by 64 bits. Pending packets contain
+  copied points. Material, viewport, fog, render targets, display-list clipping,
+  and root end still close the group; closure when aborting at the guard is
+  also preserved. Both floor layers still draw per triangle in their original order.
+- The EE suite passes in `build/PS2/floor-production-smoke-20261008-142415`.
+  Twenty-four cases compare the previous and new interpreters: nested calls,
+  jumps, matrices, partial/full/slot 63 loads, colors, textures, floor, fog,
+  depth, decals, clipping, and material changes. Points, final vertices,
+  order, and draw counters match. The reference takes 1.778.485 cycles and
+  reuse takes 1.258.149: this is an isolated emulated test, not a physical FPS
+  increase. The console gameplay improvement remains to be measured.
+- Both emulated native USB routes pass:
+  `build/PS2/usb-stack-checks/20261008-143259-045` (regular) and
+  `build/PS2/usb-stack-checks/20261008-143554-364` (PERF). They preserve the
+  logo at 59,9 FPS, Spanish options/dialogue, and house → Kokiri → house.
+  Both captures match the previous delivered build; only 35 blinking-eye
+  pixels differ from the old baseline. Logs are intact, and the new profiles
+  appear in full only in PERF. Data, language, and the player's card retain
+  their hashes; cards remain disabled during tests. OOTPS2's static range ends
+  at 0x01223C70: this does not establish dynamic memory use. Verification is
+  recorded in `build/PS2/traversal-release-verification.json`. Production
+  executables do not contain the helper that forces the previous barriers.
+- The 12-file package is copied and verified in `D:\OOTPS2`, with replaced
+  files backed up in `D:\OOTPS2-backup-20261008-143944`. BOOT.LOG and DIAG.LOG
+  retain the archived session's hashes. OOTPS2 SHA256:
   `1DBDE26C6570175E38D4CE0C4A56632D8F6C452CF465D7D17C9BC9C1DAD10894`.
-  El siguiente ensayo físico debe usar PERF.ELF, quieto y caminando en la
-  misma vista lenta; los 20 FPS sostenidos siguen sin confirmar.
+  The next physical test must use PERF.ELF, standing and walking in the same
+  slow view; sustained 20 FPS remain unconfirmed.
 
-## Límite de descriptores y reutilización de huellas de paleta — 2026-10-07
+## Descriptor limit and palette hash reuse — 2026-10-07
 
-- La sesión física se conserva en
-  `build/PS2/hardware-runtime/setup-physical-20261007-205251`: 285 muestras
-  utilizables y 13 fotogramas perfilados, sin daño, duplicados, saltos,
-  pérdidas declaradas, errores USB ni fallos de scratchpad. Entre 111 y
-  126 segundos, excluyendo el intervalo solapado con una escritura del
-  registro, quedan 14 intervalos y 169 fotogramas: mediana 11,9 FPS,
-  traducción 68,02 ms, envío final 1,96 y presentación 13,11 por fotograma.
-  No hay lecturas ni observaciones de cola de audio vacía en ese tramo.
-  El coste sostenido sigue concentrado en el renderer; estos tiempos
-  generales incluyen las interrupciones y la ejecución de otros hilos.
-- Los motivos nuevos separan el límite de descriptores del espacio de copias.
-  En cinco fotogramas de la vista grande, 358 de 372 expulsiones (96,2 %)
-  corresponden a descriptores; sólo 14 corresponden al espacio del anillo.
+- The physical session is preserved in
+  `build/PS2/hardware-runtime/setup-physical-20261007-205251`: 285 usable
+  samples and 13 profiled frames, without damage, duplicates, gaps, reported
+  losses, USB errors, or scratchpad failures. Between 111 and 126 seconds,
+  excluding the interval overlapping a log write, there are 14 intervals and
+  169 frames: median 11,9 FPS, translation 68,02 ms, final submission 1,96,
+  and presentation 13,11 per frame. There are no reads or observed empty audio
+  queues in that segment. Sustained cost remains concentrated in the renderer;
+  these overall timings include interrupts and other threads' execution.
+- New reasons separate the descriptor limit from copy storage. In five
+  large-view frames, 358 of 372 evictions (96,2 %) involve descriptors;
+  only 14 involve ring storage.
 
-  | Fotograma | Nuevas copias | Expulsiones de descriptor | Solapamientos del anillo |
+  | Frame | New copies | Descriptor evictions | Ring overlaps |
   | --- | ---: | ---: | ---: |
   | 1200 | 75 | 73 | 2 |
   | 1500 | 74 | 71 | 3 |
@@ -354,2744 +343,2731 @@ trabajo sabiendo exactamente qué se tocó, por qué, y qué falta.
   | 2100 | 74 | 72 | 2 |
   | 2400 | 74 | 71 | 3 |
 
-- La versión candidata conserva 128 descriptores en lugar de 64: añade
-  3.840 bytes de metadatos y mantiene el anillo de 128 KiB, el máximo de
-  16 KiB y el mínimo de 256 bytes por copia. Se siguen comparando todos
-  los bytes cargados, incluidas ambas fuentes de las mezclas, antes de
-  reutilizar una huella. La prueba de 96 fuentes de 512 bytes conserva
-  384 aciertos tras calentarse y valida después 96 cambios de contenido.
-- Se conservan 17 huellas FNV de paleta: 16 bancos CI4 y la paleta CI8
-  completa. Sólo cambia su validez cuando cambia una entrada RGBA decodificada;
-  todas las cargas TLUT siguen leyendo sus bytes de RAM. Usa 72 bytes de
-  caché y 12 de contadores. Los metadatos de los cinco perfiles citados
-  ocupan 3,3–4,9 ms, pero aún no se ha aislado qué parte corresponde a la
-  paleta en consola.
-- Pasa la batería EE en `build/PS2/floor-production-smoke-20261007-211045`,
-  con 233.216 comparaciones de contenido y 42.430 comprobaciones de huellas.
-  En 9.600 consultas calentadas a 96 fuentes, 64 descriptores registran
-  41.295.030 ciclos, cero aciertos y 9.600 hashes; 128 registran 6.546.806
-  ciclos, 9.600 aciertos y cero hashes, con checksum idéntico `a9acb698`.
-  La paleta pasa 4.096 cambios de entrada/bit, 21 cargas parciales y siete
-  cargas inválidas. En 8.192 huellas completas sin cambios registra
-  17.268.078 ciclos de referencia y 303.277 con reutilización, conservando
-  el checksum. Son operaciones aisladas en PCSX2, no medidas de todo el
-  fotograma ni de la consola física.
-- PERF añade `[PS2 PALETTE HASH PROFILE]`, incluido en metadatos, y
-  `[PS2 MATERIAL RUN PROFILE]`, que cuenta límites de grupos por comandos
-  de vértices, listas, fin y otros estados. Esos límites no equivalen
-  necesariamente a vaciados de lotes con primitivas pendientes. Pasan once
-  pruebas del analizador. Sigue pendiente medir la ganancia física de esta
-  versión candidata y alcanzar 20 FPS estables en las vistas grandes.
-- Pasan ambos recorridos con USB nativo emulado:
-  `build/PS2/usb-stack-checks/20261007-212243-879` (habitual) y
-  `build/PS2/usb-stack-checks/20261007-212625-070` (PERF). Verifican logo a
-  59,9 FPS, menú/diálogo en español, casa → Kokiri → casa y registros íntegros.
-  El menú conserva todos sus píxeles; las 35 diferencias del diálogo quedan
-  limitadas al parpadeo de los ojos y coinciden con la captura ya inspeccionada
-  de la versión anterior. Ambas variantes producen las mismas capturas.
-  Los perfiles nuevos están completos en PERF y ausentes en el registro
-  habitual. Se conservan los hashes de los datos y la tarjeta del jugador,
-  desactivada durante las pruebas. Los símbolos de producción confirman
-  7.680 bytes de descriptores, 131.072 de copias y 84 de paleta/contadores;
-  no contienen los helpers de pruebas. El rango estático de OOTPS2 termina
-  en 0x01223AF0; no certifica el uso dinámico de memoria. La comprobación
-  se conserva en `build/PS2/retention-palette-release-verification.json`.
-- El paquete queda copiado y verificado en `D:\OOTPS2` (12 archivos), con
-  copia de los archivos sustituidos en `D:\OOTPS2-backup-20261007-213036`.
-  BOOT.LOG y DIAG.LOG conservan sus hashes originales; los datos OOT.Z64,
-  ESP.DAT y la tarjeta del jugador permanecen intactos. OOTPS2 SHA256:
+- The candidate retains 128 descriptors instead of 64: it adds 3.840 bytes
+  of metadata while keeping the 128 KiB ring, 16 KiB maximum, and 256-byte
+  minimum per copy. All loaded bytes, including both blend sources, are still
+  compared before a hash is reused. The test using 96 sources of 512 bytes
+  retains 384 hits after warm-up, then validates 96 content changes.
+- 17 palette FNV hashes are retained: 16 CI4 banks and the complete
+  CI8 palette. Their validity changes only when a decoded RGBA entry changes;
+  every TLUT load still reads its RAM bytes. This uses 72 cache bytes and
+  12 counter bytes. Metadata for the five cited profiles takes 3,3–4,9 ms,
+  but the palette's share has not yet been isolated on the console.
+- The EE suite passes in `build/PS2/floor-production-smoke-20261007-211045`,
+  with 233.216 content comparisons and 42.430 hash checks. In 9.600 warmed
+  queries to 96 sources, 64 descriptors record 41.295.030 cycles, zero hits,
+  and 9.600 hashes; 128 record 6.546.806 cycles, 9.600 hits, and zero hashes,
+  with the identical checksum `a9acb698`. The palette passes 4.096 entry/bit
+  changes, 21 partial loads, and seven invalid loads. For 8.192 unchanged
+  full hashes, the reference records 17.268.078 cycles and reuse records
+  303.277, preserving the checksum. These are isolated operations in PCSX2,
+  not whole-frame or physical-console measurements.
+- PERF adds `[PS2 PALETTE HASH PROFILE]`, included in metadata, and
+  `[PS2 MATERIAL RUN PROFILE]`, which counts group boundaries caused by
+  vertex, list, end, and other state commands. These boundaries do not
+  necessarily correspond to batch flushes with pending primitives. Eleven
+  analyzer tests pass. Measuring this candidate's physical gain and reaching
+  stable 20 FPS in large views remain pending.
+- Both emulated native USB routes pass:
+  `build/PS2/usb-stack-checks/20261007-212243-879` (regular) and
+  `build/PS2/usb-stack-checks/20261007-212625-070` (PERF). They verify the logo
+  at 59,9 FPS, Spanish menu/dialogue, house → Kokiri → house, and intact logs.
+  The menu retains every pixel; the dialogue's 35 differences are limited to
+  blinking eyes and match the already inspected capture of the previous
+  build. Both variants produce the same captures. New profiles are complete
+  in PERF and absent from the regular log. Data and the player's card retain
+  their hashes, with the card disabled during tests. Production symbols
+  confirm 7.680 descriptor bytes, 131.072 copy bytes, and 84 palette/counter
+  bytes; they contain no test helpers. OOTPS2's static range ends at
+  0x01223AF0; this does not establish dynamic memory use. Verification is kept
+  in `build/PS2/retention-palette-release-verification.json`.
+- The 12-file package is copied and verified in `D:\OOTPS2`, with replaced
+  files backed up in `D:\OOTPS2-backup-20261007-213036`. BOOT.LOG and DIAG.LOG
+  retain their original hashes; OOT.Z64, ESP.DAT, and the player's card remain
+  intact. OOTPS2 SHA256:
   `D2A3D384E40A08D04C17308F3AD0C80D8BF50846B10BE45A86F77B1E56DAB965`.
-  La nueva comprobación física debe usar PERF.ELF en la misma vista grande,
-  quieto y caminando, para comparar presión de descriptores y tiempo de
-  traducción sin atribuir cambios de cámara a una optimización.
+  The new physical check must use PERF.ELF in the same large view, standing
+  and walking, to compare descriptor pressure and translation time without
+  attributing camera changes to an optimization.
 
-## Coste físico de las vistas grandes y renovación de copias — 2026-10-07
+## Physical cost of large views and copy renewal — 2026-10-07
 
-- Se conservan BOOT.LOG, DIAG.LOG, el manifiesto y las identidades de los
-  ejecutables en `build/PS2/hardware-runtime/draw-detail-physical-20261007-200623`.
-  PERF coincide con el paquete entregado, SHA256
+- BOOT.LOG, DIAG.LOG, the manifest, and executable identities are preserved
+  in `build/PS2/hardware-runtime/draw-detail-physical-20261007-200623`.
+  PERF matches the delivered package, SHA256
   `691F99E5CEAF5475BDE26F2DED272C8FEFB19A73634C13FD805C8525DC3D7D86`.
-  Esta sesión tiene 225 muestras utilizables y 11 perfiles detallados, sin
-  líneas dañadas, duplicados, errores USB ni pérdidas declaradas. No prueba
-  que la corrupción intermitente de la sesión anterior esté corregida.
-- Entre 75 y 103 segundos hay una mediana de 12 FPS. Excluyendo intervalos
-  con lecturas y escrituras del registro solapadas, quedan 24 intervalos y
-  285 fotogramas: 68,01 ms de traducción, 2,43 de envío final y 13,47 de
-  presentación por fotograma. Sólo hay dos lecturas, 15 ms en todo ese tramo,
-  sin cola de audio vacía ni aumento de su contador de retrasos. La espera
-  del juego por gráficos es de 76–78 ms; su actualización ocupa 6–7 ms.
-  Las caídas sostenidas de esa vista no se explican por cargar desde el USB.
-- En los perfiles 1200 y 1500 la traducción ocupa 58,96/59,30 ms después
-  de descontar el DSP medido. Otros hilos e interrupciones siguen incluidos.
-  La preparación/envío de triángulos ocupa 30,26/28,54 ms, incluidos búsqueda
-  de texturas y puntos. El perfil 1500 dibuja 1.720 primitivas, prepara 3.240
-  puntos y no convierte ni sube ninguna textura. Claves, paquetes y ajuste
-  del suelo ocupan 1,41/1,61/0,16 ms; no son el coste principal pendiente.
-  Estas categorías están anidadas: no deben sumarse como fases independientes.
-- La validación de contenido aún ocupa 5,66/6,11 ms y calcula 121/122 huellas
-  pese a reutilizar casi todas las texturas en VRAM. Los contadores anteriores
-  no distinguen límites, expulsiones y cambios; no se atribuye todo ese coste
-  a un único motivo sin medirlo. El último tramo con menos geometría vuelve
-  a 19,9 FPS; no se compara como si fuera la misma cámara de la vista lenta.
-- Una copia de textura cuyos límites no cambian se renueva ahora en su
-  mismo espacio al cambiar sus bytes. Antes cada cambio avanzaba el anillo
-  y podía expulsar copias estables, aunque el conjunto vivo sólo ocupara
-  8 KiB. Se siguen comparando todos los bytes de ambas fuentes y calculando
-  la huella original con el mismo orden de filas y semillas. La capacidad
-  permanece en 128 KiB y 64 descriptores; no se reserva más memoria.
-- Se añaden motivos de validación/expulsión en `[PS2 TEXTURE CONTENT]` y
-  `[PS2 DRAW SETUP PROFILE]` separa preparación inicial del triángulo,
-  aplicación de tile y metadatos anteriores a la búsqueda. PERF conserva
-  una muestra cada 300 fotogramas; el juego habitual no lee esos cronómetros.
-- La conversión de cada canal de ocho bits a escala GS usa una identidad
-  exacta, conservando el extremo 255 → 128. Pasan los 256 valores y las
-  comparaciones de puntos del renderer. En 8.192 conversiones aisladas se
-  miden 133.178 ciclos de referencia y 100.537 del helper en PCSX2. Esto no
-  representa una ganancia del fotograma completo ni una medición física.
-- Pasa la batería EE con 233.216 comparaciones de contenido, 41.694 huellas,
-  cambios repetidos/filas/paletas/límites/expulsiones, suelo, profundidad,
-  niebla, recorte y 120 fotogramas gráficos/audio en
-  `build/PS2/floor-production-smoke-20261007-201638`. Pasan nueve pruebas del
-  analizador, incluida la captura parcial de los nuevos perfiles. La mejora
-  de esta versión en consola y los 20 FPS estables siguen pendientes.
-- Pasan ambos recorridos con USB nativo emulado:
-  `build/PS2/usb-stack-checks/20261007-202701-703` (habitual) y
-  `build/PS2/usb-stack-checks/20261007-203004-217` (PERF). Verifican logo a
-  59,9 FPS, menú/dialogo en español, casa → Kokiri → casa y registros íntegros.
-  El menú conserva todos sus píxeles. Las 35 diferencias del diálogo quedan
-  limitadas al parpadeo de los ojos, inspeccionadas; ambas variantes producen
-  las mismas capturas. PERF incorpora las medidas y motivos nuevos; el juego
-  habitual conserva el perfilado desactivado. Las tarjetas del jugador están
-  desactivadas durante las pruebas. El rango estático de OOTPS2 termina en
-  0x012226F0; no certifica el uso dinámico de memoria. La comprobación del
-  paquete está en `build/PS2/mutation-reuse-release-verification.json`.
-- Se copian y verifican los doce archivos del paquete en `D:\OOTPS2`, con
-  respaldo en `D:\OOTPS2-backup-20261007-203554`. OOTPS2 tiene SHA256
+  This session has 225 usable samples and 11 detailed profiles, without
+  damaged lines, duplicates, USB errors, or reported losses. It does not
+  prove that the previous session's intermittent corruption is fixed.
+- Between 75 and 103 seconds, median FPS is 12. Excluding intervals with
+  overlapping reads and log writes leaves 24 intervals and 285 frames:
+  translation 68,01 ms, final submission 2,43, and presentation 13,47 per
+  frame. There are only two reads, totaling 15 ms throughout that segment,
+  with no empty audio queue or increase in its delay counter. The game waits
+  76–78 ms for graphics; its update takes 6–7 ms. Sustained drops in that
+  view are not explained by USB loading.
+- In profiles 1200 and 1500, translation takes 58,96/59,30 ms after
+  subtracting the measured DSP time. Other threads and interrupts remain
+  included. Triangle preparation/submission takes 30,26/28,54 ms, including
+  texture lookup and points. Profile 1500 draws 1.720 primitives, prepares
+  3.240 points, and converts or uploads no textures. Keys, packets, and floor
+  adjustment take 1,41/1,61/0,16 ms; they are not the main remaining cost.
+  These categories are nested and must not be added as independent phases.
+- Content validation still takes 5,66/6,11 ms and computes 121/122 hashes
+  despite reusing almost every texture in VRAM. Previous counters do not
+  distinguish limits, evictions, and changes; the entire cost is not assigned
+  to one reason without measurement. The final segment with less geometry
+  returns to 19,9 FPS; it is not treated as the same camera as the slow view.
+- A texture copy with unchanged bounds is now renewed in its existing
+  storage when its bytes change. Previously, each change advanced the ring
+  and could evict stable copies, even when the live set used only 8 KiB. All
+  bytes of both sources are still compared, and the original hash is computed
+  with identical row and seed order. Capacity stays at 128 KiB and 64
+  descriptors; no additional memory is reserved.
+- Validation/eviction reasons are added to `[PS2 TEXTURE CONTENT]`, and
+  `[PS2 DRAW SETUP PROFILE]` separates initial triangle preparation, tile
+  application, and metadata before lookup. PERF retains one sample every
+  300 frames; the regular game does not read those timers.
+- Conversion of each eight-bit channel to the GS scale uses an exact
+  identity, preserving the endpoint 255 → 128. All 256 values and renderer
+  point comparisons pass. For 8.192 isolated conversions, PCSX2 measures
+  133.178 reference cycles and 100.537 helper cycles. This does not represent
+  a whole-frame gain or a physical measurement.
+- The EE suite passes with 233.216 content comparisons, 41.694 hashes,
+  repeated changes/rows/palettes/bounds/evictions, floor, depth, fog, clipping,
+  and 120 graphics/audio frames in
+  `build/PS2/floor-production-smoke-20261007-201638`. Nine analyzer tests
+  pass, including partial capture of the new profiles. This build's console
+  improvement and stable 20 FPS remain pending.
+- Both emulated native USB routes pass:
+  `build/PS2/usb-stack-checks/20261007-202701-703` (regular) and
+  `build/PS2/usb-stack-checks/20261007-203004-217` (PERF). They verify the
+  logo at 59,9 FPS, Spanish menu/dialogue, house → Kokiri → house, and intact
+  logs. The menu retains every pixel. The dialogue's 35 differences are
+  limited to blinking eyes and were inspected; both variants produce the
+  same captures. PERF includes the new measurements and reasons; profiling
+  remains disabled in the regular game. The player's cards are disabled
+  during tests. OOTPS2's static range ends at 0x012226F0; this does not
+  establish dynamic memory use. Package verification is recorded in
+  `build/PS2/mutation-reuse-release-verification.json`.
+- All twelve package files are copied and verified in `D:\OOTPS2`, with
+  a backup in `D:\OOTPS2-backup-20261007-203554`. OOTPS2 SHA256:
   `82CD14F27DC614964AE9E6D3000B280842F5E596D8864EFD1C1ACCB3E09E83E3`.
-  Se verifica que BOOT.LOG y DIAG.LOG físicos, los datos convertidos y la
-  tarjeta del jugador no cambian. La verificación conjunta pasa con la copia
-  comprobada; esta versión aún no se ha probado en la consola física.
+  Physical BOOT.LOG and DIAG.LOG, converted data, and the player's card are
+  verified unchanged. Joint verification passes with the copy checked;
+  this build has not yet been tested on the physical console.
 
-## Segunda medición PERF y búsqueda de claves compartida — 2026-10-07
+## Second PERF measurement and shared key lookup — 2026-10-07
 
-- Antes de cambiar el USB se conservan los registros, el paquete y las
-  identidades de los ejecutables en
+- Before USB changes, logs, the package, and executable identities are
+  preserved in
   `build/PS2/hardware-runtime/analysis-cache-physical-20261007-000954`.
-  PERF coincide con la versión entregada, SHA256
+  PERF matches the delivered build, SHA256
   `1980B60778A3862F5E0DE48B6A6F60E1CCD8B24810F510C367A01222C76126E9`.
-  Se leen 283 muestras completas y 14 fotogramas perfilados.
-- Las vistas lentas siguen alrededor de 11–12 FPS. En los fotogramas
-  1200/1500/1800 se reutilizan 131 análisis de materiales y sólo se
-  reconstruyen ocho, con 64–115 microsegundos de reconstrucción. El ahorro
-  existe, pero no confirma una ganancia sostenida de FPS. Los triángulos
-  siguen costando 38–42 ms, incluida la búsqueda de texturas de 11–12 ms.
-  La traducción sin el DSP medido ocupa 63–68 ms; otros hilos siguen incluidos.
-- El último minuto limpio de lecturas y escrituras solapadas recoge 580
-  fotogramas y mediana 19,9 FPS. La geometría visible es menor en esos
-  perfiles finales; no se presenta como una comparación de la misma cámara.
-  Sigue pendiente el objetivo de 20 FPS estables en las vistas grandes.
-- El archivo contiene dos muestras con secuencia 80, una línea incompleta
-  y saltos de secuencia. No hay errores USB/logger declarados ni pérdidas
-  declaradas, lo que no certifica la integridad. Los fragmentos fuera de
-  orden aparecen cerca de límites de 32 KiB; la causa aún no está resuelta.
-  No se da por corregido el controlador ni se reescribe el registro original.
-- El analizador conserva todas las muestras completas para la auditoría,
-  pero excluye todas las copias de una secuencia repetida y los tiempos de
-  muestra que no avanzan de las estadísticas FPS y las ventanas limpias.
-  En esta sesión quedan 281 intervalos utilizables. Pasan ocho pruebas,
-  incluyendo la corrupción observada y perfiles parciales.
-- La búsqueda del descriptor de textura compara una sola vez los campos
-  comunes del material. Sólo un acierto completo usa VRAM anterior: también
-  exige contenido, paleta, LOD, origen de ventanas y colores. En un fallo,
-  mantiene los criterios de reutilización y selección del candidato.
-  Se siguen leyendo y validando todos los bytes de ambas fuentes.
-- La prueba EE compara ambas clasificaciones en 5.640 casos, cambiando
-  todos los bits de los descriptores, incluidos datos auxiliares y relleno
-  que no forman parte de la clave. La operación aislada de 8.192 aciertos
-  pasa de 1.983.902 a 1.374.749 ciclos emulados. No mide el fotograma completo.
-  Pasa la batería del renderer con 120 fotogramas gráficos/audio en
+  There are 283 complete samples and 14 profiled frames.
+- Slow views remain around 11–12 FPS. Frames 1200/1500/1800 reuse 131
+  material analyses and rebuild only eight, taking 64–115 microseconds to
+  rebuild. The saving exists, but does not confirm a sustained FPS gain.
+  Triangles still cost 38–42 ms, including 11–12 ms of texture lookup.
+  Translation excluding measured DSP time takes 63–68 ms; other threads
+  remain included.
+- The final minute free of overlapping reads and writes contains 580 frames
+  and median 19,9 FPS. Less geometry is visible in those final profiles;
+  this is not presented as a same-camera comparison. Stable 20 FPS in large
+  views remain the pending goal.
+- The file contains two samples with sequence 80, an incomplete line, and
+  sequence gaps. There are no reported USB/logger errors or reported losses,
+  which does not establish integrity. Out-of-order fragments appear near
+  32 KiB boundaries; the cause remains unresolved. The driver is not declared
+  fixed, and the original log is not rewritten.
+- The analyzer retains all complete samples for auditing, but excludes all
+  copies of repeated sequences and non-advancing sample times from FPS
+  statistics and clean windows. This session has 281 usable intervals.
+  Eight tests pass, including the observed corruption and partial profiles.
+- Texture descriptor lookup compares the material's common fields once.
+  Only a complete hit uses previous VRAM: content, palette, LOD, window
+  origins, and colors must also match. On a miss, existing candidate selection
+  and reuse criteria are preserved. All bytes of both sources are still read
+  and validated.
+- The EE test compares both classifications in 5.640 cases, changing every
+  descriptor bit, including auxiliary data and padding outside the key.
+  The isolated operation of 8.192 hits drops from 1.983.902 to 1.374.749
+  emulated cycles. This does not measure a complete frame. The renderer suite
+  passes with 120 graphics/audio frames in
   `build/PS2/floor-production-smoke-20261007-002545`.
-- PERF añade `[PS2 DRAW DETAIL PROFILE]`: búsqueda de claves, construcción
-  de paquetes GS y reajuste de coordenadas del suelo. Son tiempos incluidos
-  en búsqueda/envío, no categorías para sumar. Se conserva el muestreo
-  de un fotograma cada 300; el juego habitual no activa esos cronómetros.
-- Pasan ambos recorridos con USB nativo emulado:
-  `build/PS2/usb-stack-checks/20261007-004040-963` (habitual) y
-  `build/PS2/usb-stack-checks/20261007-004401-082` (PERF). Comprueban el
-  logo a 59,9 FPS, opciones en español, diálogo y casa → Kokiri → casa.
-  El menú conserva todos sus píxeles. Las diferencias del diálogo quedan
-  limitadas a los ojos durante el parpadeo, inspeccionadas visualmente.
-  Ambos registros emulados son íntegros; el habitual no activa perfiles
-  y PERF incluye las tres medidas nuevas en sus fotogramas muestreados.
-  Las tarjetas del jugador están desactivadas durante estas pruebas.
-- Se compilan los cuatro ejecutables del juego y BOOTTEST; doce archivos
-  quedan verificados en `D:\OOTPS2`, con respaldo en
-  `D:\OOTPS2-backup-20261007-004727`. OOTPS2 tiene SHA256
+- PERF adds `[PS2 DRAW DETAIL PROFILE]`: key lookup, GS packet construction,
+  and floor coordinate readjustment. These timings are included in lookup/
+  submission and must not be added as separate categories. Sampling remains
+  one frame every 300; the regular game does not enable these timers.
+- Both emulated native USB routes pass:
+  `build/PS2/usb-stack-checks/20261007-004040-963` (regular) and
+  `build/PS2/usb-stack-checks/20261007-004401-082` (PERF). They check the logo
+  at 59,9 FPS, Spanish options, dialogue, and house → Kokiri → house. The menu
+  retains every pixel. Dialogue differences are limited to the eyes during
+  blinking and were visually inspected. Both emulated logs are intact;
+  the regular build enables no profiles, while PERF includes all three new
+  measurements in its sampled frames. The player's cards are disabled
+  during these tests.
+- All four game executables and BOOTTEST are built; twelve files are
+  verified in `D:\OOTPS2`, with a backup in
+  `D:\OOTPS2-backup-20261007-004727`. OOTPS2 SHA256:
   `653A2C494E4E1CDDD845102A1DC4ADD42ED36F19D007037AE4026BE6C88797B6`.
-  Su rango estático termina en 0x01222170; no certifica el uso dinámico de
-  memoria. Se verifican la conservación de los registros físicos originales,
-  los datos y la tarjeta del jugador. La prueba conjunta queda en
-  `build/PS2/shared-key-release-verification.json`. La mejora física de
-  esta búsqueda y los tiempos de las tres fases nuevas siguen pendientes.
+  Its static range ends at 0x01222170; this does not establish dynamic memory
+  use. Preservation of original physical logs, data, and the player's card
+  is verified. Joint verification is recorded in
+  `build/PS2/shared-key-release-verification.json`. The physical improvement
+  from this lookup and timings of the three new phases remain pending.
 
-## Perfil físico espaciado y caché de análisis de materiales — 2026-10-06
+## Sparse physical profiling and material analysis cache — 2026-10-06
 
-- Se conservan ambos registros y la identidad del paquete en
-  `build/PS2/hardware-runtime/sparse-physical-20261006-232358`, antes de
-  cambiar el USB. PERF coincide con el ejecutable entregado y registra
-  una muestra detallada cada 300 fotogramas. Hay 270 intervalos y 14 perfiles,
-  sin errores USB/logger, bytes nulos, líneas dañadas, saltos, pérdidas ni
-  fallos de las guardas del scratchpad.
-- La sesión contiene una vista de unos 12 FPS y termina con vistas cercanas
-  a 20 FPS. El último minuto sin lecturas ni escrituras del registro solapadas
-  incluye 740 fotogramas y una mediana de 19,9 FPS. No es una comparación
-  de la misma cámara: los perfiles finales dibujan menos geometría. No se
-  confirma aún el objetivo de 20 FPS estables en todas las vistas.
-- Los perfiles lentos 1200/1500/1800 emplean 60–63 ms en traducción, una vez
-  descontada la síntesis de audio medida: 37–38 ms en triángulos y 10–12 ms
-  en vértices. La búsqueda de texturas, incluida en el envío, emplea 11–13 ms;
-  no se deben sumar esas categorías. Otros hilos siguen incluidos. Las
-  solicitudes USB no explican por sí solas este coste sostenido.
-- El renderer conserva 32 análisis de selectores en ocho grupos de cuatro,
-  manteniendo la ruta rápida del último material y comprobando las mismas
-  cuatro claves que antes. Colores de primitiva/entorno y LOD no se guardan
-  como resultados: se siguen evaluando en cada uso. La expulsión o colisión
-  reconstruye el análisis original. El almacenamiento fijo es 2.716 bytes.
-- La prueba EE compara 480 casos con la caché anterior de un análisis,
-  incluyendo presión de 80 materiales, cambios de color/LOD, ciclos,
-  mezclas y restauraciones. Al alternar ocho materiales, las reconstrucciones
-  pasan de 256 a 8; la operación aislada emplea 719.741 frente a 3.440.332
-  ciclos emulados. No equivale a una ganancia del fotograma completo.
-- Pasa la batería del renderer en
-  `build/PS2/floor-production-smoke-20261006-233803`, con 120 fotogramas
-  gráficos/audio, capas, texturas mutables, puntos, recorte y transparencias.
-  Pasan las seis pruebas del analizador. PERF añade el tiempo de
-  reconstrucción y los contadores de último material, análisis reutilizados
-  y fallos de caché; siguen siendo medidas incluidas en las otras fases.
-- Pasan los recorridos nativos USB emulados habitual
-  (`build/PS2/usb-stack-checks/20261006-235133-095`) y PERF
-  (`build/PS2/usb-stack-checks/20261006-235523-706`): logo a 59,9 FPS,
-  opciones en español, diálogo y casa → Kokiri → casa. El menú conserva
-  todos los píxeles; en el diálogo sólo difieren 35 píxeles de los ojos
-  durante el parpadeo aleatorio de Link. No hay errores, pérdidas ni guardas
-  dañadas y las tarjetas del jugador están desactivadas.
-- En el perfil emulado 600 se reutilizan 105 análisis entre cambios de
-  material y sólo se reconstruyen 10; 4.037 usos conservan el último
-  material. Los 4.152 usos quedan contabilizados y el coste de reconstrucción
-  es 35 microsegundos, incluido en las demás fases. Los fotogramas 300 y
-  900 no reconstruyen análisis. El juego habitual no activa estos perfiles.
-- Se recompilan los cuatro ejecutables del juego y BOOTTEST; doce archivos
-  quedan verificados en `D:\OOTPS2`, con respaldo en
-  `D:\OOTPS2-backup-20261006-235954`. OOTPS2 tiene SHA256
+- Both logs and the package identity are preserved in
+  `build/PS2/hardware-runtime/sparse-physical-20261006-232358`, before USB
+  changes. PERF matches the delivered executable and records a detailed
+  sample every 300 frames. There are 270 intervals and 14 profiles, without
+  USB/logger errors, null bytes, damaged lines, gaps, losses, or scratchpad
+  guard failures.
+- The session includes a view around 12 FPS and ends with views near 20 FPS.
+  The final minute without overlapping reads or log writes includes 740
+  frames and median 19,9 FPS. This is not a same-camera comparison: final
+  profiles draw less geometry. Stable 20 FPS in all views are not yet confirmed.
+- Slow profiles 1200/1500/1800 take 60–63 ms for translation after subtracting
+  measured audio synthesis: 37–38 ms for triangles and 10–12 ms for vertices.
+  Texture lookup, included in submission, takes 11–13 ms; those categories
+  must not be added together. Other threads remain included. USB requests
+  alone do not explain this sustained cost.
+- The renderer retains 32 selector analyses in eight groups of four,
+  maintaining the last-material fast path and checking the same four keys
+  as before. Primitive/environment colors and LOD are not cached as results:
+  they are still evaluated on every use. Eviction or collision reconstructs
+  the original analysis. Fixed storage is 2.716 bytes.
+- The EE test compares 480 cases against the previous single-analysis
+  cache, including pressure from 80 materials, color/LOD changes, cycles,
+  blends, and restores. Alternating eight materials reduces rebuilds from
+  256 to 8; the isolated operation takes 719.741 versus 3.440.332 emulated
+  cycles. This is not equivalent to a whole-frame gain.
+- The renderer suite passes in
+  `build/PS2/floor-production-smoke-20261006-233803`, with 120 graphics/audio
+  frames, layers, mutable textures, points, clipping, and transparency.
+  All six analyzer tests pass. PERF adds rebuild time and counters for the
+  last material, reused analyses, and cache misses; these remain measurements
+  included in other phases.
+- Regular (`build/PS2/usb-stack-checks/20261006-235133-095`) and PERF
+  (`build/PS2/usb-stack-checks/20261006-235523-706`) emulated native USB
+  routes pass: logo at 59,9 FPS, Spanish options, dialogue, and
+  house → Kokiri → house. The menu retains every pixel; dialogue differs only
+  in 35 eye pixels during Link's random blink. There are no errors, losses,
+  or damaged guards, and the player's cards are disabled.
+- Emulated profile 600 reuses 105 analyses across material changes and
+  rebuilds only 10; 4.037 uses retain the last material. All 4.152 uses are
+  accounted for, and rebuild cost is 35 microseconds, included in other
+  phases. Frames 300 and 900 rebuild no analyses. The regular game does not
+  enable these profiles.
+- All four game executables and BOOTTEST are rebuilt; twelve files are
+  verified in `D:\OOTPS2`, with a backup in
+  `D:\OOTPS2-backup-20261006-235954`. OOTPS2 SHA256:
   `7EA6E92ED44D9A4CFA77A7C6BA51AF5E368C9138464B1993F33160BB41205272`.
-  El ELF termina su rango estático en 0x01221d70; esto no certifica el uso
-  dinámico de memoria. El resultado está en
-  `build/PS2/analysis-cache-release-verification.json`. Se conservan los
-  registros físicos, los datos y la tarjeta del jugador. La mejora de FPS
-  de la nueva caché queda pendiente de comparación en la misma vista física.
+  The ELF's static range ends at 0x01221d70; this does not establish dynamic
+  memory use. Results are recorded in
+  `build/PS2/analysis-cache-release-verification.json`. Physical logs, data,
+  and the player's card are preserved. The new cache's FPS improvement
+  remains to be compared in the same physical view.
 
-## Cuarta sesión física y preparación de triángulos — 2026-10-06
+## Fourth physical session and triangle preparation — 2026-10-06
 
-- Se conservan BOOT.LOG, DIAG.LOG y la identidad del paquete antes de copiar
-  nada al USB en
+- BOOT.LOG, DIAG.LOG, and the package identity are preserved before copying
+  anything to the USB, in
   `build/PS2/hardware-runtime/auto-play-physical-20261006-223349`.
-  El ELF jugado coincide con la revisión anterior: SHA256
+  The played ELF matches the previous revision: SHA256
   `91044823E7D56C5BFD7333A8BE4D297366498617BE6E7FA359570724B8ED29CD`.
-  Hay 225 muestras en unos 226 segundos, título, casa y Kokiri. Las copias
-  de texturas y el scratchpad están activos; no hay errores USB/logger,
-  registros perdidos, bytes nulos, saltos de secuencia ni guardas dañadas.
-- El último minuto contiene 41 intervalos sin solicitudes de lectura ni
-  escrituras del logger solapadas: 484 fotogramas, mediana 12 FPS,
-  traducción 70,74 ms, envío 1,82 ms y presentación 12,36 ms por fotograma.
-  La pausa máxima de escritura es 54 ms y las escrituras suman 532 ms.
-  La sesión no confirma una mejora sostenida de FPS. La cámara y la carga
-  de juego varían entre sesiones y los tiempos incluyen otros hilos;
-  tampoco permiten certificar una regresión frente a la sesión previa.
-- TRI ya valida los índices de sus tres vértices. Se pasan directamente
-  al envío en lugar de recuperarlos por rangos, resto y división del tamaño
-  del vértice. Los polígonos recortados pasan -1 y mantienen la preparación
-  completa para sus vértices temporales. No cambia la reutilización por
-  material, el color, la niebla ni el orden de ambas capas del suelo.
-- Los puntos GS alineados usan seis escrituras de 64 bits con los mismos
-  bits de RGBAQ, ST y XYZ2. Se mantienen el orden de operaciones de coma
-  flotante, el Q, la conversión y límites XY del SDK, la profundidad y los
-  registros GS. Los destinos sin alineación conservan la ruta original.
-- La batería EE pasa en
-  `build/PS2/floor-production-smoke-20261006-225328`: 27.648 casos de puntos,
-  256 destinos/alineaciones y límites XY/profundidad, 612 puntos comparados
-  contra los índices calculados por la ruta anterior, esperas de descriptores,
-  texturas mutables, capas, niebla, transparencia y 120 fotogramas gráficos/audio.
-  En operaciones aisladas emuladas, los puntos alineados emplean 6.478.808
-  frente a 7.000.818 ciclos de la ruta preparada sin alinear; el envío por
-  índices directos emplea 397.750 frente a 426.591 ciclos. Estos resultados
-  no equivalen a la mejora del fotograma completo ni de la consola física.
-- PERF.ELF conserva el juego y registro automático con lotes de 15 segundos,
-  transferencias de 4 KiB y sin HUD. Sólo un fotograma de cada 300 activa los
-  cronómetros detallados. OOTPS2.ELF mantiene esos cronómetros desactivados.
-  El analizador separa dibujo, geometría, contenido de texturas, estado,
-  color, puntos/material e interrupciones; descarta registros incompletos.
-  Pasan sus seis pruebas. Las fases se solapan y no deben sumarse como costes
-  independientes. Falta recoger este perfil en la misma vista lenta física.
-- Pasan ambos recorridos con USB nativo emulado:
-  `build/PS2/usb-stack-checks/20261006-230240-257` (automático habitual) y
-  `build/PS2/usb-stack-checks/20261006-230538-291` (PERF). Comprueban el logo
-  a 59,9 FPS, opciones en español, diálogo y casa → Kokiri → casa. El modo
-  habitual no registra perfiles detallados; PERF registra los fotogramas
-  300 y 600, con todas las categorías previstas. El menú y el diálogo del
-  modo habitual coinciden byte por byte con la referencia. En PERF sólo
-  cambian 35 píxeles de los ojos de Link durante su parpadeo aleatorio.
-  Las tarjetas del jugador están desactivadas y ambas sesiones cierran sus
-  escrituras sin errores, pérdidas ni datos dañados.
-- Se recompilan los cuatro ejecutables del juego y BOOTTEST, y se copian
-  doce archivos verificados a `D:\OOTPS2`, con respaldo en
-  `D:\OOTPS2-backup-20261006-230834`. OOTPS2.ELF tiene SHA256
+  There are 225 samples across about 226 seconds, covering title, house,
+  and Kokiri. Texture copies and scratchpad are active; there are no
+  USB/logger errors, lost records, null bytes, sequence gaps, or damaged guards.
+- The final minute contains 41 intervals without read requests or overlapping
+  logger writes: 484 frames, median 12 FPS, translation 70,74 ms, submission
+  1,82 ms, and presentation 12,36 ms per frame. Maximum write pause is 54 ms,
+  and writes total 532 ms. The session does not confirm a sustained FPS gain.
+  Camera and gameplay load vary across sessions, and timings include other
+  threads; they also cannot establish a regression from the previous session.
+- TRI already validates its three vertex indices. They are passed directly
+  to submission instead of recovered through ranges, remainder, and division
+  by vertex size. Clipped polygons pass -1 and retain full preparation for
+  their temporary vertices. Material reuse, color, fog, and ordering of both
+  floor layers are unchanged.
+- Aligned GS points use six 64-bit writes with identical RGBAQ, ST, and XYZ2
+  bits. Floating-point operation order, Q, SDK XY conversion and bounds,
+  depth, and GS registers are preserved. Unaligned destinations keep the
+  original path.
+- The EE suite passes in
+  `build/PS2/floor-production-smoke-20261006-225328`: 27.648 point cases,
+  256 destinations/alignments and XY/depth bounds, 612 points compared
+  against indices calculated by the previous path, descriptor waits, mutable
+  textures, layers, fog, transparency, and 120 graphics/audio frames.
+  In isolated emulated operations, aligned points take 6.478.808 versus
+  7.000.818 cycles for the prepared unaligned path; direct-index submission
+  takes 397.750 versus 426.591 cycles. These results are not equivalent to
+  whole-frame or physical-console improvements.
+- PERF.ELF retains the game and automatic logging with 15-second batches,
+  4 KiB transfers, and no HUD. Only one frame in every 300 enables detailed
+  timers. OOTPS2.ELF keeps those timers disabled. The analyzer separates
+  drawing, geometry, texture content, state, color, points/material, and
+  interrupts; it rejects incomplete records. All six tests pass. Phases
+  overlap and must not be added as independent costs. This profile still
+  needs collecting in the same slow physical view.
+- Both emulated native USB routes pass:
+  `build/PS2/usb-stack-checks/20261006-230240-257` (regular automatic) and
+  `build/PS2/usb-stack-checks/20261006-230538-291` (PERF). They check the
+  logo at 59,9 FPS, Spanish options, dialogue, and house → Kokiri → house.
+  Regular mode records no detailed profiles; PERF records frames 300 and
+  600, with all expected categories. Regular-mode menu and dialogue match
+  the baseline byte for byte. In PERF, only 35 pixels in Link's eyes change
+  during his random blink. The player's cards are disabled, and both sessions
+  finish their writes without errors, losses, or damaged data.
+- All four game executables and BOOTTEST are rebuilt, and twelve verified
+  files are copied to `D:\OOTPS2`, with a backup in
+  `D:\OOTPS2-backup-20261006-230834`. OOTPS2.ELF SHA256:
   `BC968B2353F2D674C824C4FC5945D38DF10AFB0480E75F822FAFBFDE23A01EBE`.
-  El resultado conjunto queda en
-  `build/PS2/index-aligned-release-verification.json`. Se conservan los
-  registros físicos, los datos, el idioma y la tarjeta del jugador. Las
-  nuevas optimizaciones y el perfil espaciado quedan pendientes de prueba
-  física; no se da por cumplido el objetivo de 20 FPS estables.
+  Joint results are recorded in
+  `build/PS2/index-aligned-release-verification.json`. Physical logs, data,
+  language, and the player's card are preserved. The new optimizations and
+  sparse profile await physical testing; stable 20 FPS are not declared achieved.
 
-## Validación de texturas y memoria interna del EE — 2026-10-06
+## Texture validation and EE internal memory — 2026-10-06
 
-- El registro físico anterior sigue señalando el dibujo como coste sostenido,
-  incluso sin lecturas USB. Esta revisión introduce dos optimizaciones del
-  renderer; no cambia el límite de 20 FPS del juego ni reduce detalle visual.
-- Un buffer fijo de 128 KiB conserva hasta 64 ventanas de texels. Cada uso
-  compara todos los bytes cargados, sin incluir el relleno de las filas;
-  sólo después de una igualdad completa reutiliza la huella XXH32 anterior.
-  Los cambios, ventanas grandes y expulsiones ejecutan el hash original.
-  Se conservan el orden de semillas/filas, las dos fuentes de las mezclas,
-  las paletas y las esperas de retirada del GS. La comparación del EE procesa
-  bloques de 64 bytes, con rutas alineadas y sin alinear y cola escalar.
-- En la prueba EE aislada de 1.000 usos sin cambios, fuentes de 2–8 KiB
-  consumen aproximadamente un 53–68 % menos de ciclos que volver a calcular
-  el hash. Esta medida es de la operación emulada, no del fotograma completo
-  ni de la PS2 física. El perfil separado del juego reduce la búsqueda de
-  texturas, pero no demuestra por sí solo una ganancia comparable de FPS.
-- El estado RSP, su caché de vértices y los puntos GS reutilizados de ambas
-  capas pasan a un bloque de 10.704 bytes en el scratchpad de 16 KiB del EE.
-  Un solo hilo gráfico lo utiliza; los paquetes se copian a la cola normal
-  de gsKit antes del DMA. No cambian los cálculos, la geometría, el centrado
-  del suelo ni el orden de capas. Hay aserciones de tamaño/alineación y
-  guardas revisadas por fotograma. `PS2_GFX_SCRATCHPAD=0` conserva la ruta RAM.
-- La batería EE pasa en `build/PS2/floor-production-smoke-20261006-220856`:
-  233.216 comparaciones, 40.816 casos de hashes/ventanas y 120 fotogramas
-  gráficos/audio, sin fallos ni guardas dañadas. Comprueba mutaciones en
-  cualquier byte, diferencias que podrían cancelarse, filas, fuentes dobles,
-  alineaciones, límites, reutilización de RAM y expulsiones del buffer.
-- El juego automático pasa en
-  `build/PS2/usb-stack-checks/20261006-221607-826`: logo a 59,9 FPS, selección
-  de idioma, diálogos y casa → Kokiri → casa. No habilita perfilado de
-  triángulos ni HUD; conserva lotes de 15 segundos y transferencias de 4 KiB.
-  El menú coincide byte por byte con la referencia. La captura del diálogo
-  difiere en 35 píxeles de los ojos de Link durante el parpadeo; el escenario,
-  el texto y el resto del jugador coinciden. La semilla aleatoria de Play_Init
-  depende del reloj, por lo que ese parpadeo no es una referencia determinista.
-  No hay errores USB/logger, bytes nulos, saltos de secuencia ni errores del
-  scratchpad. Las tarjetas del jugador están desactivadas durante las pruebas.
-- El registro periódico incluye usos exactos, hashes y tamaño del bloque
-  interno. El analizador los separa del perfil detallado y descarta líneas
-  dañadas; pasan sus cinco pruebas. Los contadores de comparación expresan
-  rangos solicitados, no lecturas de bus exactas cuando hay salida temprana.
-  Falta medir ambas optimizaciones en la misma vista de la consola real
-  para comprobar cuánto queda del presupuesto de 50 ms por fotograma.
-- Los tres ejecutables del juego se recompilan y el paquete queda copiado,
-  con respaldo, en `D:\OOTPS2`. OOTPS2.ELF tiene SHA256
+- The previous physical log still identifies drawing as the sustained cost,
+  even without USB reads. This revision introduces two renderer optimizations;
+  it does not change the game's 20 FPS limit or reduce visual detail.
+- A fixed 128 KiB buffer retains up to 64 texel windows. Every use compares
+  all loaded bytes, excluding row padding; only a complete match reuses the
+  previous XXH32 hash. Changes, large windows, and evictions run the original
+  hash. Seed/row order, both blend sources, palettes, and GS retirement waits
+  are preserved. The EE comparator processes 64-byte blocks, with aligned
+  and unaligned paths and a scalar tail.
+- In the isolated EE test of 1.000 unchanged uses, sources of 2–8 KiB take
+  approximately 53–68 % fewer cycles than recomputing the hash. This measures
+  the emulated operation, not a complete frame or physical PS2. Separate game
+  profiling reduces texture lookup, but does not by itself demonstrate a
+  comparable FPS gain.
+- RSP state, its vertex cache, and reused GS points for both layers move
+  into a 10.704-byte block in the EE's 16 KiB scratchpad. A single graphics
+  thread uses it; packets are copied into gsKit's normal queue before DMA.
+  Calculations, geometry, floor centering, and layer order are unchanged.
+  Size/alignment assertions and guards checked each frame are provided.
+  `PS2_GFX_SCRATCHPAD=0` retains the RAM path.
+- The EE suite passes in `build/PS2/floor-production-smoke-20261006-220856`:
+  233.216 comparisons, 40.816 hash/window cases, and 120 graphics/audio frames,
+  without failures or damaged guards. It checks mutations in any byte,
+  differences that could cancel out, rows, dual sources, alignments, bounds,
+  RAM reuse, and buffer evictions.
+- The automatic game test passes in
+  `build/PS2/usb-stack-checks/20261006-221607-826`: logo at 59,9 FPS, language
+  selection, dialogues, and house → Kokiri → house. It enables neither
+  triangle profiling nor the HUD; it retains 15-second batches and 4 KiB
+  transfers. The menu matches the baseline byte for byte. The dialogue
+  capture differs in 35 pixels in Link's eyes during blinking; the scene,
+  text, and rest of the player match. Play_Init's random seed depends on the
+  clock, so that blink is not a deterministic reference. There are no
+  USB/logger errors, null bytes, sequence gaps, or scratchpad errors.
+  The player's cards are disabled during tests.
+- Periodic logging includes exact uses, hashes, and internal block size.
+  The analyzer separates them from detailed profiling and rejects damaged
+  lines; all five tests pass. Comparison counters express requested ranges,
+  not exact bus reads when exiting early. Both optimizations still need
+  measurement in the same real-console view to check how much of the
+  50 ms per-frame budget remains.
+- All three game executables are rebuilt, and the package is copied with a
+  backup to `D:\OOTPS2`. OOTPS2.ELF SHA256:
   `91044823E7D56C5BFD7333A8BE4D297366498617BE6E7FA359570724B8ED29CD`.
-  BOOT.LOG, DIAG.LOG, datos, idioma y tarjeta del jugador conservan sus hashes.
-  El resultado conjunto está en
-  `build/PS2/texture-scratchpad-release-verification.json`; la mejora de FPS
-  físicos permanece pendiente de una nueva sesión con OOTPS2.ELF.
+  BOOT.LOG, DIAG.LOG, data, language, and the player's card retain their hashes.
+  Joint results are recorded in
+  `build/PS2/texture-scratchpad-release-verification.json`; physical FPS
+  improvement awaits another session with OOTPS2.ELF.
 
-## Tercera sesión física: coste sostenido del dibujo — 2026-10-06
+## Third physical session: sustained drawing cost — 2026-10-06
 
-- Se conserva el nuevo registro antes de modificar el USB en
+- The new log is preserved before modifying the USB, in
   `build/PS2/hardware-runtime/auto-play-physical-20261006-212132`.
-  OOTPS2.ELF coincide con la revisión `ecedd06`: SHA256
+  OOTPS2.ELF matches revision `ecedd06`: SHA256
   `4DE2BCAB437C53A9FE7B99B92603CAD9900F124D704055AD61D1F4A31F90BC35`.
-  Hay 270 muestras durante unos 271 segundos, con paso del título a la casa
-  y al bosque Kokiri. No hay errores USB o del logger, registros perdidos,
-  bytes nulos, líneas dañadas, saltos de secuencia ni reloj fallido.
-- El último minuto contiene 51 intervalos sin solicitudes de lectura ni
-  escrituras del logger solapadas: 660 fotogramas, mediana 12,9 FPS,
-  traducción 62,91 ms, envío 1,82 ms y presentación 12,67 ms por fotograma.
-  La escritura más lenta del registro tarda 112 ms; las escrituras suman
-  885 ms en la sesión. La ralentización sostenida persiste fuera de esas
-  escrituras y cargas. La cámara no se registra y estos tiempos incluyen
-  interrupciones y otros hilos: no certifican una regresión ni una mejora
-  comparable frente a los 13,45 FPS de la sesión anterior.
-- Se revisa el contador `clipped`: cuenta triángulos descartados por estar
-  completamente fuera de una misma cara del volumen visible, además de los
-  que desaparecen después del recorte. No cuenta las llamadas al recortador
-  ni mide su coste. Por tanto, los 880 descartes del último resumen no
-  justifican atribuir la ralentización al recorte. El registro automático
-  identifica el camino gráfico como coste principal, pero no separa aún
-  su preparación de vértices, materiales y texturas en esa vista física.
-- No reaparece el sector nulo de la sesión anterior; su causa continúa
-  pendiente y esta comprobación no demuestra que esté corregida. Las colas
-  de audio no muestran sondeos vacíos, lo que tampoco sustituye una prueba
-  auditiva. Se conservan los ejecutables del USB y la tarjeta del jugador;
-  esta revisión del registro no introduce una nueva versión del juego.
+  There are 270 samples over about 271 seconds, moving from title to house
+  and Kokiri Forest. There are no USB or logger errors, lost records,
+  null bytes, damaged lines, sequence gaps, or clock failures.
+- The final minute contains 51 intervals without read requests or overlapping
+  logger writes: 660 frames, median 12,9 FPS, translation 62,91 ms, submission
+  1,82 ms, and presentation 12,67 ms per frame. The slowest log write takes
+  112 ms; writes total 885 ms in the session. Sustained slowdown persists
+  outside those writes and loads. The camera is not recorded, and these
+  timings include interrupts and other threads: they establish neither a
+  regression nor a comparable improvement over the previous session's 13,45 FPS.
+- The `clipped` counter is reviewed: it counts triangles rejected for being
+  entirely outside the same face of the visible volume, plus those that
+  disappear after clipping. It does not count clipper calls or measure their
+  cost. The final summary's 880 rejections therefore do not justify assigning
+  slowdown to clipping. Automatic logging identifies the graphics path as
+  the main cost, but does not yet separate vertex, material, and texture
+  preparation in that physical view.
+- The previous session's null sector does not reappear; its cause remains
+  pending, and this check does not prove it fixed. Audio queues show no empty
+  polls, which also does not replace a listening test. USB executables and
+  the player's card are preserved; this log review introduces no new game build.
 
-## Segunda sesión física y preparación de los límites de textura — 2026-10-06
+## Second physical session and preparation of texture bounds — 2026-10-06
 
-- Se conserva el USB antes de modificarlo en
+- The USB is preserved before any changes in
   `build/PS2/hardware-runtime/auto-play-physical-20261006-194851`. OOTPS2.ELF
-  coincide con el paquete anterior: SHA256
+  matches the previous package: SHA256
   `BC63FC32E85E4B76A9BC117F7043ECCA87949E744BD47A5CF9BF653C36F6C155`.
-  Se registran unos 511 segundos, título, casa y bosque Kokiri. No hay errores
-  USB comunicados, pérdidas del buffer, reloj detenido ni límite del archivo.
-- Las transferencias de 4 KiB reducen la escritura máxima observada de 949
-  a 128 ms. El último minuto contiene 56 intervalos sin lecturas ni escrituras
-  solapadas: 753 fotogramas, mediana 13,45 FPS, traducción 60,55 ms, envío
-  1,83 ms y presentación 11,93 ms por fotograma. Esos tiempos incluyen otros
-  hilos; la cámara no se registra y no permite afirmar una ganancia comparable
-  de FPS frente a la sesión anterior.
-- Hay 512 bytes nulos en el offset 229376, dentro del lote que termina hacia
-  el segundo 451, sin error devuelto por el controlador. El analizador señala
-  esa línea y el salto de secuencia 443 → 446, conserva 508 muestras válidas
-  y descarta los fragmentos dañados. El minuto final medido está fuera del
-  sector afectado. La causa de esa escritura incompleta queda pendiente.
-  Pasan los casos de lecturas, escrituras, reloj fallido, registros parciales
-  y daño de un sector; nunca se reconstruyen FPS desde fragmentos.
-- La prueba aislada del juego separa vértices, triángulos y preparación en
-  `build/PS2/usb-stack-checks/20261006-195335-041`. Conserva ambas capturas
-  de referencia y pasa casa → Kokiri → casa. Los tiempos de ese perfil EE
-  emulado no equivalen al recorrido físico del usuario.
-- Se preparan límites, envoltura, espejo y filtro una vez por capa durante
-  los comandos consecutivos de triángulos. Cada cambio de estado o subida de
-  esa capa invalida la preparación. Cada aplicación sigue registrando el uso del
-  caché para preservar las esperas del GS después de una retirada previa.
-  Se mantiene el orden base → segunda capa de cada triángulo y el centrado
-  que elimina las olas en la consola.
-- La primera prueba EE de esta revisión pasa en
-  `build/PS2/floor-production-smoke-20261006-195955`: contextos, filtros,
-  envoltura, espejo, recorte, alternancia y 4.096 aplicaciones registran
-  1.127.846 ciclos inmediatos frente a 519.187 preparados. Pasan las capas,
-  puntos, Q, niebla, transparencia, recorte y 120 fotogramas gráficos/audio.
-  La medida de una operación no certifica los FPS de la consola.
-- La revisión final pasa en
-  `build/PS2/floor-production-smoke-20261006-200916/report.json`, incluyendo
-  una textura que vuelve a usarse después de una retirada previa del GS.
-  Las 4.096 aplicaciones registran 1.127.826 frente a 519.153 ciclos.
-  Se recompilan los tres ejecutables USB. El recorrido USB nativo automático
-  pasa en `build/PS2/usb-stack-checks/20261006-201033-831`: casa → Kokiri → casa,
-  logo a 59,9 FPS, texto español, cierre del registro, lotes de 15 segundos y
-  transferencias de 4 KiB. Ambas capturas coinciden byte por byte con la
-  revisión anterior y las tarjetas del jugador están desactivadas.
-- El paquete queda copiado y verificado en `D:\OOTPS2`, con respaldo de la
-  versión anterior. BOOT.LOG, DIAG.LOG y la tarjeta del jugador conservan sus
-  SHA256. La prueba conjunta queda en
-  `build/PS2/tile-binding-release-verification.json`. Falta medir la nueva
-  preparación del material en la misma vista lenta de la PS2 real.
+  About 511 seconds are recorded, covering the title, house, and Kokiri Forest. There are no reported
+  USB errors, buffer losses, stopped clock, or file limit reached.
+- The 4 KiB transfers reduce the maximum observed write time from 949
+  to 128 ms. The final minute contains 56 intervals with no overlapping reads or writes:
+  753 frames, median 13,45 FPS, translation 60,55 ms, submission
+  1,83 ms, and presentation 11,93 ms per frame. These times include other
+  threads; the camera is not recorded, so a comparable
+  FPS gain over the previous session cannot be claimed.
+- There are 512 null bytes at offset 229376, within the batch ending around
+  second 451, with no error returned by the driver. The analyzer flags
+  that line and the sequence jump 443 → 446, retains 508 valid samples,
+  and discards the damaged fragments. The measured final minute is outside the
+  affected sector. The cause of that incomplete write remains unresolved.
+  The read, write, failed clock, partial record,
+  and sector damage cases pass; FPS are never reconstructed from fragments.
+- The isolated game test separates vertices, triangles, and preparation in
+  `build/PS2/usb-stack-checks/20261006-195335-041`. It retains both reference
+  screenshots and passes house → Kokiri → house. The times from that emulated EE
+  profile are not equivalent to the user's physical run.
+- Bounds, wrapping, mirroring, and filtering are prepared once per layer during
+  consecutive triangle commands. Every state change or upload for
+  that layer invalidates the preparation. Each application still records cache
+  use to preserve GS waits after an earlier retirement.
+  The base → second layer order for each triangle and the centering
+  that eliminates the waves on the console are preserved.
+- The first EE test of this revision passes in
+  `build/PS2/floor-production-smoke-20261006-195955`: contexts, filters,
+  wrapping, mirroring, clipping, alternation, and 4.096 applications record
+  1.127.846 immediate cycles versus 519.187 prepared cycles. Layers,
+  points, Q, fog, transparency, clipping, and 120 graphics/audio frames pass.
+  Measuring one operation does not certify console FPS.
+- The final revision passes in
+  `build/PS2/floor-production-smoke-20261006-200916/report.json`, including
+  a texture reused after an earlier GS retirement.
+  The 4.096 applications record 1.127.826 versus 519.153 cycles.
+  The three USB executables are rebuilt. The automatic native USB
+  run passes in `build/PS2/usb-stack-checks/20261006-201033-831`: house → Kokiri → house,
+  logo at 59,9 FPS, Spanish text, log closure, 15-second batches, and
+  4 KiB transfers. Both screenshots match the
+  previous revision byte for byte, and the player's memory cards are disabled.
+- The package is copied and verified in `D:\OOTPS2`, with a backup of the
+  previous version. BOOT.LOG, DIAG.LOG, and the player's memory card retain their
+  SHA256 hashes. The combined test is in
+  `build/PS2/tile-binding-release-verification.json`. The new
+  material preparation still needs to be measured in the same slow view on the real PS2.
 
-## Primer registro automático en consola y comprobación de texturas — 2026-10-06
+## First automatic console log and texture verification — 2026-10-06
 
-- Se conserva la partida física en
+- The physical play session is preserved in
   `build/PS2/hardware-runtime/auto-play-physical-20261006-114209`:
-  255 muestras, encabezado AUTO-PLAY, sin errores USB, pérdidas, reloj detenido
-  ni límite del archivo. El ELF coincide con la versión copiada anteriormente.
-- El último minuto contiene 46 intervalos sin lecturas ni solapamiento con
-  escrituras del logger: 549 fotogramas, mediana de 12 FPS, 66,82 ms de
-  traducción, 2,74 ms de envío y 13,98 ms de presentación por fotograma.
-  Esos tiempos incluyen interrupciones y otros hilos; señalan el camino
-  gráfico como el coste principal sostenido, sin atribuirlo a una fase concreta.
-  El analizador ahora separa esa ventana de cargas y escrituras del registro.
-- El logger acumula 2.885 ms de escrituras y una llega a 949 ms. Se agrupan
-  hasta ocho sectores por llamada (4 KiB), manteniendo alineación a 64 bytes,
-  offsets/tamaños múltiplos de 512, relleno, cierre del lote y límite de 2 MiB.
-  El arranque registra `transferBytes=4096`. Pasan escrituras parciales,
-  exactamente dos llamadas para un lote de unos 7 KiB, fallos, overflow y
-  batching en los modos automático y diagnóstico. Falta contrastar la latencia
-  de esta revisión con el USB físico.
-- La comprobación XXH32 ahora usa MMI también para fuentes alineadas a ocho
-  bytes y a bytes arbitrarios. Usa LD o LDL/LDR completos y PCPYLD, conserva
-  el camino escalar de cuatro bytes y no redondea hacia arriba el final de una
-  franja. Comprueba todos los bytes en cada binding: no omite datos mutables ni
-  conserva hashes sólo por dirección o fotograma.
-- El registro físico confirma tres intervalos del logo Nintendo 64 a
-  59,9–60 FPS. Ya no queda pendiente esa comprobación en la SCPH-90010.
-- La revisión final pasa los 120 fotogramas de gráficos/audio y los casos de
-  las 16 alineaciones, colas, niebla, recorte y dos capas del suelo en
+  255 samples, AUTO-PLAY header, no USB errors, losses, stopped clock,
+  or file limit reached. The ELF matches the version copied previously.
+- The final minute contains 46 intervals with no reads or overlap with
+  logger writes: 549 frames, median 12 FPS, 66,82 ms of
+  translation, 2,74 ms of submission, and 13,98 ms of presentation per frame.
+  These times include interrupts and other threads; they identify the
+  graphics path as the main sustained cost, without attributing it to a specific phase.
+  The analyzer now separates that window from loads and log writes.
+- The logger accumulates 2.885 ms of writes, with one reaching 949 ms. Up to
+  eight sectors are grouped per call (4 KiB), preserving 64-byte alignment,
+  offsets/sizes in multiples of 512, padding, batch closure, and the 2 MiB limit.
+  Startup records `transferBytes=4096`. Partial writes,
+  exactly two calls for a batch of about 7 KiB, failures, overflow, and
+  batching pass in automatic and diagnostic modes. The latency
+  of this revision still needs comparison on physical USB.
+- XXH32 checking now also uses MMI for sources aligned to eight
+  bytes and arbitrary byte alignments. It uses full LD or LDL/LDR and PCPYLD, preserves
+  the four-byte scalar path, and does not round the end of a
+  stripe upward. It checks every byte at each binding: it does not skip mutable data or
+  retain hashes based only on address or frame.
+- The physical log confirms three intervals of the Nintendo 64 logo at
+  59,9–60 FPS. That check is no longer pending on the SCPH-90010.
+- The final revision passes 120 graphics/audio frames and the cases for
+  all 16 alignments, tails, fog, clipping, and two floor layers in
   `build/PS2/floor-production-smoke-20261006-120848/report.json`.
-  Para 1.000 comprobaciones de 4 KiB, el camino de bytes arbitrarios registra
-  11.606.022 ciclos frente a 25.939.162 en el fixture anterior; es una medida
-  de esa operación en el EE emulado, no de FPS del juego ni de hardware.
-- La prueba del juego con USB nativo emulado también pasa en
+  For 1.000 checks of 4 KiB, the arbitrary-byte path records
+  11.606.022 cycles versus 25.939.162 in the previous fixture; this measures
+  that operation on the emulated EE, not game FPS or hardware.
+- The game test with emulated native USB also passes in
   `build/PS2/usb-stack-checks/20261006-121059-666/language-game-check.json`:
-  logo a 59,9 FPS, opciones y diálogo español, casa → Kokiri → casa, datos
-  intactos, cierre del registro, lotes de 15 segundos y `transferBytes=4096`.
-  Las dos capturas coinciden byte por byte con las de la revisión anterior
-  de referencia. Se desactivan las tarjetas del jugador y no se compila
-  simultáneamente durante estas comprobaciones. La mejora de FPS en la
-  consola aún requiere una partida comparable.
-- La versión se copia y verifica en `D:\OOTPS2`, con respaldo en
-  `D:\OOTPS2-backup-20261006-121605`. Los registros físicos y la tarjeta del
-  jugador conservan sus hashes. La comprobación conjunta del paquete,
-  transferencias, capturas y archivos conservados queda en
+  logo at 59,9 FPS, Spanish options and dialogue, house → Kokiri → house, intact
+  data, log closure, 15-second batches, and `transferBytes=4096`.
+  Both screenshots match those from the previous reference revision
+  byte for byte. The player's memory cards are disabled, and no builds run
+  simultaneously during these checks. The FPS improvement on the
+  console still requires a comparable play session.
+- The version is copied and verified in `D:\OOTPS2`, with a backup in
+  `D:\OOTPS2-backup-20261006-121605`. The physical logs and the player's
+  memory card retain their hashes. The combined check of the package,
+  transfers, screenshots, and preserved files is in
   `build/PS2/hash-bulk-release-verification.json`.
 
-## Registro automático, contador de FPS y envío de vértices — 2026-10-06
+## Automatic logging, FPS counter, and vertex submission — 2026-10-06
 
-- El usuario confirma que las vistas grandes siguen ralentizándose. BOOT.LOG
-  y DIAG.LOG del USB tienen los mismos hashes que el registro anterior de
-  FLOOR v3; no constituyen una medición de los paquetes/caché de la nueva
-  revisión. Se conserva otra copia privada antes de actualizar el USB.
-- DIAG.ELF y DIAG224.ELF muestran los fotogramas presentados por segundo,
-  con una ventana de aproximadamente un segundo. La estimación por retraces
-  se señala con un asterisco si falla el reloj. La cuenta es independiente
-  del logger: continúa después de alcanzar el límite del archivo o de fallar
-  una escritura. La marca `FPS-HUD` tras la fecha del encabezado v3 identifica
-  un log nuevo conservando el formato compatible de los lectores existentes.
-- El indicador usa sprites sólidos agrupados, sin fuentes, lecturas USB ni
-  reservas de textura. Se añade al framebuffer principal después del juego;
-  conserva los estados de alpha/profundidad y el scissor, y no dibuja en el
-  retrato del inventario. OOTPS2.ELF conserva la imagen sin ese contador.
-- A petición del usuario, el juego USB habitual ahora crea DIAG.LOG al arrancar
-  con la marca `AUTO-PLAY`, sin abrir el diagnóstico. Conserva muestras de FPS,
-  escena/sala, carga, audio y dibujo. Tiene 256 registros en RAM, agrupa las
-  escrituras cada 15 segundos, sin activar cronómetros por triángulo. DIAG conserva
-  sus lotes de cinco segundos y el perfil cada 60 fotogramas. El límite de
-  2 MiB y la parada del logger ante errores no detienen el juego; los costes
-  de escritura se identifican en FLUSH. Esperar 20 segundos antes de apagar
-  permite cerrar el siguiente lote. El historial anterior ya está conservado.
-  `PS2_USB_AUTO_LOG=0` permite compilar una comparación sin escritura periódica.
-- Los puntos construidos por el renderer usan una entrada interna con
-  alineación explícita y registros uniformes. Evita revisar por segunda vez
-  las etiquetas RGBAQ/ST/XYZ de cada vértice. Las entradas generales mantienen
-  sus validaciones y el fallback del SDK para layouts mixtos o desalineados.
-  No altera registros enviados, capas del suelo, Q, niebla, color ni geometría.
-- La comparación EE de 24 fixtures contra el SDK y los 120 fotogramas de
-  gráficos/audio pasan en
+- The user confirms that large views still slow down. BOOT.LOG
+  and DIAG.LOG on the USB have the same hashes as the previous FLOOR v3
+  log; they do not measure the packets/cache of the new
+  revision. Another private copy is preserved before updating the USB.
+- DIAG.ELF and DIAG224.ELF display presented frames per second,
+  using a window of approximately one second. The estimate based on retraces
+  is marked with an asterisk if the clock fails. The count is independent
+  of the logger: it continues after reaching the file limit or after a
+  write fails. The `FPS-HUD` marker after the date in the v3 header identifies
+  a new log while preserving the format compatible with existing readers.
+- The indicator uses grouped solid sprites, without fonts, USB reads, or
+  texture allocations. It is added to the main framebuffer after the game;
+  it preserves alpha/depth states and the scissor, and does not draw in the
+  inventory portrait. OOTPS2.ELF preserves the image without that counter.
+- At the user's request, the regular USB game now creates DIAG.LOG at startup
+  with the `AUTO-PLAY` marker, without opening diagnostics. It retains samples of FPS,
+  scene/room, loading, audio, and drawing. It has 256 records in RAM and groups
+  writes every 15 seconds, without enabling per-triangle timers. DIAG retains
+  its five-second batches and profiling every 60 frames. The
+  2 MiB limit and stopping the logger on errors do not stop the game; write
+  costs are identified in FLUSH. Waiting 20 seconds before powering off
+  allows the next batch to close. The previous history is already preserved.
+  `PS2_USB_AUTO_LOG=0` allows a comparison build without periodic writes.
+- Points constructed by the renderer use an internal entry with explicit
+  alignment and uniform registers. This avoids checking the
+  RGBAQ/ST/XYZ tags of each vertex a second time. General entries retain
+  their validation and the SDK fallback for mixed or misaligned layouts.
+  Submitted registers, floor layers, Q, fog, color, and geometry are unchanged.
+- The EE comparison of 24 fixtures against the SDK and 120
+  graphics/audio frames pass in
   `build/PS2/floor-production-smoke-20261006-000224/report.json`.
-  En la operación de envío, el camino validado registra 655.700 ciclos y el
-  interno 483.820; no es una medida de FPS general. El contador registra
-  12.250 ciclos y 1.648 bytes en su fixture. Su captura comprueba texto visible
-  y restauración del rechazo alpha. Pasan 60/30/20/12/8 FPS, pausas largas y
-  reloj detenido con wraparound de retraces. Falta medir esta revisión en PS2.
-- La prueba final con registro automático ligero pasa mediante USB nativo
-  emulado, sin HostFs, tarjetas del jugador ni compilación simultánea:
+  For submission, the validated path records 655.700 cycles and the
+  internal path 483.820; this is not an overall FPS measurement. The counter records
+  12.250 cycles and 1.648 bytes in its fixture. Its screenshot checks visible text
+  and restoration of alpha rejection. The 60/30/20/12/8 FPS cases, long pauses, and
+  stopped clock with retrace wraparound pass. This revision still needs measurement on PS2.
+- The final test with lightweight automatic logging passes through emulated
+  native USB, without HostFs, the player's memory cards, or simultaneous builds:
   `build/PS2/usb-stack-checks/20261006-112018-371/language-game-check.json`.
-  Comprueba logo a 59,9 FPS, opciones, diálogo español y casa → Kokiri → casa,
-  con 120 actualizaciones en cada fase. Confirma lotes de 15 segundos y ausencia
-  de registros de perfil por triángulo. Datos/idioma no cambian, el registro
-  termina sin errores ni pérdidas y las ranuras de guardado de prueba se conservan.
-  La captura de opciones coincide byte por byte con la anterior; en el diálogo
-  sólo cambian 51 píxeles de los ojos de Link por el parpadeo de su animación.
-- Al reconectar el USB, BOOT.LOG sí había cambiado pero DIAG.LOG seguía siendo
-  el FLOOR v3 antiguo: la partida habitual anterior no registraba rendimiento.
-  Se conserva la nueva lectura en
+  It checks the logo at 59,9 FPS, options, Spanish dialogue, and house → Kokiri → house,
+  with 120 updates in each phase. It confirms 15-second batches and the absence
+  of per-triangle profile records. Data/language are unchanged, the log
+  ends without errors or losses, and the test save slots are preserved.
+  The options screenshot matches the previous one byte for byte; in the dialogue,
+  only 51 pixels of Link's eyes change because of the blink animation.
+- When the USB was reconnected, BOOT.LOG had changed, but DIAG.LOG was still
+  the old FLOOR v3 log: the previous regular play session did not record performance.
+  The new reading is preserved in
   `build/PS2/hardware-runtime/before-auto-light-20261006-112309`.
-  Esa evidencia no permite atribuir todavía las caídas a USB, dibujo o audio;
-  la siguiente partida con OOTPS2.ELF permitirá contrastarlo.
-- Paquete final copiado y verificado en `D:/OOTPS2` (11 archivos), con copia
-  de la versión anterior en `D:/OOTPS2-backup-20261006-113145`. El ELF habitual
-  contiene `AUTO-PLAY`; los diagnósticos contienen `FPS-HUD`. Las direcciones
-  estáticas están dentro de los 32 MiB del EE. Se conservan BOOT.LOG/DIAG.LOG
-  físicos y el SHA256 de la tarjeta del jugador en PCSX2. Informe privado:
+  That evidence does not yet allow the drops to be attributed to USB, drawing, or audio;
+  the next play session with OOTPS2.ELF will allow a comparison.
+- The final package is copied and verified in `D:/OOTPS2` (11 files), with a copy
+  of the previous version in `D:/OOTPS2-backup-20261006-113145`. The regular ELF
+  contains `AUTO-PLAY`; the diagnostics contain `FPS-HUD`. Static addresses
+  are within the EE's 32 MiB. Physical BOOT.LOG/DIAG.LOG and the SHA256
+  of the player's memory card in PCSX2 are preserved. Private report:
   `build/PS2/automatic-light-release-verification.json`.
 
-## Paquetes GS compactos y caché USB de animaciones — 2026-10-05
+## Compact GS packets and USB animation cache — 2026-10-05
 
-- Los triángulos usan listas de registros GS en lugar de repetir la dirección
-  A_D por cada atributo. Conservan los valores RGBAQ, ST, XYZ2/XYZF2 y los
-  estados de textura, profundidad, niebla, mezcla y contexto. PRIM continúa
-  como escritura explícita: PRE no aplica en REGLIST. Las entradas con
-  alineación o registros incompatibles usan la función original del SDK.
-- Dentro de cada grupo de triángulos se preparan TEX0/PRIM por capa una sola
-  vez y TEX1 sólo cuando cambia el filtro. Cada comando de estado termina
-  el grupo; una nueva subida de textura invalida su preparación. Las dos
-  capas del suelo siguen alternándose por triángulo. No se reduce resolución,
-  contenido ni calidad de las texturas.
-- La comparación EE contra el SDK instalado decodifica ambas representaciones
-  y comprueba todos los registros, incluidos Q y niebla. Cubre contextos,
-  paletas, tamaños no potencia de dos, filtros y listas de 3/6/60 vértices,
-  además de alineación arbitraria y cambio de bloque DMA. El conjunto ocupa
-  16.000 frente a 28.800 bytes. Dos ejecuciones de 64 triángulos por grupo
-  muestran 636.876 frente a 748.329 ciclos y 628.292 frente a 827.407 ciclos
-  acumulados. Son medidas de esta operación en PCSX2, con posibles
-  interrupciones; no son una medida del FPS físico ni de todo el render.
-- USB conserva dieciséis bloques de juego de 16 KiB (256 KiB de datos), frente
-  a los cuatro anteriores. Las lecturas pequeñas de animaciones también los
-  reutilizan. El manejador de audio identifica su caché explícitamente:
-  música y animaciones comparten la prioridad NORMAL de libultra, por lo que
-  esa prioridad no permite distinguirlas. Sus 64 sectores de 4 KiB se conservan.
-  El incremento estático es aproximadamente 193 KiB, sin ampliar el tamaño
-  máximo de prelectura ni quitar la sincronización de la caché del EE.
-- La prueba intercalada de 64 sectores de animación y 20 sectores de muestras
-  necesita 16 lecturas del archivo en la primera pasada y ninguna en la
-  segunda; las muestras siguen residentes. Comprueba expulsión LRU, cruces,
-  final de archivo, guardas y dos lectores concurrentes. Las cargas nuevas
-  de escenas grandes siguen limitadas por el USB de la PS2.
-- Pasan los 120 fotogramas de gráficos/audio y la caché USB en
+- Triangles use GS register lists instead of repeating the
+  A_D address for every attribute. They preserve RGBAQ, ST, XYZ2/XYZF2 values and
+  texture, depth, fog, blending, and context states. PRIM remains
+  an explicit write: PRE does not apply in REGLIST. Entries with
+  incompatible alignment or registers use the original SDK function.
+- Within each triangle group, TEX0/PRIM are prepared once per layer,
+  and TEX1 only when the filter changes. Each state command ends
+  the group; a new texture upload invalidates its preparation. The two
+  floor layers still alternate per triangle. Texture resolution,
+  content, and quality are not reduced.
+- The EE comparison against the installed SDK decodes both representations
+  and checks every register, including Q and fog. It covers contexts,
+  palettes, non-power-of-two sizes, filters, and lists of 3/6/60 vertices,
+  as well as arbitrary alignment and DMA block changes. The set occupies
+  16.000 versus 28.800 bytes. Two runs of 64 triangles per group
+  show 636.876 versus 748.329 cycles and 628.292 versus 827.407 accumulated
+  cycles. These measure this operation in PCSX2, with possible
+  interrupts; they do not measure physical FPS or the whole render.
+- USB retains sixteen 16 KiB game blocks (256 KiB of data), versus
+  the previous four. Small animation reads also
+  reuse them. The audio handler explicitly identifies its cache:
+  music and animations share libultra's NORMAL priority, so
+  that priority cannot distinguish them. Its 64 sectors of 4 KiB are preserved.
+  The static increase is approximately 193 KiB, without increasing the maximum
+  read-ahead size or removing EE cache synchronization.
+- The interleaved test of 64 animation sectors and 20 sample sectors
+  requires 16 file reads on the first pass and none on the
+  second; the samples remain resident. It checks LRU eviction, boundary crossings,
+  end of file, guards, and two concurrent readers. New loads
+  of large scenes remain limited by the PS2's USB.
+- The 120 graphics/audio frames and USB cache pass in
   `build/PS2/floor-production-smoke-20261005-232942/report.json`.
-  El recorrido USB nativo casa → Kokiri → casa pasa en
+  The native USB house → Kokiri → house run passes in
   `build/PS2/usb-stack-checks/20261005-233611-477/language-game-check.json`:
-  ambas capturas tienen exactamente los mismos SHA256 que la revisión anterior.
-  El logo sigue a 59,9 FPS en esa prueba y los datos/idioma permanecen intactos.
-  El perfil completo no establece todavía una ganancia general de FPS.
-  Se recompilan los tres ELF USB y el ELF para PCSX2; sus rangos estáticos
-  caben en los 32 MiB del EE. Queda comprobar esta revisión en la consola.
+  both screenshots have exactly the same SHA256 hashes as the previous revision.
+  The logo remains at 59,9 FPS in that test, and data/language remain intact.
+  The full profile does not yet establish an overall FPS gain.
+  The three USB ELFs and the PCSX2 ELF are rebuilt; their static ranges
+  fit within the EE's 32 MiB. This revision still needs checking on the console.
 
-## Idioma, ritmo del logo y reutilización del suelo — 2026-10-05
+## Language, logo pacing, and floor reuse — 2026-10-05
 
-- El mínimo de dos vblank sólo se elimina durante el estado del logo Nintendo
-  64. El planificador sigue limitando los menús a 30 y el juego a 20. La prueba
-  de presentación del logo real, por USB nativo emulado, mide 59,9 FPS tras
-  30 fotogramas de calentamiento. No equivale a confirmar 60 FPS en consola.
-- Se añade ESP.DAT privado con 2.114 mensajes y 380 recursos de textura de
-  la traducción eduardo_aj2 v2.2 (Patcher64Plus-Tool). Se relocalizan por ID y
-  descriptores compatibles, sin importar código o geometría N64. El archivo
-  se carga una vez fuera del arena; sus lecturas de glifos y recursos cubiertos
-  usan RAM. CRC32, límites, registros ordenados y anchuras se validan antes de
-  usarlo. Si falta o es inválido se conservan las opciones y mensajes ingleses.
-- LANGUAGE/IDIOMA se elige con izquierda/derecha en Opciones y se guarda con
-  B en el encabezado SRAM. Las tablas nativas mantienen su índice occidental
-  y las partidas conservan su formato. La fila usa palabras completas sans
-  serif, tamaño y contorno uniformes, espaciado proporcional e IA8 (archivo
-  versión 2); evita mezclar la fuente de diálogos con las opciones. El TTF del
-  sistema queda fuera del repo y su hash se registra en el informe privado.
-- Se enlazan segmentos explícitos para los vértices y etiquetas de esta fila:
-  las direcciones EE de más de 16 MiB podrían confundirse con direcciones
-  segmentadas N64 y dejar el texto en blanco. Los textos en código y créditos
-  no están traducidos por completo; voces y sonido conservan los originales.
-- El render prepara los periodos y las coordenadas del suelo una vez por
-  vértice compartido de cada grupo de triángulos. Conserva la traslación de
-  periodos completos confirmada en hardware, el orden de capas, perspectiva,
-  niebla, profundidad y recorte. La comparación de puntos GS pasa, junto a
-  las pruebas de audio y gráficos de 120 fotogramas. No se afirma que esto
-  garantice 20 FPS en todas las vistas; falta medir la mejora física.
-- DIAG.ELF muestra tiempos de los componentes del render cada 60 fotogramas.
-  OOTPS2.ELF omite ese perfil detallado. El test nativo de idioma captura las
-  opciones y el diálogo, comprueba el encabezado sin cambiar las partidas,
-  y completa casa → Kokiri → casa con HostFs y tarjetas del jugador
-  desactivados. Su logger cierra las escrituras FAT antes de terminar la
-  prueba. Uso, créditos y límites en PS2_LANGUAGE.md y TESTING_PS2.md.
-- Pasa la comprobación EE completa con datos de idioma:
+- The minimum of two vblanks is removed only during the Nintendo
+  64 logo state. The scheduler still limits menus to 30 and gameplay to 20. The
+  presentation test of the actual logo, through emulated native USB, measures 59,9 FPS after
+  30 warm-up frames. This does not confirm 60 FPS on the console.
+- Private ESP.DAT is added with 2.114 messages and 380 texture resources from
+  the eduardo_aj2 v2.2 translation (Patcher64Plus-Tool). They are relocated by ID and
+  compatible descriptors, without importing N64 code or geometry. The file
+  is loaded once outside the arena; reads of covered glyphs and resources
+  use RAM. CRC32, bounds, sorted records, and widths are validated before
+  use. If it is missing or invalid, English options and messages are retained.
+- LANGUAGE/IDIOMA is selected with left/right in Options and saved with
+  B in the SRAM header. Native tables retain their Western index,
+  and saves retain their format. The row uses full sans-serif
+  words, uniform size and outline, proportional spacing, and IA8 (file
+  version 2); it avoids mixing the dialogue font with the options. The system TTF
+  stays outside the repo, and its hash is recorded in the private report.
+- Explicit segments are bound for the vertices and tags of this row:
+  EE addresses above 16 MiB could be mistaken for segmented
+  N64 addresses and leave the text blank. Text in code and credits
+  is not fully translated; voices and sound retain the originals.
+- The renderer prepares floor periods and coordinates once per
+  shared vertex in each triangle group. It preserves translation by
+  full periods confirmed on hardware, layer order, perspective,
+  fog, depth, and clipping. The GS point comparison passes, along with
+  the 120-frame audio and graphics tests. This is not claimed to
+  guarantee 20 FPS in every view; the physical improvement still needs measurement.
+- DIAG.ELF displays times for render components every 60 frames.
+  OOTPS2.ELF omits that detailed profile. The native language test captures
+  options and dialogue, checks the header without changing saves,
+  and completes house → Kokiri → house with HostFs and the player's memory cards
+  disabled. Its logger closes FAT writes before ending the
+  test. Usage, credits, and limitations are in PS2_LANGUAGE.md and TESTING_PS2.md.
+- The full EE check with language data passes:
   `build/PS2/floor-production-smoke-20261005-222748/report.json`.
-  El recorrido USB con la tipografía final y sus capturas pasa en
+  The USB run with the final typography and its screenshots passes in
   `build/PS2/usb-stack-checks/20261005-223443-071/language-game-check.json`.
-  Se recompilan los tres ELF USB y el ELF para PCSX2. El paquete con ESP.DAT
-  se copia y verifica por SHA256 en D:\OOTPS2 (once archivos); la versión
-  anterior queda en D:\OOTPS2-backup-20261005-223751. OOT.Z64, los registros
-  físicos y la tarjeta del jugador conservan sus hashes. La confirmación
-  física del idioma, el ritmo del logo y la mejora de FPS sigue pendiente.
+  The three USB ELFs and the PCSX2 ELF are rebuilt. The package with ESP.DAT
+  is copied and verified by SHA256 in D:\OOTPS2 (eleven files); the previous
+  version is kept in D:\OOTPS2-backup-20261005-223751. OOT.Z64, the physical
+  logs, and the player's memory card retain their hashes. Physical
+  confirmation of the language, logo pacing, and FPS improvement remains pending.
 
-## Suelo confirmado en PS2 real e integrado al juego — 2026-10-05
+## Floor confirmed on real PS2 and integrated into the game — 2026-10-05
 
-- El usuario confirma que Arriba de FLOOR v3 elimina las olas del suelo
-  al mover la cámara en su SCPH-90010. Se conservan BOOT.LOG, DIAG.LOG,
-  el ELF probado, el manifiesto y sus hashes en
+- The user confirms that Up in FLOOR v3 eliminates the floor waves
+  when moving the camera on their SCPH-90010. BOOT.LOG, DIAG.LOG,
+  the tested ELF, the manifest, and their hashes are preserved in
   `build/PS2/hardware-runtime/floor-v3-confirmed-20261005-184050`.
-  El log identifica el ELF v3 confirmado, SHA-256
+  The log identifies the confirmed v3 ELF, SHA-256
   `49c72707b78e58c3153910d0eabc15379cf44957f4a59ce898da06bb482f2cec`.
-- Los 24 fotogramas muestreados con el ajuste activo reducen el máximo UV
-  de 2222.5 a 411.188 texeles: 58 coordenadas fuera del rango ±2047 antes y
-  ninguna después. Los 105 intervalos no contienen errores USB, pérdidas o
-  NUL. El máximo de 248 ms por escritura pertenece al diagnóstico y no
-  demuestra una mejora de FPS ni certifica otras zonas.
-- Se integra el mismo cálculo en la segunda capa de los materiales de
-  suelo del juego habitual. Es automático en OOTPS2.ELF, DIAG.ELF,
-  DIAG224.ELF y la compilación para PCSX2; no requiere pulsar la cruceta.
-  Mantiene escala, perspectiva, ambas texturas, mezcla, profundidad y
-  niebla. La variante de comparación conserva sus modos.
-- El cálculo permite omitir las medidas UV pasando NULL para el resultado.
-  El juego habitual omite esas medidas y el registro de FLOOR. Las pruebas
-  comparan sus puntos GS con los que incluyen mediciones: son idénticos.
-  También pasan repetición, espejo, clamp, intervalos anchos, perspectiva,
-  recorte, reutilización de vértices, mezcla y límites de estado junto al
-  diagnóstico completo de 120 fotogramas sin activar el laboratorio:
+- The 24 frames sampled with the adjustment active reduce the maximum UV
+  from 2222.5 to 411.188 texels: 58 coordinates outside ±2047 before and
+  none afterward. The 105 intervals contain no USB errors, losses, or
+  NUL. The maximum of 248 ms per write belongs to diagnostics and does not
+  demonstrate an FPS improvement or certify other areas.
+- The same calculation is integrated into the second layer of the floor
+  materials in the regular game. It is automatic in OOTPS2.ELF, DIAG.ELF,
+  DIAG224.ELF, and the PCSX2 build; no D-pad press is required.
+  It preserves scale, perspective, both textures, blending, depth, and
+  fog. The comparison variant retains its modes.
+- The calculation allows UV measurements to be omitted by passing NULL for the result.
+  The regular game omits those measurements and FLOOR logging. Tests
+  compare its GS points against those with measurements: they are identical.
+  Repetition, mirroring, clamp, wide intervals, perspective,
+  clipping, vertex reuse, blending, and state boundaries also pass, along with
+  the full 120-frame diagnostic without enabling the laboratory:
   `build/PS2/floor-production-smoke-20261005-184649/report.json`.
-- Pasa casa → Kokiri → casa con USB nativo emulado, 120 fotogramas por fase,
-  HostFs desactivado y tarjetas del jugador desactivadas:
+- House → Kokiri → house passes with emulated native USB, 120 frames per phase,
+  HostFs disabled, and the player's memory cards disabled:
   `build/PS2/usb-stack-checks/20261005-184942-622/report.json`.
-  Se recompilan los tres ELF USB habituales y el ELF para PCSX2, se verifica
-  su memoria estática y la correspondencia de datos y se copian y verifican
-  los nueve archivos del paquete en D:, con copia de los archivos anteriores
-  en `D:\OOTPS2-backup-20261005-185331`. El ELF de comparación confirmado
-  se conserva y se actualizan sus instrucciones. Su script de copia omite
-  archivos idénticos y usa una nota neutra al conservar registros previos.
-  La captura física, OOT.Z64 y la tarjeta del jugador se conservan.
-  Informe final: `build/PS2/floor-production-final-verification.json`.
-  La confirmación
-  del suelo corresponde al ELF de comparación; queda seguir validando
-  zonas, audio, rendimiento y guardado físico con el paquete habitual.
+  The three regular USB ELFs and the PCSX2 ELF are rebuilt, their
+  static memory and data correspondence are verified, and the nine package
+  files are copied and verified on D:, with a copy of the previous files
+  in `D:\OOTPS2-backup-20261005-185331`. The confirmed comparison ELF
+  is preserved, and its instructions are updated. Its copy script skips
+  identical files and uses a neutral note when preserving previous logs.
+  The physical capture, OOT.Z64, and the player's memory card are preserved.
+  Final report: `build/PS2/floor-production-final-verification.json`.
+  The floor confirmation
+  applies to the comparison ELF; areas, audio, performance, and physical
+  saving still need continued validation with the regular package.
 
-## Coordenadas repetidas del suelo en hardware — 2026-10-05
+## Repeated floor coordinates on hardware — 2026-10-05
 
-- El usuario confirma que FLOOR v2 conserva las mismas olas tanto arriba
-  (profundidad de sólo lectura) como a la derecha (pasada anterior). Esa
-  hipótesis no mejora la imagen. Se conservan BOOT.LOG, DIAG.LOG, manifiesto
-  y hashes en `build/PS2/hardware-runtime/floor-v2-result-20261005-181656`.
-  El análisis recoge 130 intervalos, cero errores USB, pérdidas o NUL y un
-  máximo de 175 ms por escritura del logger. No representa un benchmark
-  de FPS de una única escena.
-- Las muestras de la segunda capa de Kokiri alcanzan unas 2058 unidades
-  de texel para sus imágenes de 32 píxeles. El GS limita UV a ±2047 antes
-  del wrap y reduce la mantisa de STQ. Centrar los 25 triángulos muestreados
-  por repeticiones completas reduciría su máximo absoluto a unas 399
-  unidades; todavía no demuestra que explique todas las olas. La dimensión
-  de la segunda capa se infiere de sus recursos en v2: v3 la registra.
-- FLOOR v3 recupera la profundidad original y centra sólo las UV de la
-  segunda capa. Sustrae a todo el triángulo un mismo múltiplo del periodo,
-  antes de formar STQ, preservando perspectiva y escalas. Usa copias de
-  dibujo sin modificar los vértices compartidos, respeta el periodo espejo
-  expandido y no desplaza ejes con clamp. No aplica módulo por vértice ni
-  omite texturas. Los triángulos demasiado anchos siguen identificados como
-  fuera de rango; no se afirma que la traslación pueda reducir su intervalo.
-- Arriba selecciona UV centradas, izquierda conserva el control con una
-  capa y derecha recupera las UV anteriores. El log FLOOR_LAB v3 añade
-  dimensiones, máscaras, desplazamientos y máximos antes/después de todos
-  los triángulos de un fotograma muestreado cada sesenta.
-- Pasan repetición, espejo, clamp, intervalos anchos, equivalencia del
-  interpolante, XYZ/Q invariantes, caminos inmediato/preparado, recorte,
-  niebla y límites de estado. En los casos acotados del test que reproducen
-  el truncado del GS, el error acumulado baja de 0.0197754 a 0.0012207 texeles.
-  El diagnóstico completo presenta 120 fotogramas:
+- The user confirms that FLOOR v2 retains the same waves both with Up
+  (read-only depth) and Right (previous pass). That
+  hypothesis does not improve the image. BOOT.LOG, DIAG.LOG, the manifest,
+  and hashes are preserved in `build/PS2/hardware-runtime/floor-v2-result-20261005-181656`.
+  The analysis collects 130 intervals, zero USB errors, losses, or NUL, and a
+  maximum of 175 ms per logger write. It does not represent a single-scene
+  FPS benchmark.
+- Samples of Kokiri's second layer reach about 2058 texel
+  units for its 32-pixel images. The GS limits UV to ±2047 before
+  wrapping and reduces the STQ mantissa. Centering the 25 sampled triangles
+  by full repetitions would reduce their absolute maximum to about 399
+  units; this does not yet show that it explains every wave. The size
+  of the second layer is inferred from its resources in v2: v3 records it.
+- FLOOR v3 restores the original depth and centers only the UVs of the
+  second layer. It subtracts the same multiple of the period from the whole triangle
+  before forming STQ, preserving perspective and scales. It uses drawing
+  copies without modifying shared vertices, respects the expanded mirror
+  period, and does not shift clamped axes. It does not apply per-vertex modulo or
+  omit textures. Triangles that are too wide remain identified as
+  out of range; translation is not claimed to reduce their interval.
+- Up selects centered UVs, Left retains the one-layer
+  control, and Right restores the previous UVs. The FLOOR_LAB v3 log adds
+  dimensions, masks, shifts, and before/after maxima for every
+  triangle in a frame sampled every sixty frames.
+- Repetition, mirroring, clamp, wide intervals, interpolant equivalence,
+  invariant XYZ/Q, immediate/prepared paths, clipping,
+  fog, and state boundaries pass. In the bounded test cases that reproduce
+  GS truncation, accumulated error drops from 0.0197754 to 0.0012207 texels.
+  The full diagnostic presents 120 frames:
   `build/PS2/floor-v3-smoke-20261005-182820/report.json`.
-- Pasa el arranque por USB nativo emulado, con HostFs y tarjetas del jugador
-  desactivados: `build/PS2/usb-stack-checks/20261005-182927-438/report.json`.
-  Se comprueba FLOOR_LAB v3 y las coordenadas centradas en DIAG.LOG.
-  El paquete opcional se prepara para D: con hashes verificados; los ELF
-  habituales siguen intactos. Falta comprobar esta revisión en la PS2 real.
+- Startup through emulated native USB passes, with HostFs and the player's memory cards
+  disabled: `build/PS2/usb-stack-checks/20261005-182927-438/report.json`.
+  FLOOR_LAB v3 and the centered coordinates are checked in DIAG.LOG.
+  The optional package is prepared for D: with verified hashes; the regular
+  ELFs remain intact. This revision still needs checking on the real PS2.
 
-## Comparación física de capas y segunda pasada de sólo lectura — 2026-10-05
+## Physical layer comparison and read-only second pass — 2026-10-05
 
-- El usuario compara FLOOR v1 en la SCPH-90010: arriba y derecha conservan
-  las mismas olas; izquierda las elimina pero pierde la segunda textura.
-  El log físico confirma selecciones en escena 85 y perspectiva activa en
-  los materiales muestreados. Sus 160 muestras no contienen errores USB,
-  pérdidas, NUL ni reloj aproximado. Evidencia privada conservada con hashes
-  en `build/PS2/hardware-runtime/floor-lab-result-20261005-175141`.
-- FLOOR v2 mantiene las dos texturas y prueba una segunda pasada de sólo
-  lectura de profundidad. Para receptores que comparan y escriben Z añade
-  dos unidades en Z24 (una en Z16), saturadas al máximo. Conserva GEQUAL,
-  coordenadas UV/XYZ, mezcla y niebla, y restaura ZMSK al terminar la capa.
-  Arriba selecciona la revisión; derecha vuelve a la pasada anterior.
-  Esta comparación permanece limitada al ELF opcional: falta confirmar en
-  hardware si elimina las olas y conserva las ocultaciones.
-- La prueba extendida verifica las dos capas en los caminos inmediato y
-  preparado, vértices recortados, niebla, saturación del margen, decal sin
-  escrituras y restauración real de los comandos ZBUF/TEST. Pasa junto al
-  diagnóstico completo de 120 fotogramas:
+- The user compares FLOOR v1 on the SCPH-90010: Up and Right retain
+  the same waves; Left eliminates them but loses the second texture.
+  The physical log confirms selections in scene 85 and active perspective in
+  the sampled materials. Its 160 samples contain no USB errors,
+  losses, NUL, or approximate clock. Private evidence is preserved with hashes
+  in `build/PS2/hardware-runtime/floor-lab-result-20261005-175141`.
+- FLOOR v2 retains both textures and tests a second pass with read-only
+  depth. For receivers that compare and write Z, it adds
+  two units in Z24 (one in Z16), saturated at the maximum. It preserves GEQUAL,
+  UV/XYZ coordinates, blending, and fog, and restores ZMSK when the layer ends.
+  Up selects the revision; Right returns to the previous pass.
+  This comparison remains limited to the optional ELF: hardware
+  confirmation is still needed to determine whether it eliminates waves and preserves occlusion.
+- The extended test verifies both layers in the immediate and
+  prepared paths, clipped vertices, fog, margin saturation, decals without
+  writes, and actual restoration of ZBUF/TEST commands. It passes along with
+  the full 120-frame diagnostic:
   `build/PS2/floor-v2-smoke-20261005-180608/report.json`.
-- Pasa el arranque con USB nativo emulado, sin HostFs ni memory cards del
-  jugador: `build/PS2/usb-stack-checks/20261005-180608-550/report.json`.
-  DIAG.LOG identifica FLOOR_LAB v2 y registra la segunda capa con comparación
-  activa y escrituras desactivadas. Se prepara el paquete opcional v2 con
-  los controles nuevos; el juego habitual conserva sus ejecutables.
+- Startup with emulated native USB passes, without HostFs or the player's
+  memory cards: `build/PS2/usb-stack-checks/20261005-180608-550/report.json`.
+  DIAG.LOG identifies FLOOR_LAB v2 and records the second layer with comparison
+  active and writes disabled. The optional v2 package is prepared with
+  the new controls; the regular game retains its executables.
 
-## Comparación de capas y perspectiva del suelo — 2026-10-05
+## Floor layer and perspective comparison — 2026-10-05
 
-- El usuario confirma que las olas siguen igual con la revisión del recorte.
-  Se conserva esa corrección matemática, pero no se considera solución del
-  defecto observado en la SCPH-90010.
-- FLOOR.ELF es una variante USB separada: arriba vuelve al dibujo normal,
-  izquierda omite la segunda capa del suelo y derecha fuerza su perspectiva.
-  La selección se aplica al principio del siguiente fotograma. Los controles
-  se mantienen en menús, diálogos y transiciones; no sustituye callbacks de estado.
-- El logger registra las selecciones con escena/fotograma y una muestra
-  acotada UV/W/STQ/XYZ cada sesenta fotogramas que dibujan ese material.
-  No añade trazas al juego habitual. No confirma una causa por sí solo.
-- Las pruebas del renderer pasan el aislamiento de capas, ambos caminos
-  de vértices, los límites de fotograma y los materiales ajenos, junto a los
-  120 fotogramas del diagnóstico completo. Informe privado:
+- The user confirms that the waves remain unchanged with the clipping revision.
+  That mathematical correction is retained, but it is not considered a solution
+  to the defect observed on the SCPH-90010.
+- FLOOR.ELF is a separate USB variant: Up returns to normal drawing,
+  Left omits the second floor layer, and Right forces its perspective.
+  The selection is applied at the start of the next frame. The controls
+  remain available in menus, dialogue, and transitions; state callbacks are not replaced.
+- The logger records selections with scene/frame and a bounded
+  UV/W/STQ/XYZ sample every sixty frames that draw that material.
+  It adds no traces to the regular game. It does not confirm a cause on its own.
+- The renderer tests pass layer isolation, both vertex
+  paths, frame boundaries, and unrelated materials, along with the
+  120 frames of the full diagnostic. Private report:
   `build/PS2/floor-lab-smoke-20261005-173936/report.json`.
-- Pasa el arranque con el controlador USB nativo emulado, sin HostFs ni
-  tarjetas del jugador: `build/PS2/usb-stack-checks/20261005-173936-172/report.json`.
-  DIAG.LOG conserva el marcador FLOOR_LAB y muestras del suelo. Falta la
-  comparación física de los modos; no se afirma que desaparezcan las olas.
-- Se añaden scripts reproducibles de construcción, paquete y copia del
-  diagnóstico opcional. La copia verifica OOT.Z64 y los hashes, conserva los
-  registros físicos anteriores y mantiene los ELF habituales. Instrucciones
-  en `PS2_FLOOR_DIAGNOSTIC.md`.
+- Startup with the emulated native USB driver passes, without HostFs or
+  the player's memory cards: `build/PS2/usb-stack-checks/20261005-173936-172/report.json`.
+  DIAG.LOG retains the FLOOR_LAB marker and floor samples. The physical
+  comparison of the modes is still pending; the waves are not claimed to disappear.
+- Reproducible scripts are added for building, packaging, and copying the
+  optional diagnostic. Copying verifies OOT.Z64 and the hashes, preserves the
+  previous physical logs, and retains the regular ELFs. Instructions
+  are in `PS2_FLOOR_DIAGNOSTIC.md`.
 
-## Prueba física hasta la espada y precisión del recorte — 2026-10-05
+## Physical test through obtaining the sword and clipping precision — 2026-10-05
 
-- El usuario confirma que DIAG.ELF revisado inicia, carga la partida, sale de
-  la casa y permite jugar hasta conseguir la espada en la SCPH-90010.
-  BOOT.LOG y DIAG.LOG se conservan con hashes comprobados en
+- The user confirms that the revised DIAG.ELF starts, loads the save, exits
+  the house, and allows play through obtaining the sword on the SCPH-90010.
+  BOOT.LOG and DIAG.LOG are preserved with verified hashes in
   `build/PS2/hardware-runtime/scph90010-first-sword-20261005-162143`.
-  Las 300 muestras no registran errores USB, pérdidas ni reloj aproximado.
-  Hay caídas de FPS y pausas de carga; un volcado del logger tarda hasta 184 ms.
-- La descripción del suelo se precisa: parece hacer olas al mover la cámara,
-  y no las observa con la cámara quieta. DIAG224 revisado también carga Kokiri,
-  pero el usuario confirma que las olas siguen igual. Sus 65 muestras se
-  conservan en `build/PS2/hardware-runtime/scph90010-224-waves-20261005-163739`,
-  sin errores USB ni pérdidas. El modo de 224 líneas no se adopta como solución.
-- Se encuentra una pérdida de precisión independiente en el recorte homogéneo:
-  RSPVertex guardaba las UV interpoladas como s16, truncándolas de nuevo en cada
-  plano. Ahora mantiene los valores en float, incluyendo las fracciones; los
-  enteros 10.5 originales se cargan sin pérdida y la generación de reflejos
-  conserva su cuantización anterior. No añade subdivisiones ni pasadas gráficas.
-- La prueba nueva usa interpolación perspectiva sobre el triángulo original
-  como referencia independiente. La versión anterior falla en 584 esquinas de
-  128 cámaras, con error máximo de 1.874319 unidades UV crudas. La revisión
-  ampliada pasa 256 cámaras y 1323 esquinas, con error máximo 0.004191.
-  Pasan además 20432 casos de recorte, 27648 puntos y las pruebas de las dos
-  capas del suelo, transparencia y perspectiva. Informe privado:
+  The 300 samples record no USB errors, losses, or approximate clock.
+  There are FPS drops and loading pauses; a logger flush takes up to 184 ms.
+- The floor description is refined: it appears to make waves when the camera moves,
+  and none are observed with the camera still. Revised DIAG224 also loads Kokiri,
+  but the user confirms that the waves remain unchanged. Its 65 samples are
+  preserved in `build/PS2/hardware-runtime/scph90010-224-waves-20261005-163739`,
+  without USB errors or losses. The 224-line mode is not adopted as a solution.
+- An independent loss of precision is found in homogeneous clipping:
+  RSPVertex stored interpolated UVs as s16, truncating them again at each
+  plane. It now retains float values, including fractions; the original
+  10.5 integers are loaded without loss, and reflection generation
+  retains its previous quantization. It adds no subdivisions or graphics passes.
+- The new test uses perspective interpolation over the original triangle
+  as an independent reference. The previous version fails at 584 corners across
+  128 cameras, with a maximum error of 1.874319 raw UV units. The extended
+  revision passes 256 cameras and 1323 corners, with a maximum error of 0.004191.
+  In addition, 20432 clipping cases, 27648 points, and the tests for both
+  floor layers, transparency, and perspective pass. Private report:
   `build/PS2/clip-camera-after-20261005-164931/report.json`.
-  La comprobación física posterior mantiene las mismas olas; este cambio
-  corrige el cálculo independiente, pero no resuelve ese defecto observado.
-- Pasan los nueve casos de arranque con HostFs en
-  `build/PS2/usb-host-checks/20261005-165704-330/report.json` y la transición
-  casa → Kokiri → casa con el controlador USB emulado, sin HostFs, en
+  The subsequent physical check retains the same waves; this change
+  corrects the independent calculation, but does not resolve that observed defect.
+- The nine startup cases with HostFs pass in
+  `build/PS2/usb-host-checks/20261005-165704-330/report.json`, as does the
+  house → Kokiri → house transition with the emulated USB driver, without HostFs, in
   `build/PS2/usb-stack-checks/20261005-165817-988/report.json`.
-  El ELF del jugador de PCSX2, su memory card y los datos convertidos conservan
-  sus hashes. Se preparan los tres ELF USB con la corrección de precisión.
+  The player's PCSX2 ELF, memory card, and converted data retain
+  their hashes. The three USB ELFs are prepared with the precision correction.
 
-## Salida de la casa con el diagnóstico USB — 2026-10-05
+## Leaving the house with USB diagnostics — 2026-10-05
 
-- El usuario confirma intro, selector y carga de la partida en la SCPH-90010;
-  DIAG.ELF queda negro al salir de la casa de Link. Se conservan BOOT.LOG y
-  DIAG.LOG, con hashes verificados, en
+- The user confirms the intro, selector, and save loading on the SCPH-90010;
+  DIAG.ELF goes black when leaving Link's house. BOOT.LOG and
+  DIAG.LOG are preserved, with verified hashes, in
   `build/PS2/hardware-runtime/scph90010-house-exit-20261005-153103`.
-  El registro y el audio siguen activos durante más de un minuto sin nuevos
-  fotogramas, lecturas ni errores del USB. No era sólo una carga lenta.
-- Una prueba automática con el controlador USB nativo reproduce el fin del
-  hilo Graph tras destruir la casa. El wrapper de Play_Init cambiaba la
-  dirección que compara Graph_GetNextGameState; Play_Update, definido en el
-  mismo objeto que Play_Init, conservaba la dirección original. Al salir,
-  Graph no encontraba el siguiente estado y terminaba. Evidencia previa en
+  Logging and audio remain active for over a minute without new
+  frames, reads, or USB errors. It was more than just slow loading.
+- An automatic test with the native USB driver reproduces the termination of the
+  Graph thread after destroying the house. The Play_Init wrapper changed the
+  address compared by Graph_GetNextGameState; Play_Update, defined in the
+  same object as Play_Init, retained the original address. On exit,
+  Graph could not find the next state and terminated. Previous evidence is in
   `build/PS2/usb-stack-checks/20261005-154512-304`.
-- El diagnóstico ahora registra GameState_Init y conserva todas las
-  direcciones originales de inicialización. Añade hitos de transición,
-  actualización y destrucción, y una captura acotada de los hilos EE y de
-  la espera gráfica cuando no se presentan fotogramas durante dos muestras.
-  No escribe archivos desde los hilos del juego ni desde interrupciones.
-- La prueba corregida completa 120 actualizaciones en cada parada de
-  casa → bosque Kokiri → casa, usando fundidos, destrucción y cargas normales.
-  Pasa sin HostFs, con tarjetas desactivadas, registros íntegros, sin pérdidas
-  ni errores USB y datos con el mismo SHA256. Informe privado:
+- Diagnostics now record GameState_Init and preserve all original
+  initialization addresses. They add transition,
+  update, and destruction milestones, plus a bounded capture of EE threads and
+  the graphics wait when no frames are presented for two samples.
+  No files are written from game threads or interrupts.
+- The corrected test completes 120 updates at each stop of
+  house → Kokiri Forest → house, using normal fades, destruction, and loads.
+  It passes without HostFs, with memory cards disabled, intact logs, no losses
+  or USB errors, and data with the same SHA256. Private report:
   `build/PS2/usb-stack-checks/20261005-155909-872/report.json`.
-  Falta confirmar esta salida en la consola física.
-- La prueba independiente se compila con
-  `tools/build_ps2_usb_transition_smoke.sh` y se ejecuta con
+  This exit still needs confirmation on the physical console.
+- The independent test is built with
+  `tools/build_ps2_usb_transition_smoke.sh` and run with
   `tools/run_ps2_usb_stack_check.ps1 -Transition -Seconds 55`.
-  Usa un guardado sintético y no se incluye en el paquete del jugador.
-- Pasan también las nueve comprobaciones de arranque y logs mediante HostFs
-  en `build/PS2/usb-host-checks/20261005-160634-489/report.json`, y el test
-  del logger conserva los límites de escritura y comprueba que las capturas
-  de espera se activan, se limitan y se reinician cuando vuelve un fotograma.
-  OOTPS2.ELF conserva el SHA256 anterior; la corrección se aplica a los dos
-  ELF del registro. Los datos convertidos no cambian.
+  It uses a synthetic save and is not included in the player's package.
+- The nine startup and log checks through HostFs also pass
+  in `build/PS2/usb-host-checks/20261005-160634-489/report.json`, and the
+  logger test preserves write limits and checks that wait captures
+  activate, stay bounded, and reset when a frame returns.
+  OOTPS2.ELF retains its previous SHA256; the correction applies to both
+  logging ELFs. Converted data are unchanged.
 
-## Escrituras del diagnóstico y prueba del controlador USB — 2026-10-05
+## Diagnostic writes and USB driver test — 2026-10-05
 
-- El segundo intento físico también queda negro, esta vez con DIAG.ELF y
-  render normal de 448 líneas. BOOT.LOG termina en la etapa 45,
-  `REGISTRO: iniciando hilo por vblank`; DIAG.LOG v2 contiene sólo su cabecera
-  de 433 bytes. Se conservan ambos con hashes verificados en
+- The second physical attempt also goes black, this time with DIAG.ELF and
+  normal 448-line rendering. BOOT.LOG ends at stage 45,
+  `REGISTRO: iniciando hilo por vblank`; DIAG.LOG v2 contains only its
+  433-byte header. Both are preserved with verified hashes in
   `build/PS2/hardware-runtime/scph90010-diag448-20261005-143535`.
-- Se añade una prueba del ELF nativo con una imagen FAT32 y el dispositivo
-  USB de PCSX2, sin HostFs. La versión anterior permite seguir ejecutando el
-  juego en esa prueba, pero produce 288 errores de transferencia, 675 bytes
-  nulos en DIAG.LOG y 61 en BOOT.LOG, además de sobrescribir la cabecera.
-  Evidencia privada en `build/PS2/usb-stack-checks/20261005-144729-837`.
-- DIAG.LOG v3 escribe sectores de 512 bytes desde un buffer alineado a
-  64 bytes; también mantiene alineado el siguiente append. Los reintentos
-  de escrituras parciales desplazan los datos dentro del buffer, conservando
-  su dirección alineada. El límite de 2 MiB cuenta el relleno realmente
-  escrito y reserva un sector para LOG_LIMIT.
-- Corregir sólo DIAG.LOG elimina los errores de transferencia, pero aún
-  permite que BOOT.LOG corrompa la cabecera vecina. BOOT.LOG v2 usa también
-  un sector por línea. BOOTTEST lee hasta 8 KiB del final y elimina los
-  espacios de relleno para mostrar diez etapas, conservando los logs v1.
-  Se registran por separado reloj, semáforo, hilo y apertura/escritura/cierre
-  del primer lote para acotar cualquier bloqueo físico restante.
-- La prueba completa ya pasa en
-  `build/PS2/usb-stack-checks/20261005-151055-633/report.json`: ambos registros
-  íntegros, cero errores USB, 25 muestras sin pérdidas ni reloj aproximado,
-  carga de Hyrule Field y fotogramas posteriores al logo. El SHA256 de los
-  datos permanece intacto. El mayor volcado tarda 95 ms en ese emulador;
-  no certifica el tiempo en hardware ni confirma todavía el arranque físico
-  de esta revisión. El analizador marca cabeceras inválidas y bytes nulos.
-- Las pruebas del logger pasan con buffers alineados, transferencias
-  acotadas, escrituras parciales de 31 bytes y el límite exacto del archivo,
-  además de desbordamiento del anillo, errores y preservación de interrupciones.
-  La comparación del suelo con DIAG224 sigue aplazada hasta confirmar DIAG.ELF
-  en la SCPH-90010.
-- Pasan los nueve casos del paquete en
-  `build/PS2/usb-host-checks/20261005-151810-528/report.json`, incluidos los logs
-  de arranque antiguos y rellenos por sectores. La lectura del banco de pruebas
-  comparte los archivos abiertos por Windows y reintenta bloqueos transitorios.
-  DIAG.ELF probado con el controlador USB: SHA256
+- A native ELF test is added with a FAT32 image and the PCSX2
+  USB device, without HostFs. The previous version allows the game to keep
+  running in that test, but produces 288 transfer errors, 675 null bytes
+  in DIAG.LOG and 61 in BOOT.LOG, as well as overwriting the header.
+  Private evidence is in `build/PS2/usb-stack-checks/20261005-144729-837`.
+- DIAG.LOG v3 writes 512-byte sectors from a buffer aligned to
+  64 bytes; it also keeps the next append aligned. Partial-write
+  retries shift data within the buffer, preserving
+  its aligned address. The 2 MiB limit counts the padding actually
+  written and reserves one sector for LOG_LIMIT.
+- Fixing DIAG.LOG alone eliminates transfer errors, but still
+  allows BOOT.LOG to corrupt the neighboring header. BOOT.LOG v2 also uses
+  one sector per line. BOOTTEST reads up to 8 KiB from the end and removes
+  padding spaces to display ten stages, preserving v1 log support.
+  The clock, semaphore, thread, and opening/writing/closing of the
+  first batch are recorded separately to narrow down any remaining physical hang.
+- The full test now passes in
+  `build/PS2/usb-stack-checks/20261005-151055-633/report.json`: both logs
+  intact, zero USB errors, 25 samples without losses or an approximate clock,
+  Hyrule Field loading, and frames after the logo. The data SHA256
+  remains intact. The largest flush takes 95 ms in that emulator;
+  it does not certify hardware timing or yet confirm physical startup
+  of this revision. The analyzer flags invalid headers and null bytes.
+- The logger tests pass with aligned buffers, bounded
+  transfers, 31-byte partial writes, and the exact file limit,
+  as well as ring overflow, errors, and preservation of interrupts.
+  The floor comparison with DIAG224 remains deferred until DIAG.ELF is confirmed
+  on the SCPH-90010.
+- The nine package cases pass in
+  `build/PS2/usb-host-checks/20261005-151810-528/report.json`, including old
+  startup logs and logs padded by sector. Test-harness reading
+  shares files opened by Windows and retries transient locks.
+  DIAG.ELF tested with the USB driver: SHA256
   `c6eb78f8578f43d6e808d297366325e2431d5cf93f6fd95c025b5220df68343a`.
-- Los nueve archivos se copian y verifican en `D:\OOTPS2`, con respaldo en
-  `D:\OOTPS2-backup-20261005-152225`. Se conservan los dos registros físicos,
-  el ELF habitual de PCSX2 y la tarjeta del jugador, comprobados por SHA256.
-  Los segmentos estáticos terminan en `0x011afc70` para OOTPS2.ELF y
-  `0x011c2970` para DIAG.ELF, dentro de los 32 MiB del EE.
+- The nine files are copied and verified in `D:\OOTPS2`, with a backup in
+  `D:\OOTPS2-backup-20261005-152225`. Both physical logs,
+  the regular PCSX2 ELF, and the player's memory card are preserved and checked by SHA256.
+  Static segments end at `0x011afc70` for OOTPS2.ELF and
+  `0x011c2970` for DIAG.ELF, within the EE's 32 MiB.
 
-## Diagnóstico detenido tras el logo — 2026-10-05
+## Diagnostics stopped after the logo — 2026-10-05
 
-- La primera prueba física de DIAG224 muestra el logo y después queda negra.
-  Se conservan BOOT.LOG y DIAG.LOG del USB, con hashes verificados, en
+- The first physical DIAG224 test shows the logo and then goes black.
+  BOOT.LOG and DIAG.LOG from the USB are preserved, with verified hashes, in
   `build/PS2/hardware-runtime/scph90010-diag224-20261005-140823`.
-  BOOT.LOG llega al primer fotograma del logo; DIAG.LOG sólo contiene su
-  cabecera de 346 bytes. No hay datos para atribuirlo al modo de vídeo.
-- El hilo del registro deja de usar usleep con retorno ignorado. Un semáforo
-  de capacidad uno recibe una señal cada 60 llamadas del hilo de vblank,
-  que no hace E/S de archivos. El estado inicial se guarda antes de arrancar
-  el hilo y se registra también su entrada. Un fallo de semáforo o espera
-  detiene el registro. Los bloques periódicos siguen cerrándose cada cinco
-  segundos; los retraces permiten un volcado aunque el Timer 0 no avance.
-- Las muestras incluyen retraces, clockMs y clockFallback. Cuando falta
-  tiempo del Timer 0 se indica explícitamente el intervalo aproximado; no
-  se certifican los tiempos gráficos obtenidos con un reloj detenido.
-  El analizador reconoce un archivo con sólo cabecera, entrada del hilo,
-  errores del logger y uso de ese tiempo aproximado.
-- Las pruebas del logger pasan con saturación del semáforo, reloj detenido,
-  fallo de espera y fallo al crear el semáforo, además de los casos anteriores.
-  La siguiente prueba física debe usar DIAG.ELF a 448 líneas; se aplaza la
-  comparación del suelo con DIAG224 hasta confirmar el diagnóstico normal.
-- Pasan los ocho casos de arranque en
-  `build/PS2/usb-host-checks/20261005-142346-592/report.json`. El diagnóstico
-  normal registra entrada del hilo, diez muestras y carga de Hyrule Field,
-  sin pérdidas, errores ni uso del reloj aproximado. Los volcados tardan
-  como máximo 1 ms en PCSX2; esto no mide el USB físico. El ELF normal USB,
-  el ELF habitual de PCSX2 y la tarjeta del jugador conservan sus hashes.
-- Se verifica la copia actualizada en `D:\OOTPS2`, con respaldo en
-  `D:\OOTPS2-backup-20261005-142621`, conservando BOOT.LOG y DIAG.LOG físicos.
+  BOOT.LOG reaches the first logo frame; DIAG.LOG contains only its
+  346-byte header. There are no data to attribute this to the video mode.
+- The logging thread stops using usleep with its return value ignored. A semaphore
+  with capacity one receives a signal every 60 calls of the vblank thread,
+  which performs no file I/O. The initial state is saved before starting
+  the thread, and its entry is also recorded. A semaphore or wait failure
+  stops logging. Periodic blocks are still closed every five
+  seconds; retraces allow a flush even if Timer 0 does not advance.
+- Samples include retraces, clockMs, and clockFallback. When Timer 0
+  time is missing, the approximate interval is explicitly indicated; graphics
+  times obtained with a stopped clock are not certified.
+  The analyzer recognizes a header-only file, thread entry,
+  logger errors, and use of that approximate time.
+- The logger tests pass with semaphore saturation, a stopped clock,
+  wait failure, and semaphore creation failure, as well as previous cases.
+  The next physical test must use DIAG.ELF at 448 lines; the floor
+  comparison with DIAG224 is deferred until normal diagnostics are confirmed.
+- The eight startup cases pass in
+  `build/PS2/usb-host-checks/20261005-142346-592/report.json`. Normal diagnostics
+  record thread entry, ten samples, and Hyrule Field loading,
+  without losses, errors, or use of the approximate clock. Flushes take
+  at most 1 ms in PCSX2; this does not measure physical USB. The normal USB ELF,
+  the regular PCSX2 ELF, and the player's memory card retain their hashes.
+- The updated copy is verified in `D:\OOTPS2`, with a backup in
+  `D:\OOTPS2-backup-20261005-142621`, preserving physical BOOT.LOG and DIAG.LOG.
   DIAG.ELF SHA256 `271cfe133d78b07c75f08706972df88265126c66a6162fa6dbb433545d18df31`;
-  los diagnósticos terminan sus segmentos estáticos en `0x011c22b0`.
+  diagnostic static segments end at `0x011c22b0`.
 
-## Registro USB, cargas y comparación del suelo — 2026-10-05
+## USB logging, loading, and floor comparison — 2026-10-05
 
-- El usuario confirma que el juego inicia y permite jugar en su SCPH-90010
-  después de la corrección de caché. Se conserva el BOOT.LOG físico en
-  `build/PS2/hardware-boot/scph90010-first-gameplay`. Las pausas de carga se
-  recuperan, el suelo tiembla incluso quieto y el audio falla con FPS bajos.
-- DIAG.ELF registra en DIAG.LOG estados, cargas de salas, lecturas lentas o
-  fallidas, FPS presentados, tiempos gráficos, síntesis y cola de audio.
-  Los hilos del juego sólo añaden registros en RAM; otro hilo escribe y
-  cierra bloques cada cinco segundos. Se limita a 2 MiB y registra su propio
-  coste de escritura y las pérdidas de registros. Un error de escritura o
-  llegar al límite detiene el registro, sin detener el juego.
-- Los ELF USB amplían la caché de sectores de audio a 256 KiB y añaden una
-  caché independiente de 64 KiB para lecturas anticipadas de 16 KiB. Evitan
-  seeks redundantes y respetan EOF. Los buffers se alinean a 64 bytes para
-  separar datos y metadatos durante DMA. La prueba de 64 KiB de cargas en
-  trozos de 8 KiB necesita cuatro lecturas físicas, ninguna al repetir y
-  conserva los sectores de audio. El audio USB reserva 60 ms en el IOP,
-  frente a los 20 ms anteriores. Su mejora física queda pendiente.
-- DIAG224.ELF compara un render 640x224 con líneas duplicadas, manteniendo
-  la salida NTSC entrelazada de 448 líneas para el convertidor AV a HDMI.
-  OOTPS2.ELF y DIAG.ELF conservan 640x448. Reduce detalle vertical; falta
-  comprobar si cambia el temblor en hardware. No se da el suelo por corregido.
-- Pasan el modelo de caché, las pruebas del logger (incluidos fallos,
-  escrituras parciales, desbordamiento e interrupciones) y la suite nativa
-  con las políticas USB de ROM/audio. El registro de esta última está en
-  `build/PS2/usb-cache-smoke/runtime.log`. Pasan ocho casos de arranque en
-  `build/PS2/usb-host-checks/20261005-005339-046/report.json`, incluidos ambos
-  diagnósticos hasta la carga de una escena. DIAG224 confirma render 224,
-  salida 448 y MagV=1; el normal confirma render/salida 448 y MagV=0.
-  No se pierden registros; los volcados en PCSX2 tardan como máximo 1 ms.
-- Se añade `tools/analyze_ps2_runtime_log.py` para resumir las sesiones sin
-  jugar todo el juego. Los tiempos USB de PCSX2 no representan los del USB
-  físico. El nuevo registro revela unos 30 FPS reales en el logo N64 pese
-  a su configuración R_UPDATE_RATE=1; su objetivo de 60 FPS sigue pendiente.
-- El paquete incluye los tres ELF del juego, BOOTTEST y sus datos/documentos.
-  La copia evita reescribir los datos idénticos, respalda archivos sustituidos
-  y conserva los logs adicionales del usuario. No modifica el ELF habitual
-  de PCSX2 ni la tarjeta del jugador.
-- Se copian y verifican nueve archivos en `D:\OOTPS2`, con respaldo en
-  `D:\OOTPS2-backup-20261005-005608`. El BOOT.LOG físico conserva su hash.
-  Los segmentos estáticos terminan en `0x011afa70` para OOTPS2 y
-  `0x011c1eb0` para los diagnósticos, dentro de los 32 MiB del EE. Juego SHA256
+- The user confirms that the game starts and can be played on their SCPH-90010
+  after the cache correction. The physical BOOT.LOG is preserved in
+  `build/PS2/hardware-boot/scph90010-first-gameplay`. Loading pauses
+  recover, the floor shakes even when still, and audio fails at low FPS.
+- DIAG.ELF records states, room loads, slow or failed reads,
+  presented FPS, graphics times, synthesis, and the audio queue in DIAG.LOG.
+  Game threads only add records in RAM; another thread writes and
+  closes blocks every five seconds. It is limited to 2 MiB and records its own
+  write cost and lost records. A write error or
+  reaching the limit stops logging without stopping the game.
+- USB ELFs expand the audio sector cache to 256 KiB and add an
+  independent 64 KiB cache for 16 KiB read-ahead. They avoid
+  redundant seeks and respect EOF. Buffers are aligned to 64 bytes to
+  separate data and metadata during DMA. The test loading 64 KiB in
+  8 KiB chunks requires four physical reads, none on repetition, and
+  preserves audio sectors. USB audio reserves 60 ms in the IOP,
+  versus the previous 20 ms. Its physical improvement remains pending.
+- DIAG224.ELF compares a 640x224 render with duplicated lines, retaining
+  448-line interlaced NTSC output for the AV-to-HDMI converter.
+  OOTPS2.ELF and DIAG.ELF retain 640x448. It reduces vertical detail; whether
+  it changes the shaking on hardware still needs checking. The floor is not considered fixed.
+- The cache model, logger tests (including failures,
+  partial writes, overflow, and interrupts), and the native suite with
+  USB ROM/audio policies pass. The latter's log is in
+  `build/PS2/usb-cache-smoke/runtime.log`. Eight startup cases pass in
+  `build/PS2/usb-host-checks/20261005-005339-046/report.json`, including both
+  diagnostics through scene loading. DIAG224 confirms render 224,
+  output 448, and MagV=1; normal diagnostics confirm render/output 448 and MagV=0.
+  No records are lost; flushes in PCSX2 take at most 1 ms.
+- `tools/analyze_ps2_runtime_log.py` is added to summarize sessions without
+  playing the whole game. PCSX2 USB times do not represent physical USB
+  times. The new log reveals about 30 actual FPS in the N64 logo despite
+  its R_UPDATE_RATE=1 setting; its 60 FPS target remains pending.
+- The package includes the three game ELFs, BOOTTEST, and their data/documents.
+  Copying avoids rewriting identical data, backs up replaced files,
+  and preserves the user's additional logs. It does not modify the regular PCSX2
+  ELF or the player's memory card.
+- Nine files are copied and verified in `D:\OOTPS2`, with a backup in
+  `D:\OOTPS2-backup-20261005-005608`. The physical BOOT.LOG retains its hash.
+  Static segments end at `0x011afa70` for OOTPS2 and
+  `0x011c1eb0` for diagnostics, within the EE's 32 MiB. Game SHA256
   `4d8f97f2ee171d4c6f9699bd637964f7e700521551ccb0f41fa7dedd01baa8d1`.
-  Informe de copia: `build/PS2/usb-copy-report.json`.
+  Copy report: `build/PS2/usb-copy-report.json`.
 
-## Diagnóstico del arranque en consola — 2026-10-04
+## Console startup diagnostics — 2026-10-04
 
-- El segundo intento en la consola termina en `[PS2 STATE] Init 0x486b60`.
-  Ese símbolo corresponde a ConsoleLogo_Init, no al arranque del GS. Se
-  conserva BOOT.LOG del USB en `build/PS2/hardware-boot/scph90010-before-cache`.
-- Se sustituye la invalidación de toda la caché de datos por sincronización
-  del rango solicitado. Conserva escrituras de CPU y los vecinos de líneas
-  parciales. Las funciones se separan en ps2_cache.c; la versión anterior
-  podía perder pilas y mensajes de otros hilos al cargar el segmento del logo.
-  El registro aún no permite afirmar que sea la única causa del bloqueo.
-- BOOTTEST añade una prueba de buffers vecinos/pila, alias físico, datos
-  producidos por CPU e interrupciones. El modelo de caché CPU/RAM pasa y
-  rechaza expresamente la invalidación global anterior. Pasan también los
-  seis casos de arranque, incluido el logo y primer fotograma, en
-  `build/PS2/usb-host-checks/20261004-234222-172/report.json`. El comportamiento
-  de caché en consola queda pendiente de la nueva prueba.
-- Se registran pasos de la arena y constructor del estado y de la reserva,
-  DMA, matrices, vista y SRAM del logo, sólo en la variante USB. El logo
-  conserva su configuración de 60 FPS (R_UPDATE_RATE=1), como pide el usuario.
-- El paquete corregido se copia y verifica en `D:\OOTPS2`, conservando el
-  BOOT.LOG anterior. Juego SHA256
+- The second attempt on the console ends at `[PS2 STATE] Init 0x486b60`.
+  That symbol corresponds to ConsoleLogo_Init, not GS startup. BOOT.LOG
+  from the USB is preserved in `build/PS2/hardware-boot/scph90010-before-cache`.
+- Invalidation of the entire data cache is replaced with synchronization
+  of the requested range. It preserves CPU writes and neighbors of partial
+  lines. The functions are separated into ps2_cache.c; the previous version
+  could lose stacks and messages from other threads while loading the logo segment.
+  The log does not yet establish this as the sole cause of the hang.
+- BOOTTEST adds a test of neighboring buffers/stack, physical alias, data
+  produced by the CPU, and interrupts. The CPU/RAM cache model passes and
+  explicitly rejects the previous global invalidation. The six startup
+  cases also pass, including the logo and first frame, in
+  `build/PS2/usb-host-checks/20261004-234222-172/report.json`. Console cache
+  behavior awaits the new test.
+- Steps of the arena and state constructor, and the logo's allocation,
+  DMA, matrices, view, and SRAM are recorded only in the USB variant. The logo
+  retains its 60 FPS configuration (R_UPDATE_RATE=1), as requested by the user.
+- The corrected package is copied and verified in `D:\OOTPS2`, preserving the
+  previous BOOT.LOG. Game SHA256
   `d4c7c98dfa1a41ec0c0c31ab49fb718b0692ae90555d52bc8f4dabf39f0022ab`,
-  segmentos estáticos hasta `0x0116e730`. Se respaldan los archivos sustituidos
-  en `D:\OOTPS2-backup-20261004-234548`. El ELF habitual y la tarjeta del
-  jugador conservan sus hashes.
+  static segments through `0x0116e730`. Replaced files are backed up
+  in `D:\OOTPS2-backup-20261004-234548`. The regular ELF and the player's
+  memory card retain their hashes.
 
-- El usuario confirma `DATOS OK` en BOOTTEST en una SCPH-90010 conectada
-  mediante convertidor AV a HDMI. OOTPS2.ELF queda negro. Está confirmada
-  la lectura inicial de datos en hardware, pero no el arranque del juego
-  ni la causa del bloqueo. Se registra en `BUGS_PS2.md`.
-- La variante USB muestra la etapa desde la entrada de main y registra
-  resultados de módulos, reset, memory card, vídeo, mando, audio, heap,
-  vblank y apertura de datos. Conserva las etapas previas en RAM y crea
-  `BOOT.LOG` junto a OOT.Z64 después de validarlo. Cierra cada escritura
-  para conservar la última etapa al reiniciar. El texto de pantalla se
-  desactiva antes de gsKit; el registro se limita a 96 etapas y sólo al
-  primer fotograma, sin registrar todos los fotogramas del juego.
-- BOOTTEST muestra las diez últimas líneas del registro anterior con
-  lectura acotada y sin modificarlo. También informa si aún no existe.
-  Los objetos de boot y osSyncPrintf son independientes en la variante
-  USB; el ELF habitual de PCSX2 y la tarjeta del jugador no se sustituyen.
-- Pasan seis comprobaciones en PCSX2: datos válidos/incorrectos, inicio
-  del juego hasta el primer fotograma con BOOT.LOG completo y los dos
-  arranques sin dispositivo USB. La prueba de BOOTTEST conserva el hash
-  de un registro mayor que su buffer y muestra correctamente su final.
-  Informe: `build/PS2/usb-host-checks/20261004-232202-361/report.json`.
-- El nuevo juego USB termina sus segmentos estáticos en `0x0116e430`,
-  dentro de la RAM del EE. Los datos convertidos no cambian. La prueba
-  del nuevo diagnóstico en la consola real queda pendiente.
-- Se copian y verifican siete archivos en `D:\OOTPS2`. El juego tiene
+- The user confirms `DATOS OK` in BOOTTEST on an SCPH-90010 connected
+  through an AV-to-HDMI converter. OOTPS2.ELF goes black. The initial
+  hardware data read is confirmed, but game startup and the cause of the hang
+  are not. This is recorded in `BUGS_PS2.md`.
+- The USB variant displays the stage from main entry and records
+  results for modules, reset, memory card, video, controller, audio, heap,
+  vblank, and data opening. It preserves earlier stages in RAM and creates
+  `BOOT.LOG` alongside OOT.Z64 after validating it. It closes each write
+  to preserve the last stage on restart. Onscreen text is
+  disabled before gsKit; logging is limited to 96 stages and only to the
+  first frame, without recording every game frame.
+- BOOTTEST displays the last ten lines of the previous log with
+  bounded reading and without modifying it. It also reports if none exists yet.
+  The boot and osSyncPrintf objects are independent in the USB
+  variant; the regular PCSX2 ELF and the player's memory card are not replaced.
+- Six checks pass in PCSX2: valid/incorrect data, game startup
+  through the first frame with a complete BOOT.LOG, and both
+  startups without a USB device. The BOOTTEST test preserves the hash
+  of a log larger than its buffer and correctly displays its end.
+  Report: `build/PS2/usb-host-checks/20261004-232202-361/report.json`.
+- The new USB game's static segments end at `0x0116e430`,
+  within EE RAM. Converted data are unchanged. Testing
+  the new diagnostics on the real console remains pending.
+- Seven files are copied and verified in `D:\OOTPS2`. The game has
   SHA256 `ca2d317e3b01b6cbd3691745c58168e0183f9bb4c2540d81d3c680c491122040`.
-  Los archivos sustituidos se conservan en
-  `D:\OOTPS2-backup-20261004-232349`; informe `build/PS2/usb-copy-report.json`.
+  Replaced files are preserved in
+  `D:\OOTPS2-backup-20261004-232349`; report `build/PS2/usb-copy-report.json`.
 
-## Recorrido de salas y preparación USB — 2026-10-04
+## Room traversal and USB preparation — 2026-10-04
 
-- El usuario da por resuelto el Árbol Deku y pide ampliar las pruebas y
-  preparar después una prueba en PS2 real mediante USB, Free McBoot y
-  wLaunchELF. Autoriza copiar el paquete terminado a la unidad D:.
-- Se añade un ELF de pruebas independiente: selecciona las 388 salas de
-  las listas originales convertidas, con una edad por escena. Carga y
-  ejecuta al menos 45 fotogramas, comprueba actores y objetos, ejercita
-  recepción de equipo/rupias y banderas de interruptores/cofres, y restaura
-  inmediatamente el estado de prueba. Ambas tarjetas y el mando quedan
-  desactivados. No sustituye progresión, puzles, combates ni puertas reales.
-- Captura el GS en PPM 320x240, verifica longitud/hash y genera PNGs,
-  hojas de contacto y una galería buscable. Las imágenes oscuras se marcan
-  para revisar la cámara; no se certifica automáticamente fidelidad visual.
-  Los informes parciales conservan FAIL y pueden reunirse con procedencia.
-  El validador rechaza resultado ausente, excepción posterior al PASS,
-  evento faltante y sala incorrecta.
-- Un anclaje sintético activa un portal en el Templo del Fuego. Se bloquean
-  peticiones de otras salas sólo en el ELF de pruebas. `DemoKankyo` oculta
-  deliberadamente el fondo de `hiral_demo`; se reconoce esa condición con
-  el buffer cargado, sin modificar la escena. La prueba aislada pasa.
-- Se intentan las 388 salas: 387 completan carga, eventos y captura en las
-  101 escenas. `men_room_2`, caso 201, produce una excepción en las rocas
-  móviles. Se reproduce en una ejecución en frío; la segunda ruta está en
-  un bloque todavía no descrito del conversor. Sigue pendiente y se anota
-  en `BUGS_PS2.md`. La galería reunida queda en
-  `build/PS2/room-gallery-20261004/index.html`, con estado FAIL.
-- El arranque actual reinicia el IOP, perdiendo los controladores de USB
-  del lanzador. La nueva variante USB incorpora USBD y USBHDFSD, los carga
-  después del reset y busca los datos junto al ELF. Comprueba el tamaño
-  y doce bloques con CRC32; muestra un error y detiene el arranque si
-  faltan o no corresponden. No acepta una ROM original como datos del port.
-- Se añade BOOTTEST, que comprueba datos y consulta la tarjeta del puerto 1
-  sin escribirla ni formatearla. El paquete incorpora ELF, datos convertidos,
-  SHA256, informe de direcciones estáticas del ELF e instrucciones. El juego
-  termina sus segmentos estáticos en 0x01168570, dentro de los 32 MiB del EE;
-  esto no certifica todas las reservas dinámicas en hardware.
-- Pasan las comprobaciones locales de datos válidos, tamaño incorrecto,
-  bloque alterado, arranque del juego por la ruta verificada y carga real
-  de los dos módulos en el IOP de PCSX2 con error acotado por archivo USB
-  ausente. La carga se comprueba en el diagnóstico y en el juego con sus
-  módulos de sonido, tarjeta y mandos ya preparados. Primer informe:
+- The user considers the Deku Tree resolved and asks to expand testing and
+  then prepare a real PS2 test through USB, Free McBoot, and
+  wLaunchELF. They authorize copying the finished package to drive D:.
+- An independent test ELF is added: it selects all 388 rooms from
+  the original converted lists, with one age per scene. It loads and
+  runs at least 45 frames, checks actors and objects, exercises
+  equipment/rupee receipt and switch/chest flags, and immediately restores
+  the test state. Both memory cards and the controller are
+  disabled. This does not replace progression, puzzles, combat, or actual doors.
+- It captures the GS in 320x240 PPM, verifies length/hash, and generates PNGs,
+  contact sheets, and a searchable gallery. Dark images are flagged
+  for camera review; visual fidelity is not automatically certified.
+  Partial reports retain FAIL and can be combined with provenance.
+  The validator rejects a missing result, an exception after PASS,
+  a missing event, and an incorrect room.
+- A synthetic anchor activates a portal in the Fire Temple. Requests
+  for other rooms are blocked only in the test ELF. `DemoKankyo` deliberately
+  hides the background of `hiral_demo`; that condition is recognized with
+  the loaded buffer, without modifying the scene. The isolated test passes.
+- All 388 rooms are attempted: 387 complete loading, events, and capture across
+  101 scenes. `men_room_2`, case 201, produces an exception in the moving
+  rocks. It is reproduced in a cold run; the second path is in
+  a block not yet described by the converter. It remains pending and is noted
+  in `BUGS_PS2.md`. The combined gallery is in
+  `build/PS2/room-gallery-20261004/index.html`, with FAIL status.
+- Current startup resets the IOP, losing the launcher's USB
+  drivers. The new USB variant includes USBD and USBHDFSD, loads them
+  after the reset, and looks for data alongside the ELF. It checks the size
+  and twelve blocks with CRC32; it displays an error and stops startup if
+  they are missing or do not match. It does not accept an original ROM as port data.
+- BOOTTEST is added to check data and query the memory card in port 1
+  without writing to or formatting it. The package includes ELF, converted data,
+  SHA256, a report of the ELF's static addresses, and instructions. The game's
+  static segments end at 0x01168570, within the EE's 32 MiB;
+  this does not certify all dynamic allocations on hardware.
+- Local checks pass for valid data, incorrect size,
+  an altered block, game startup through the verified path, and actual loading
+  of both modules in PCSX2's IOP with a bounded error for a missing USB
+  file. Loading is checked in diagnostics and in the game with its
+  sound, memory card, and controller modules already prepared. First report:
   `build/PS2/usb-host-checks/20261004-223424-326/report.json`.
-  La repetición final pasa los seis casos, incluido el ELF USB del juego:
+  The final rerun passes all six cases, including the game's USB ELF:
   `build/PS2/usb-host-checks/20261004-225212-578/report.json`.
-  Ninguna prueba valida un dispositivo USB físico ni una PS2 real.
-- El paquete privado queda en `build/PS2/usb-ready/OOTPS2`. El ELF de juego
-  tiene SHA256 `cd03ea959336f5d9ac9951823ed1afd35739302d7c450f4c4b27758e9d3c438b`;
-  los datos conservan `034fcb6d0a95154d8f96b5b8e11711d5781e2e6950b3cc99b28c3de9a641a78f`.
-  Se conserva el ELF habitual de PCSX2 y el guardado del jugador. La prueba
-  en consola, el rendimiento adicional y la publicación en GitHub siguen
-  pendientes; el paquete con recursos del juego queda fuera de Git.
-- Se copian siete archivos a `D:\OOTPS2` en el USB FAT32 LUCBYN y se comparan
-  sus SHA256 con los del paquete. Informe `build/PS2/usb-copy-report.json`.
+  No test validates a physical USB device or a real PS2.
+- The private package is in `build/PS2/usb-ready/OOTPS2`. The game ELF
+  has SHA256 `cd03ea959336f5d9ac9951823ed1afd35739302d7c450f4c4b27758e9d3c438b`;
+  the data retain `034fcb6d0a95154d8f96b5b8e11711d5781e2e6950b3cc99b28c3de9a641a78f`.
+  The regular PCSX2 ELF and the player's save are preserved. Console
+  testing, further performance work, and publication on GitHub remain
+  pending; the package with game resources stays outside Git.
+- Seven files are copied to `D:\OOTPS2` on the LUCBYN FAT32 USB, and their
+  SHA256 hashes are compared with the package. Report `build/PS2/usb-copy-report.json`.
 
-## Posición, fondo y animación del icono — 2026-10-04
+## Icon position, background, and animation — 2026-10-04
 
-- El usuario confirma corregida la araña sobre el desnivel. En el navegador
-  de la BIOS confirma el título y la Trifuerza, pero el modelo está demasiado
-  bajo. Se prueba primero Y=-3; queda demasiado alto en la lista de guardados.
-  Se establece Y=-1.5 como posición intermedia para la lista y el panel de
-  copiar/eliminar. El fondo cambia a un degradado dorado.
-- Se añaden poses alrededor del eje vertical y curvas de mezcla que suman
-  uno. La variante de 16 poses (75024 bytes) pasa la decodificación y lectura
-  completa con libmc, pero la BIOS la muestra como datos dañados. Se reduce
-  a ocho poses (56208 bytes), que el usuario confirma correctamente visibles
-  y girando. La causa de la incompatibilidad de la variante mayor no queda
-  aislada; no se atribuye a un límite específico de tamaño o de poses.
-- Tras esa confirmación, se reduce la velocidad de 1.0 a 0.35 y la intensidad
-  de las luces y del ambiente para distinguir mejor el relieve y los biseles.
-  Se conserva la geometría local de 96 triángulos y el hueco central.
-- Se añade un instalador EE que sólo actualiza `icon.sys` y `triforce.icn`
-  sobre una tarjeta ya formateada con una partida existente. No escribe SRAM
-  ni formatea: compara ambos archivos completos, `save.dat` y `save.bak`,
-  antes y después de la instalación. Primero se prueba sobre una copia de
-  la tarjeta habitual con una configuración aislada. El PASS confirma los
-  archivos del navegador y que los dos guardados permanecen idénticos.
-- El lector independiente verifica las ocho poses, curvas, mezcla entre
-  claves, continuidad del ciclo, altura constante, título, iluminación,
-  textura y límites. El reporte registra la velocidad y conserva
-  `bios_display_validated=false`: esa herramienta no observa la BIOS.
-- Pasan las pruebas con el ajuste final: lectura de todos los bytes, dos
-  escrituras alternas, recuperación de copia dañada, reparación del modelo
-  truncado y de metadatos ausentes, conservación de SRAM ante error y recarga
-  tras cerrar PCSX2. Registros nuevos:
-  `build/PS2/pcsx2-icon-slow-card-write.log` y
+- The user confirms that the spider above the drop is fixed. In the BIOS
+  browser, they confirm the title and Triforce, but the model is too
+  low. Y=-3 is tried first; it is too high in the save list.
+  Y=-1.5 is set as an intermediate position for the list and the
+  copy/delete panel. The background changes to a golden gradient.
+- Poses around the vertical axis and blending curves summing to
+  one are added. The 16-pose variant (75024 bytes) passes decoding and complete
+  reading with libmc, but the BIOS displays it as corrupted data. It is reduced
+  to eight poses (56208 bytes), which the user confirms are correctly visible
+  and rotating. The cause of the larger variant's incompatibility is not
+  isolated; it is not attributed to a specific size or pose limit.
+- After that confirmation, the speed is reduced from 1.0 to 0.35, along with
+  the light and ambient intensity, to better distinguish the relief and bevels.
+  The local geometry of 96 triangles and the central hole are preserved.
+- An EE installer is added that only updates `icon.sys` and `triforce.icn`
+  on an already formatted memory card with an existing save. It does not write SRAM
+  or format: it compares both complete files, `save.dat` and `save.bak`,
+  before and after installation. It is first tested on a copy of
+  the regular memory card with an isolated configuration. PASS confirms the
+  browser files and that both saves remain identical.
+- The independent reader verifies the eight poses, curves, blending between
+  keys, cycle continuity, constant height, title, lighting,
+  texture, and bounds. The report records the speed and retains
+  `bios_display_validated=false`: that tool does not observe the BIOS.
+- Tests pass with the final adjustment: reading every byte, two
+  alternating writes, recovery from a damaged copy, repair of a truncated
+  model and missing metadata, SRAM preservation on error, and reload
+  after closing PCSX2. New logs:
+  `build/PS2/pcsx2-icon-slow-card-write.log` and
   `build/PS2/pcsx2-icon-slow-card-cold.log`.
-- La instalación sobre la tarjeta habitual pasa y confirma ambos archivos
-  completos de la partida idénticos, incluidos sus encabezados. Registro:
-  `build/PS2/pcsx2-icon-slow-install-player.log`. Se conservan los respaldos
-  `oot-port-before-icon-rotation.ps2` y `oot_ps2-before-icon-rotation.elf`.
-  El ELF normal se actualiza tras completar el enlace con 724 objetos;
+- Installation on the regular memory card passes and confirms both complete
+  save files are identical, including their headers. Log:
+  `build/PS2/pcsx2-icon-slow-install-player.log`. The backups
+  `oot-port-before-icon-rotation.ps2` and `oot_ps2-before-icon-rotation.elf` are preserved.
+  The normal ELF is updated after completing the link with 724 objects;
   SHA-256 `13AC8E1E6E51AEAEB12C05FA69558C79008B8B526996D140BC04DC269D1BCEAA`.
-  El usuario confirma también que la última velocidad e iluminación están bien.
-  La prueba en PS2 física sigue pendiente. El directorio antiguo de diagnóstico
-  `OOT_PS2_TEST` se detecta por separado y no se modifica en la tarjeta habitual.
+  The user also confirms that the final speed and lighting are good.
+  Testing on physical PS2 remains pending. The old diagnostic directory
+  `OOT_PS2_TEST` is detected separately and is not modified on the regular memory card.
 
-## Icono de memory card y pruebas automáticas — 2026-10-04
+## Memory card icon and automatic tests — 2026-10-04
 
-- El usuario pide el nombre del juego y una Trifuerza 3D para el navegador
-  de la memory card. El build genera `icon.sys` y `triforce.icn` desde
-  `gTriforceVtx`/`gTriforceDL` de la extracción local: 96 triángulos, biseles,
-  volumen y hueco central, con material dorado. El título usa Shift-JIS en
-  dos líneas: «Legend of Zelda» / «Ocarina of Time». El modelo ocupa 39736
-  bytes y los metadatos 964; el ELF normal enlaza 724 objetos. Los datos
-  generados y vértices del juego permanecen en `build/`, fuera de Git.
-- El backend instala el modelo antes de los metadatos, verifica su lectura
-  completa y omite reescrituras si los bytes ya coinciden. Sólo opera sobre
-  esos dos archivos; conserva los nombres, versión, checksums y revisiones
-  de los guardados alternos. Un error del icono no desactiva SRAM.
-- La prueba con libmc usa una tarjeta nueva aislada. Pasan dos escrituras,
-  recarga de la última revisión, recuperación de una copia dañada, lectura
-  de los dos archivos del navegador y persistencia al cerrar/reabrir PCSX2.
-  También pasan reparación de un modelo truncado y de metadatos ausentes,
-  conservación del guardado tras un fallo del icono e instalación sin cambios.
-  El lector independiente comprueba geometría, normales, título, referencias,
-  animación, textura y límites. La vista previa es un render del modelo;
-  falta confirmar su escala e iluminación en la BIOS y en PS2 física.
-- `tools/run_ps2_regression.ps1` reúne gráficos/audio/SRAM, memory card y
-  Skulltulas, con un informe JSON, hashes y registros nuevos por ejecución.
-  Rechaza PASS antiguos, detecta fallos/excepciones/tiempos agotados y cierra
-  sólo los procesos de prueba identificados. Cada ejecución crea su tarjeta
-  propia; la configuración de la partida queda excluida. El parámetro
-  `-IncludeSceneSweep` agrega los 191 casos de entradas a las 101 escenas.
-  No se declara comprobada la progresión completa ni la PS2 real.
-- Sobre la araña de la sala 10: el registro de la partida mantiene suelo
-  Y=720, plataforma Y=820, cilindros originales y masa normal de Link.
-  El recorrido observado pasa fuera de los cilindros de contacto. Siete
-  posiciones originales pasan bajada, aterrizaje, empuje y vuelta al techo.
-  La prueba adicional reproduce la alternancia de bajada/regreso a la
-  altura de la plataforma y confirma contacto frontal con respuesta al
-  golpe (`frontalHit=1`, `pushAndResponse=1`). Ese diagnóstico no se consideró
-  una corrección: el usuario confirma el problema antes y después de cruzar.
-  Se añade un ajuste de IA exclusivo de PS2: ante una superficie más alta
-  donde Link está apoyado, anticipa el siguiente paso descendente, cancela
-  la velocidad hacia abajo y completa el regreso al techo antes de volver
-  a bajar. No cambia el suelo, los daños ni los cilindros y no añade barreras.
-  Las pruebas contrastan 9990 canales de pose con la extracción original,
-  alturas 799/820, contacto frontal y regreso al techo. La comprobación
-  visual en la partida queda pendiente.
-  La prueba EE posterior pasa: mínimos Y=831.094 y Y=856.834, ambos por
-  encima de la superficie más 32 unidades, con cuatro regresos al techo
-  en cada caso; el contacto frontal sigue activando empuje y respuesta.
-  Las siete posiciones a nivel del suelo siguen pasando. Registro:
+- The user asks for the game's name and a 3D Triforce for the memory card
+  browser. The build generates `icon.sys` and `triforce.icn` from
+  `gTriforceVtx`/`gTriforceDL` in the local extraction: 96 triangles, bevels,
+  volume, and a central hole, with a golden material. The title uses Shift-JIS on
+  two lines: «Legend of Zelda» / «Ocarina of Time». The model occupies 39736
+  bytes and the metadata 964; the normal ELF links 724 objects. The data
+  generated and game vertices remain in `build/`, outside Git.
+- The backend installs the model before the metadata, verifies a complete
+  read, and skips rewriting if the bytes already match. It only operates on
+  those two files; it preserves the names, version, checksums, and revisions
+  of alternating saves. An icon error does not disable SRAM.
+- The libmc test uses a new isolated memory card. Two writes,
+  reloading the latest revision, recovery from a damaged copy, reading
+  both browser files, and persistence after closing/reopening PCSX2 pass.
+  Repair of a truncated model and missing metadata,
+  save preservation after an icon failure, and installation without changes also pass.
+  The independent reader checks geometry, normals, title, references,
+  animation, texture, and bounds. The preview is a render of the model;
+  its scale and lighting still need confirmation in the BIOS and on physical PS2.
+- `tools/run_ps2_regression.ps1` combines graphics/audio/SRAM, memory card, and
+  Skulltula tests, with a JSON report, hashes, and new logs for each run.
+  It rejects old PASS results, detects failures/exceptions/timeouts, and closes
+  only identified test processes. Each run creates its own memory
+  card; the play-session configuration is excluded. The
+  `-IncludeSceneSweep` parameter adds the 191 entry cases for all 101 scenes.
+  Full progression and real PS2 are not declared verified.
+- Regarding the spider in room 10: the play-session log retains floor
+  Y=720, platform Y=820, original cylinders, and Link's normal mass.
+  The observed path passes outside the contact cylinders. Seven
+  original positions pass descent, landing, pushing, and return to the ceiling.
+  The additional test reproduces alternating descent/return at
+  platform height and confirms frontal contact with a response to the
+  hit (`frontalHit=1`, `pushAndResponse=1`). That diagnostic was not considered
+  a correction: the user confirms the problem before and after crossing.
+  A PS2-only AI adjustment is added: when Link is standing on a higher
+  surface, it anticipates the next descending step, cancels
+  downward velocity, and completes the return to the ceiling before
+  descending again. It does not change the floor, damage, or cylinders, and adds no barriers.
+  Tests compare 9990 pose channels against the original extraction,
+  heights 799/820, frontal contact, and return to the ceiling. Visual
+  verification in the play session remains pending.
+  The subsequent EE test passes: minimum Y=831.094 and Y=856.834, both
+  above the surface plus 32 units, with four returns to the ceiling
+  in each case; frontal contact still triggers pushing and a response.
+  The seven positions at floor level still pass. Log:
   `build/PS2/pcsx2-skulltula-ledge-final.log`.
-  Ejecución del comando completo con compilación:
+  Full command run with a build:
   `build/PS2/regression/20261004-184640/report.json`.
-  Registro de partida: `build/PS2/pcsx2-skulltula-live-final.log`.
-- El juego normal con icono arranca en PCSX2: instala y verifica ambos
-  archivos en `OOT_PS2`, carga los 32768 bytes de la revisión 41 y verifica
-  una escritura posterior como revisión 42. La tarjeta anterior se conserva
-  en `oot-port-before-memorycard-icon.ps2`. Su presentación en el navegador
-  aún no está confirmada.
-- La versión normal con el ajuste de retirada vuelve a arrancar y carga la
-  revisión 42 sin reescribir los archivos del icono, que ya coinciden. Se
-  conserva otra copia de la tarjeta en `oot-port-before-skulltula-ledge-fix.ps2`.
-  SHA-256 del ELF abierto:
+  Play-session log: `build/PS2/pcsx2-skulltula-live-final.log`.
+- The normal game with the icon starts in PCSX2: it installs and verifies both
+  files in `OOT_PS2`, loads the 32768 bytes of revision 41, and verifies
+  a subsequent write as revision 42. The previous memory card is preserved
+  in `oot-port-before-memorycard-icon.ps2`. Its browser presentation
+  is not yet confirmed.
+- The normal version with the retreat adjustment starts again and loads
+  revision 42 without rewriting the icon files, which already match. Another
+  memory card copy is preserved in `oot-port-before-skulltula-ledge-fix.ps2`.
+  SHA-256 of the opened ELF:
   `1CE8CD742CB0D52DBF390BA664A888B4EC088ACF7530848863DC4080CE75E03B`.
 
-## Fundidos, huevos de Gohma, esmeralda y búho — 2026-10-04
+## Fades, Gohma eggs, emerald, and owl — 2026-10-04
 
-- Los colores empaquetados `RRGGBBAA` de las transiciones se asignaban
-  directamente a una unión de bytes RGBA. En el EE, little-endian, el
-  blanco original `160,160,160,255` se convertía en `255,160,160,160`;
-  al actualizar el alfa quedaba un fundido rosa. Un helper convierte
-  explícitamente entre palabras empaquetadas y campos RGBA, sin cambiar
-  el layout de las estructuras. Se aplica a Fade, Wipe, Circle y Triforce,
-  manteniendo sus tiempos y el tono original. La prueba EE usa los setters
-  reales: 48 casos y 7008 listas de dibujo de Fade, con colores, duraciones,
-  velocidades y ambos sentidos de fundido; pasa sin diferencias.
-- Los huevos de Gohma llaman a `func_80094E78` para desplazar una textura
-  mediante `SETTILESIZE` de tamaño cero. La subida lo interpretaba como
-  ausencia de texels. Cuando existe una máscara de repetición, se conserva
-  el periodo de la imagen cargada. El diagnóstico reproduce los comandos
-  del huevo y el wrap de 12 bits: antes fallan 124 de 128 casos; después
-  pasan todos, incluyendo 32768 texels RGBA. Registros:
-  `build/PS2/pcsx2-egg-scroll-before.log` y
+- The packed `RRGGBBAA` transition colors were assigned
+  directly to a union of RGBA bytes. On the little-endian EE, the
+  original white `160,160,160,255` became `255,160,160,160`;
+  updating alpha left a pink fade. A helper explicitly converts
+  between packed words and RGBA fields, without changing
+  the structure layout. It is applied to Fade, Wipe, Circle, and Triforce,
+  preserving their timing and original hue. The EE test uses the actual
+  setters: 48 cases and 7008 Fade draw lists, with colors, durations,
+  speeds, and both fade directions; it passes without differences.
+- Gohma's eggs call `func_80094E78` to scroll a texture
+  through a zero-size `SETTILESIZE`. Uploading interpreted this as
+  an absence of texels. When a repeat mask exists, the period
+  of the loaded image is preserved. Diagnostics reproduce the egg's
+  commands and 12-bit wrap: 124 of 128 cases fail before; afterward,
+  all pass, including 32768 RGBA texels. Logs:
+  `build/PS2/pcsx2-egg-scroll-before.log` and
   `build/PS2/pcsx2-visual-material-fixes-pass.log`.
-- La esmeralda Kokiri combina una intensidad I4 de 64x64 con ruido I8 de
-  32x32. Su alfa interpola ambas muestras; la ruta genérica usaba el mismo
-  texel para las dos. Se añade esa combinación, con scroll independiente,
-  shifts, tinte verde, factor LOD y alfa. Se conserva la imagen de ruido
-  completa aunque su ventana de scroll sea 16x16. La caché comprueba ambas
-  fuentes y orígenes, ignorando el padding. Pasan 114688 canales frente a
-  un evaluador independiente, cambios de tintes, scrolls y datos.
-- El cuello y cuerpo del búho repiten una imagen de 16x16 en una ventana
-  de clamp de 640x192. El buffer anterior no podía expandir esa ventana y
-  subía sólo 16x16 conservando un clamp de 640x192: el GS podía muestrear
-  otras texturas en VRAM. Los dos buffers temporales admiten ahora esa
-  expansión; el incremento total de RAM estática es 512 KiB. Pasan los
-  122880 texels del patrón repetido, límites de clamp y reutilización.
-- Pasan también las pruebas existentes de audio, sombras, transparencias,
-  suelo, inventario, aura del título y Skulltula, con los 120 fotogramas del
-  diagnóstico completo. Estas pruebas verifican campos, comandos y texels;
-  la comprobación visual de los cuatro casos en la partida sigue pendiente.
-  Las cinemáticas compiladas del Árbol Deku conservan sus 3448 bytes de
-  campos mixtos verificados, en `build/PS2/check-visual-fixes-cutscenes.log`.
-  Tras el guardado confirmado por el usuario se conserva la tarjeta en
-  `oot-port-before-visual-fixes.ps2` y el ELF anterior en
-  `oot_ps2-full-assets-native-actors-confirmed.elf`. La nueva versión visible
-  carga la partida y el Campo de Hyrule sin excepciones. Los cambios no
-  modifican los datos del juego ni su progresión.
+- The Kokiri Emerald combines an I4 intensity texture of 64x64 with I8 noise of
+  32x32. Its alpha interpolates both samples; the generic path used the same
+  texel for both. That combination is added with independent scrolling,
+  shifts, green tint, LOD factor, and alpha. The complete noise image is
+  preserved even though its scrolling window is 16x16. The cache checks both
+  sources and origins, ignoring padding. 114688 channels pass against
+  an independent evaluator, as do changes to tints, scrolling, and data.
+- The owl's neck and body repeat a 16x16 image in a 640x192
+  clamp window. The previous buffer could not expand that window and
+  uploaded only 16x16 while retaining a 640x192 clamp: the GS could sample
+  other textures in VRAM. Both temporary buffers now support that
+  expansion; the total static RAM increase is 512 KiB. All
+  122880 texels of the repeated pattern, clamp bounds, and reuse pass.
+- Existing tests for audio, shadows, transparency,
+  floor, inventory, title aura, and Skulltula also pass, with the 120 frames of the
+  full diagnostic. These tests verify fields, commands, and texels;
+  visual verification of all four cases during gameplay remains pending.
+  The compiled Deku Tree cutscenes retain their 3448 verified bytes of
+  mixed fields, in `build/PS2/check-visual-fixes-cutscenes.log`.
+  After the user confirms saving, the memory card is preserved in
+  `oot-port-before-visual-fixes.ps2` and the previous ELF in
+  `oot_ps2-full-assets-native-actors-confirmed.elf`. The new visible version
+  loads the save and Hyrule Field without exceptions. The changes do not
+  modify game data or progression.
 
-## Recursos del mapa completo y reinicio de actores — 2026-10-04
+## Full map assets and actor reset — 2026-10-04
 
-- El perfil `full` del conversor incluye todos los segmentos de datos
-  descritos por la extracción local: 101 escenas, 388 salas y 378 bancos
-  de objetos, en 1013 segmentos. Añade 780 al perfil anterior, conservando
-  sus direcciones VROM. Excluye el código N64 y sus overlays: el juego
-  utiliza sus funciones compiladas para el EE.
-- `check_ps2_full_assets.py` contrasta 49560 recursos de 67 tipos con las
-  estructuras nativas y los bytes originales. Comprueba dependencias de
-  objetos, salas, colisiones, rutas, headers alternos, esqueletos, animaciones,
-  fondos JPEG y punteros. Los 233 segmentos anteriores y toda la imagen
-  fuera de los nuevos rangos permanecen idénticos, incluido el audio.
-  El control con la imagen previa, un manifiesto completo y checksum válido
-  falla por un comando de escena sin convertir. Registros:
-  `build/PS2/check-full-assets.log` y `build/PS2/check-full-before-control.log`.
-- El diagnóstico enlaza un ELF independiente que llama a `Play_Init`,
-  `GameState_Update` y `Play_Destroy`. Usa guardados de prueba y entradas
-  reales; desactiva el mando y ambas memory cards. Selecciona la entrada
-  base y la hora que corresponden a cada variante de escena y edad; no
-  trata las entradas de noche o ruinas del mercado como entradas base.
-- La primera pasada descubre errores TLB de cámara en la segunda carga
-  de Barinade. Su variable estática de cámara seguía apuntando a una cámara
-  del estado anterior. Los overlays compilados del EE permanecían residentes
-  y no restablecían sus datos, a diferencia de una carga de overlay N64.
-- El linker agrupa `.data` y `.bss` de los 426 overlays de actores residentes.
-  Antes del arranque se conservan 391600 bytes de datos inicializados; la
-  carga de un overlay sin clientes los restaura y borra su BSS. Mantiene el
-  estado compartido mientras quedan actores vivos y respeta los overlays
-  persistentes hasta cambiar de escena. Los actores internos no se reinician.
-  Se corrige también el decremento de clientes al destruir actores residentes.
-- La prueba EE modifica los datos y BSS reales de los 426 bancos antes de
-  crear actores. Verifica la restauración de 390115 bytes de datos y 141375
-  bytes de BSS, la conservación mientras hay clientes y la conservación de
-  overlays persistentes hasta cambiar de escena. Pasa sin diferencias.
-- La repetición de la sala de Barinade, con niño y adulto, pasa 60 fotogramas
-  por entrada sin las excepciones de cámara. Registros:
-  `build/PS2/pcsx2-scenes-before-actor-reset.log` y
+- The converter's `full` profile includes every data segment
+  described by the local extraction: 101 scenes, 388 rooms, and 378 object
+  banks, in 1013 segments. It adds 780 to the previous profile, preserving
+  their VROM addresses. It excludes N64 code and its overlays: the game
+  uses its functions compiled for the EE.
+- `check_ps2_full_assets.py` compares 49560 resources of 67 types against the
+  native structures and original bytes. It checks object dependencies,
+  rooms, collisions, paths, alternate headers, skeletons, animations,
+  JPEG backgrounds, and pointers. The 233 previous segments and the entire image
+  outside the new ranges remain identical, including audio.
+  The control with the previous image, a complete manifest, and valid checksum
+  fails on an unconverted scene command. Logs:
+  `build/PS2/check-full-assets.log` and `build/PS2/check-full-before-control.log`.
+- Diagnostics link an independent ELF that calls `Play_Init`,
+  `GameState_Update`, and `Play_Destroy`. It uses test saves and actual
+  entrances; it disables the controller and both memory cards. It selects the base
+  entrance and time appropriate to each scene variant and age; it does not
+  treat nighttime or ruined-market entrances as base entrances.
+- The first pass discovers camera TLB errors on the second load
+  of Barinade. Its static camera variable still pointed to a camera
+  from the previous state. The EE's compiled overlays remained resident
+  and did not reset their data, unlike loading an N64 overlay.
+- The linker groups `.data` and `.bss` of all 426 resident actor overlays.
+  Before startup, 391600 bytes of initialized data are preserved; loading
+  an overlay with no clients restores them and clears its BSS. It maintains
+  shared state while actors remain alive and respects persistent
+  overlays until the scene changes. Internal actors are not reset.
+  Client decrement when destroying resident actors is also corrected.
+- The EE test modifies the actual data and BSS of all 426 banks before
+  creating actors. It verifies restoration of 390115 data bytes and 141375
+  BSS bytes, preservation while clients exist, and preservation of
+  persistent overlays until the scene changes. It passes without differences.
+- Repeating Barinade's room, as child and adult, passes 60 frames
+  per entrance without the camera exceptions. Logs:
+  `build/PS2/pcsx2-scenes-before-actor-reset.log` and
   `build/PS2/pcsx2-barinade-reset-pass.log`.
-- La pasada completa posterior supera 191 casos que cubren las 101 escenas,
-  usando niño/adulto y día/noche según las variantes de las entradas. Cada
-  caso completa 60 actualizaciones del estado real, sin excepciones del EE;
-  se comprueban la escena esperada y la sala cargada. No aparecen fallos de
-  textura ni vértices inválidos en las muestras gráficas del registro.
-  Registros: `build/PS2/pcsx2-all-scenes-native-pass.log`,
-  `build/PS2/check-scene-sweep-results.log` y `build/PS2/scene-sweep-results.json`.
-  El juego normal enlaza 722 objetos; el diagnóstico añade sus wrappers
-  sólo a su propio ELF. Las cuatro cinemáticas del árbol siguen coincidiendo
-  con sus campos nativos en el ELF final:
+- The subsequent full pass clears 191 cases covering all 101 scenes,
+  using child/adult and day/night according to entrance variants. Each
+  case completes 60 actual-state updates without EE exceptions;
+  the expected scene and loaded room are checked. No texture failures
+  or invalid vertices appear in the log's graphics samples.
+  Logs: `build/PS2/pcsx2-all-scenes-native-pass.log`,
+  `build/PS2/check-scene-sweep-results.log`, and `build/PS2/scene-sweep-results.json`.
+  The normal game links 722 objects; diagnostics add their wrappers
+  only to their own ELF. The four tree cutscenes still match
+  their native fields in the final ELF:
   `build/PS2/check-full-game-actor-cutscenes.log`.
-  Sigue pendiente la progresión completa y la comprobación en una PS2 real.
+  Full progression and verification on a real PS2 remain pending.
 
-## Máscara del brillo de la ficha de Skulltula — 2026-10-04
+## Skulltula token glow mask — 2026-10-04
 
-- La ficha emplea ruido I8 de 32×32 con desplazamiento como TEXEL0 y una
-  silueta I8 de 32×64 como TEXEL1. La ruta genérica usaba la primera fuente
-  para ambas, convirtiendo el ruido en un rectángulo visible. La nueva ruta
-  reconoce ese combinador y sus tiles, combina ambas fuentes y conserva las
-  coordenadas y el clamp de la silueta. La caché incluye los desplazamientos,
-  tintes, factor LOD y bytes de ambas texturas.
-- La prueba EE compara 40960 canales con un evaluador independiente,
-  cinco desplazamientos y constantes, 3785 texels transparentes, límites,
-  fuentes con padding, coordenadas inmediatas/preparadas e invalidación al
-  cambiar la máscara. Pasan también el suelo, inventario, aura del título,
-  audio y los 120 fotogramas del diagnóstico completo. Registro:
+- The token uses scrolling I8 noise of 32×32 as TEXEL0 and an
+  I8 silhouette of 32×64 as TEXEL1. The generic path used the first source
+  for both, turning the noise into a visible rectangle. The new path
+  recognizes that combiner and its tiles, combines both sources, and preserves the
+  silhouette's coordinates and clamp. The cache includes offsets,
+  tints, LOD factor, and bytes from both textures.
+- The EE test compares 40960 channels against an independent evaluator,
+  five offsets and constants, 3785 transparent texels, bounds,
+  sources with padding, immediate/prepared coordinates, and invalidation when
+  the mask changes. Floor, inventory, title aura,
+  audio, and the 120 frames of the full diagnostic also pass. Log:
   `build/PS2/pcsx2-token-flame-pass.log`.
-- El usuario confirma que la ficha ya se ve recortada. La versión visible
-  incorpora los datos completos; se conservan la imagen de 233 segmentos,
-  el ELF confirmado del interior del árbol y una copia de la memory card
-  tomada después del guardado, antes de este reinicio.
+- The user confirms that the token now appears cut out. The visible version
+  includes the full data; the 233-segment image,
+  the confirmed ELF for the tree's interior, and a memory card copy
+  taken after saving, before this restart, are preserved.
 
-## Interior del Árbol Deku y preparación de vértices — 2026-10-04
+## Deku Tree interior and vertex preparation — 2026-10-04
 
-- Tras confirmar el diálogo exterior, el registro muestra la entrada
-  `0000`, escena 0. Su lista de salas se leía en el orden N64 y producía
-  una carga desde VROM cero y fallos TLB. El perfil `play` ahora convierte
-  `ydan`, sus doce salas, `ydan_boss` y sus dos salas. También añade seis
-  dependencias de objetos descubiertas por las listas originales. La
-  imagen pasa de 211 a 233 segmentos; conserva todos sus rangos VROM.
-- `check_ps2_deku_rooms.py` contrasta 852 recursos nuevos con los campos
-  de las estructuras C: comandos, listas de salas y actores, colisiones,
-  geometría, esqueletos y animaciones. Comprueba límites y dependencias;
-  las texturas conservan sus bytes. Toda la imagen fuera de los 22 nuevos
-  segmentos permanece idéntica, incluidos los 211 anteriores y los bancos
-  de audio. El control con los datos previos falla por vértices en orden
-  incorrecto. También pasa de nuevo la comprobación de las salas de Kokiri.
-- La preparación de puntos gráficos calculaba por vértice las dimensiones
-  GS, shifts y offsets del tile, y consultaba otra vez el alfa del material.
-  Ahora prepara esos valores una vez después de subir la textura, con un
-  contexto independiente para cada capa del suelo. Se invalida ante todo
-  comando de estado. Conserva el orden de las operaciones flotantes,
-  perspectiva, profundidad, niebla y el orden de los pases.
-- En el EE, 27648 puntos coinciden en sus 48 bytes con la ruta inmediata:
-  dieciséis shifts, escalas positivas/negativas/cero, tamaños de respaldo,
-  perspectiva alrededor de su umbral y alfa dinámico. En 32768 puntos,
-  la preparación pasa de 12089934 a 6663507 ciclos. Esto mide esa operación,
-  no el porcentaje de mejora de FPS del juego.
-- Pasa el diagnóstico completo, incluidos los puntos y paquetes del suelo,
-  recortes, decals, fundidos, audio, inventario, aura y 120 fotogramas. El
-  ELF conserva las cuatro cinemáticas corregidas. Registros:
-  `build/PS2/check-deku-rooms.log`, `build/PS2/pcsx2-point-setup-pass.log`
-  y `build/PS2/check-deku-and-point-linked.log`. El usuario confirma que
-  carga la sala principal y puede moverse, y que los FPS son más estables.
-  El registro confirma escena 0, salas 0 y 1, y más de 3300 fotogramas sin
-  las excepciones de la imagen anterior. Se conservan la
-  imagen anterior en `oot-before-deku.z64`/`.json` y el ELF confirmado del
-  diálogo exterior en `oot_ps2-deku-cinematics-confirmed.elf`. La progresión
-  completa de la mazmorra y los 20 FPS estables siguen pendientes. A petición
-  del usuario, la optimización adicional se aplaza para priorizar la
-  conversión del resto del juego.
+- After confirming the outside dialogue, the log shows entrance
+  `0000`, scene 0. Its room list was read in N64 order and produced
+  a load from VROM zero and TLB failures. The `play` profile now converts
+  `ydan`, its twelve rooms, `ydan_boss`, and its two rooms. It also adds six
+  object dependencies discovered in the original lists. The
+  image grows from 211 to 233 segments; it preserves every VROM range.
+- `check_ps2_deku_rooms.py` compares 852 new resources against fields
+  in the C structures: commands, room and actor lists, collisions,
+  geometry, skeletons, and animations. It checks bounds and dependencies;
+  textures retain their bytes. The entire image outside the 22 new
+  segments remains identical, including the 211 previous segments and audio
+  banks. The control with previous data fails on vertices in the
+  wrong order. The Kokiri room check also passes again.
+- Graphics point preparation calculated GS dimensions,
+  tile shifts and offsets per vertex, and queried the material's alpha again.
+  It now prepares those values once after uploading the texture, with an
+  independent context for each floor layer. It is invalidated by every
+  state command. It preserves the order of floating-point operations,
+  perspective, depth, fog, and pass order.
+- On the EE, 27648 points match the immediate path in all 48 bytes:
+  sixteen shifts, positive/negative/zero scales, fallback sizes,
+  perspective around its threshold, and dynamic alpha. For 32768 points,
+  preparation goes from 12089934 to 6663507 cycles. This measures that operation,
+  not the percentage improvement in game FPS.
+- The full diagnostic passes, including floor points and packets,
+  clipping, decals, fades, audio, inventory, aura, and 120 frames. The
+  ELF retains the four corrected cutscenes. Logs:
+  `build/PS2/check-deku-rooms.log`, `build/PS2/pcsx2-point-setup-pass.log`,
+  and `build/PS2/check-deku-and-point-linked.log`. The user confirms that
+  the main room loads, they can move, and FPS are more stable.
+  The log confirms scene 0, rooms 0 and 1, and over 3300 frames without
+  the previous image's exceptions. The previous
+  image is preserved in `oot-before-deku.z64`/`.json`, and the confirmed outside-dialogue
+  ELF in `oot_ps2-deku-cinematics-confirmed.elf`. Full dungeon
+  progression and stable 20 FPS remain pending. At the user's request,
+  further optimization is deferred to prioritize
+  conversion of the rest of the game.
 
-## Cinemáticas compiladas del Árbol Deku — 2026-10-04
+## Compiled Deku Tree cutscenes — 2026-10-04
 
-- El usuario informa de un bloqueo al entrar a la zona exterior del árbol.
-  El registro deja de producir fotogramas, pero el audio sigue funcionando.
-  Esa sala de Kokiri ya estaba convertida. La conversión del interior se
-  añadió después, como se detalla en el apartado anterior.
-- Las cinemáticas del actor del árbol se compilan desde C. Los macros de
-  comandos empaquetaban bytes y medios words como en N64; en el EE el
-  parser leía tiempos, posiciones y marcas de fin en otros campos. En
-  particular, el byte `CS_CAM_STOP` quedaba al final del word y la búsqueda
-  de cámaras podía salir de la lista.
-- Los macros PS2 colocan esos miembros en sus offsets nativos. Los words
-  completos, flotantes y punteros conservan su valor; la ruta N64 conserva
-  su orden. Inicio y parada de música usan los dos bytes reales de su
-  cabecera, en vez de un medio word que invierte el ID en el EE.
-- `check_ps2_compiled_cutscenes.py` compila las cuatro secuencias reales y
-  una muestra con cámara, actor, luz, vibración, texto, hora, transición,
-  destino y música. Sus 3448 bytes coinciden con el esquema independiente
-  del conversor de ROM; trece listas de cámara terminan dentro de sus
-  límites. También verifica los cuatro arrays del ELF final. El control
-  con los headers anteriores falla por el orden de los campos.
-- Pasa el diagnóstico EE completo de gráficos y audio y enlazan 721
-  objetos. Registros: `build/PS2/check-compiled-deku-linked.log` y
-  `build/PS2/pcsx2-deku-native-commands-pass.log`. El usuario confirma que
-  puede entrar a la zona exterior y que los diálogos continúan. Se conserva
-  esa sesión en `build/PS2/pcsx2-deku-cinematics-game-confirmed.log` y su ELF
-  en `build/PS2-ntsc12/oot_ps2-deku-cinematics-confirmed.elf`.
-  Se conserva el ELF anterior como `oot_ps2-ee-memcpy-confirmed.elf` y una
-  copia de la memory card previa al reinicio. No se modifica la imagen de
-  recursos en esa primera corrección.
-- El logo de Nintendo 64 mantiene la frecuencia de su código original:
-  60 FPS, frente a 30 del selector y 20 del juego. El usuario confirma
-  ahora 20 FPS quieto en casi todas las vistas; quedan caídas al caminar.
+- The user reports a hang when entering the area outside the tree.
+  The log stops producing frames, but audio keeps working.
+  That Kokiri room was already converted. The interior conversion was
+  added later, as detailed in the previous section.
+- The tree actor's cutscenes are compiled from C. Command macros
+  packed bytes and halfwords as on N64; on the EE,
+  the parser read times, positions, and end markers from different fields. In
+  particular, the `CS_CAM_STOP` byte ended up at the end of the word, and the camera
+  search could run beyond the list.
+- The PS2 macros place those members at their native offsets. Full
+  words, floats, and pointers retain their values; the N64 path retains
+  its order. Music start and stop use the two actual bytes of their
+  header, instead of a halfword that reverses the ID on the EE.
+- `check_ps2_compiled_cutscenes.py` compiles the four actual sequences and
+  a sample with camera, actor, light, rumble, text, time, transition,
+  destination, and music. Their 3448 bytes match the ROM converter's independent
+  schema; thirteen camera lists terminate within their
+  bounds. It also verifies the four arrays in the final ELF. The control
+  with previous headers fails on field order.
+- The full EE graphics and audio diagnostic passes, and 721
+  objects link. Logs: `build/PS2/check-compiled-deku-linked.log` and
+  `build/PS2/pcsx2-deku-native-commands-pass.log`. The user confirms that
+  they can enter the outside area and dialogue continues. That session is
+  preserved in `build/PS2/pcsx2-deku-cinematics-game-confirmed.log` and its ELF
+  in `build/PS2-ntsc12/oot_ps2-deku-cinematics-confirmed.elf`.
+  The previous ELF is preserved as `oot_ps2-ee-memcpy-confirmed.elf`, along with a
+  copy of the memory card from before the restart. The resource image is not modified
+  in that first correction.
+- The Nintendo 64 logo retains the rate of its original code:
+  60 FPS, versus 30 for the selector and 20 for gameplay. The user now confirms
+  20 FPS while standing still in almost every view; drops remain while walking.
 
-## Copias de paquetes en el EE — 2026-10-04
+## Packet copying on the EE — 2026-10-04
 
-- El ejecutable enlazaba la copia del SDK que recorre palabras de 32 bits.
-  gsKit la utiliza para copiar los puntos empaquetados de cada dibujo a
-  la cola GIF. El enlace PS2 ahora redirige esas llamadas mediante
-  `--wrap=memcpy` a una implementación que copia bloques completos con
-  LQ/SQ si ambos extremos están alineados a dieciséis bytes, o LD/SD si
-  están alineados a ocho. Las colas y demás alineaciones usan el SDK.
-- Se mantienen el valor de retorno, el caso de longitud cero y los límites
-  de lectura/escritura. El SDK original sigue enlazado para la ruta de
-  respaldo y la comparación de control. Los puntos, el orden de los
-  dibujos y los estados GS conservan sus datos originales.
-- Pasan 19200 copias con alineaciones independientes 0–15, longitudes
-  0–65 y tamaños de paquetes hasta 2880 bytes, comparadas con una copia
-  por bytes y comprobando las zonas de guarda. También pasan audio,
-  captura, transparencias, suelo, aura y 120 fotogramas.
-- En 8192 repeticiones, 144 bytes alineados pasan de 1678908 a 815892
-  ciclos; con fuente desplazada ocho bytes, de 1682994 a 1055593.
-  El bloque de 2880 bytes pasa de 27395480 a 6707563. Son medidas de
-  copia, no porcentajes de FPS. Registro: `build/PS2/pcsx2-ee-memcpy-pass.log`.
-- El juego enlaza 721 objetos. El usuario confirma 18–20 FPS quieto
-  y aproximadamente 16–18 caminando, con algunas caídas según la vista;
-  imagen y audio correctos. Sigue pendiente estabilizar los 20 FPS.
-  La anterior, confirmada en 16–18 FPS, se conserva en
+- The executable linked the SDK copy routine, which traverses 32-bit words.
+  gsKit uses it to copy each draw's packed points into
+  the GIF queue. PS2 linking now redirects those calls through
+  `--wrap=memcpy` to an implementation that copies full blocks with
+  LQ/SQ if both ends are aligned to sixteen bytes, or LD/SD if
+  aligned to eight. Tails and other alignments use the SDK.
+- The return value, zero-length case, and read/write bounds are
+  preserved. The original SDK remains linked for the fallback
+  path and control comparison. Points, drawing order,
+  and GS states retain their original data.
+- 19200 copies pass with independent alignments 0–15, lengths
+  0–65, and packet sizes up to 2880 bytes, compared with a bytewise
+  copy and with guard regions checked. Audio,
+  capture, transparency, floor, aura, and 120 frames also pass.
+- Across 8192 repetitions, 144 aligned bytes go from 1678908 to 815892
+  cycles; with the source offset by eight bytes, from 1682994 to 1055593.
+  The 2880-byte block goes from 27395480 to 6707563. These are copy
+  measurements, not FPS percentages. Log: `build/PS2/pcsx2-ee-memcpy-pass.log`.
+- The game links 721 objects. The user confirms 18–20 FPS while standing still
+  and approximately 16–18 while walking, with some drops depending on the view;
+  image and audio are correct. Stabilizing 20 FPS remains pending.
+  The previous version, confirmed at 16–18 FPS, is preserved in
   `build/PS2-ntsc12/oot_ps2-glow-dependency-confirmed.elf`.
 
-## Dependencias del brillo de las hadas — 2026-10-04
+## Fairy glow dependencies — 2026-10-04
 
-- El perfil del exterior muestra hasta veinte conversiones y subidas de
-  texturas I8 de 32×64 por fotograma, con los mismos colores RGB y distinto
-  ENV_ALPHA. Son las dos mitades del brillo de las hadas. En el evaluador
-  genérico actual, TEXEL1 usa TEXEL0, por lo que su diferencia en ese
-  material es exactamente cero y el factor ENV_ALPHA no cambia sus píxeles.
-- El análisis de dependencias excluye los términos de un producto con
-  diferencia cero, tanto de la clave de textura como de las tablas por
-  canal. La ruta explícita de dos fuentes para caminos conserva sus
-  dependencias; el aura del título conserva su clave completa. Las
-  ecuaciones de color, alfa y el comportamiento de los vértices se mantienen.
-- La prueba EE compara los 256 valores de 26 materiales, nueve cambios
-  de constantes y dieciséis máscaras parciales (3744 combinaciones).
-  Una textura real del material de brillo conserva sus 8192 bytes y su
-  dirección VRAM durante 255 cambios de alfa, sin subirla de nuevo.
-  Cambiar el tinte o un byte de la fuente provoca una nueva subida.
-- Pasa el diagnóstico completo, incluido el fence de descriptores, audio,
-  suelo, transparencias, aura y 120 fotogramas. Registro:
-  `build/PS2/pcsx2-glow-dependency-pass.log`. El control con el combinador
-  anterior falla al comprobar la reutilización en el primer cambio de alfa:
+- The outside profile shows up to twenty conversions and uploads of
+  I8 textures of 32×64 per frame, with the same RGB colors and different
+  ENV_ALPHA. These are the two halves of the fairy glow. In the current generic
+  evaluator, TEXEL1 uses TEXEL0, so their difference in that
+  material is exactly zero, and the ENV_ALPHA factor does not change its pixels.
+- Dependency analysis excludes terms of a product with a
+  zero difference, both from the texture key and from per-channel
+  tables. The explicit two-source path for paths retains its
+  dependencies; the title aura retains its full key. Color and alpha
+  equations and vertex behavior are preserved.
+- The EE test compares all 256 values of 26 materials, nine changes
+  of constants, and sixteen partial masks (3744 combinations).
+  An actual glow-material texture retains its 8192 bytes and its
+  VRAM address through 255 alpha changes, without another upload.
+  Changing the tint or a source byte triggers a new upload.
+- The full diagnostic passes, including the descriptor fence, audio,
+  floor, transparency, aura, and 120 frames. Log:
+  `build/PS2/pcsx2-glow-dependency-pass.log`. The control with the previous
+  combiner fails the reuse check on the first alpha change:
   `build/PS2/pcsx2-glow-dependency-before-control.log`.
-- El juego enlaza 720 objetos. En el mismo punto exterior de 14–16 FPS,
-  el usuario confirma 16–18 FPS y Navi, suelo, sombras y audio correctos.
-  El registro conserva sólo 3–4 subidas por fotograma en esa vista y
-  desaparecen las veinte subidas del brillo. El objetivo de 20 FPS
-  estables sigue pendiente. Se conserva la versión
-  anterior en `build/PS2-ntsc12/oot_ps2-ground-reuse-confirmed.elf`.
+- The game links 720 objects. At the same outside spot previously running at 14–16 FPS,
+  the user confirms 16–18 FPS, with correct Navi, floor, shadows, and audio.
+  The log retains only 3–4 uploads per frame in that view, and
+  the twenty glow uploads disappear. The stable 20 FPS
+  target remains pending. The previous version is preserved
+  in `build/PS2-ntsc12/oot_ps2-ground-reuse-confirmed.elf`.
 
-## Reutilización de las dos capas del suelo — 2026-10-04
+## Reuse of both floor layers — 2026-10-04
 
-- Los materiales del suelo mantienen un pase base y otro de mezcla por
-  cada triángulo, en el mismo orden. Ahora ambas capas reutilizan sus
-  vértices compartidos durante una secuencia sin cambios de estado.
-  Se conservan los colores y la profundidad originales de la primera
-  capa para preparar la segunda. El clamp base se aplica después de cada
-  capa superpuesta; no se agrupan los pases ni se altera su orden.
-- Cada comando de estado invalida ambos conjuntos de puntos. Los
-  vértices temporales de recorte y las profundidades calculadas por
-  triángulo para decals mantienen su preparación independiente.
-- La prueba EE compara todos los puntos y el número de paquetes con
-  la ruta inmediata en ocho casos: alfa cero/parcial/opaco, niebla,
-  perspectiva, dimensiones y shifts distintos, decals, recorte,
-  índices repetidos, culling y límites entre comandos de estado.
-  Pasa sin diferencias, junto con audio, captura, aura y 120 fotogramas.
-  La prueba aislada baja de 1893328 a 1261975 ciclos; registro
+- Floor materials retain a base pass and a blending pass for
+  each triangle, in the same order. Both layers now reuse their
+  shared vertices during a sequence without state changes.
+  The first layer's original colors and depth are preserved
+  to prepare the second. The base clamp is applied after each overlaid
+  layer; passes are not grouped, and their order is unchanged.
+- Each state command invalidates both point sets. Temporary
+  clipping vertices and depths calculated per
+  triangle for decals retain their independent preparation.
+- The EE test compares every point and the packet count against
+  the immediate path in eight cases: zero/partial/opaque alpha, fog,
+  perspective, different dimensions and shifts, decals, clipping,
+  repeated indices, culling, and boundaries between state commands.
+  It passes without differences, along with audio, capture, aura, and 120 frames.
+  The isolated test drops from 1893328 to 1261975 cycles; log
   `build/PS2/pcsx2-ground-reuse-pass.log`.
-- El usuario confirma suelo, sombras y audio correctos, pero la vista
-  pesada sigue en 14–16 FPS. El objetivo de 20 FPS estables continúa
-  pendiente; se conserva el ejecutable anterior como
+- The user confirms correct floor, shadows, and audio, but the demanding
+  view remains at 14–16 FPS. The stable 20 FPS target remains
+  pending; the previous executable is preserved as
   `build/PS2-ntsc12/oot_ps2-material-mmi-confirmed.elf`.
 
-## Tablas de materiales y comprobación de texturas — 2026-10-04
+## Material tables and texture checking — 2026-10-04
 
-- Se retoma la optimización del exterior antes de ampliar la zona del
-  Árbol Deku. El usuario señala una vista de 12–14 FPS. Tras la primera
-  optimización confirma 14–16 FPS y colores y audio correctos. La siguiente
-  versión conserva sombras, transparencias y audio, pero el usuario
-  confirma que sigue en 14–16 FPS quieto. Todavía no se da por alcanzado
-  el objetivo de 20 FPS estables.
-- Las tablas del combinador expanden el producto del primer ciclo una
-  vez y recorren sus 256 valores mediante diferencias finitas. Conservan
-  la división entera con signo y la saturación original. Los materiales
-  de dos ciclos conservan RGBA8 intermedio, incluido COMBINED_ALPHA; el
-  alfa sólo se convierte a la escala del GS al acabar el último ciclo.
-- XXH32 procesa las cuatro cadenas de las fuentes alineadas mediante
-  instrucciones MMI del EE. PMULTUW calcula dos productos por instrucción
-  y PPACW reúne sus partes de 32 bits; se contrastó su semántica con
+- Optimization of the outside area resumes before expanding the Deku
+  Tree area. The user points out a view at 12–14 FPS. After the first
+  optimization, they confirm 14–16 FPS and correct colors and audio. The next
+  version preserves shadows, transparency, and audio, but the user
+  confirms it remains at 14–16 FPS while standing still. The stable 20 FPS
+  target is not yet considered achieved.
+- Combiner tables expand the first-cycle product once
+  and traverse its 256 values through finite differences. They preserve
+  signed integer division and original saturation. Two-cycle
+  materials preserve intermediate RGBA8, including COMBINED_ALPHA;
+  alpha is converted to the GS scale only after the final cycle ends.
+- XXH32 processes the four chains of aligned sources through
+  EE MMI instructions. PMULTUW calculates two products per instruction,
+  and PPACW combines their 32-bit portions; its semantics were checked against
   [PCSX2](https://github.com/PCSX2/pcsx2/blob/master/pcsx2/MMI.cpp).
-  Sólo usa cargas LQ para bloques completos alineados a 16 bytes. Las
-  fuentes sin esa alineación y las colas conservan la lectura escalar.
-  Se siguen comprobando todos los bytes en cada enlace de textura.
-- Las pruebas EE pasan 25 materiales × 9 cambios de constantes × 16
-  máscaras parciales, comparados con el evaluador escalar para todos los
-  texels. Cubren productos negativos y cuadráticos, alfa del ciclo anterior,
-  saturación, RGBA16 empaquetado y sustitución del donante de la caché.
-  También pasan los vectores independientes de XXH32, alineaciones 0–15,
-  mutación de todos los bytes, audio, captura, aura y los 120 fotogramas.
-- Comparación de control con las mismas pruebas y el combinador anterior:
-  las tablas completas pasan de 23961838 a 8668335 ciclos; con reutilización
-  de canales, de 9028600 a 4946683. El material de dos ciclos reales pasa
-  de 39557399 a 28547484 ciclos, con el mismo checksum 193581.
-  La comprobación de fuentes alineadas de 2/4 KiB baja aproximadamente un
-  13–14 %. Son medidas aisladas; no representan ese porcentaje de FPS.
-  Registros: `build/PS2/pcsx2-material-mmi-pass.log` y
-  `build/PS2/pcsx2-material-mmi-before-control.log`. La primera sesión
-  confirmada queda en `build/PS2/pcsx2-material-polynomial-game-measured.log`.
-- El juego enlaza 720 objetos. Se guardan los ejecutables anteriores en
-  `build/PS2-ntsc12/oot_ps2-before-material-polynomial.elf` y
+  It uses LQ loads only for complete blocks aligned to 16 bytes. Sources
+  without that alignment and tails retain scalar reads.
+  Every byte is still checked at each texture binding.
+- The EE tests pass 25 materials × 9 constant changes × 16
+  partial masks, compared with the scalar evaluator for every
+  texel. They cover negative and quadratic products, previous-cycle alpha,
+  saturation, packed RGBA16, and cache donor replacement.
+  Independent XXH32 vectors, alignments 0–15,
+  mutation of every byte, audio, capture, aura, and 120 frames also pass.
+- Control comparison with the same tests and the previous combiner:
+  complete tables go from 23961838 to 8668335 cycles; with channel
+  reuse, from 9028600 to 4946683. The actual two-cycle material goes
+  from 39557399 to 28547484 cycles, with the same checksum 193581.
+  Checking aligned 2/4 KiB sources drops by approximately
+  13–14 %. These are isolated measurements; they do not represent that FPS percentage.
+  Logs: `build/PS2/pcsx2-material-mmi-pass.log` and
+  `build/PS2/pcsx2-material-mmi-before-control.log`. The first confirmed
+  session is in `build/PS2/pcsx2-material-polynomial-game-measured.log`.
+- The game links 720 objects. Previous executables are saved in
+  `build/PS2-ntsc12/oot_ps2-before-material-polynomial.elf` and
   `build/PS2-ntsc12/oot_ps2-material-polynomial.elf`.
 
-## Apertura de pausa, transparencia y aura del título — 2026-10-04
+## Opening pause, transparency, and title aura — 2026-10-04
 
-- El usuario señala corrupción y espera al abrir la pausa, falta de
-  transparencia del inventario y un aura inmóvil alrededor del título.
-  Confirma después que ambas cosas del inventario mejoraron y que el aura
-  ya se mueve como una llama.
-- La copia N64 del fondo operaba sobre `curFrameBuffer`, que el renderer
-  nativo no rellena: el dibujo vive en GS VRAM. Sus pases de cobertura se
-  dibujaban en la pantalla y el filtro CPU leía un búfer sin imagen válida.
-  `Play_Draw` ahora emite una captura nativa al acabar la escena, antes del
-  HUD. Espera su terminación y utiliza ese fondo para la pausa; en PS2 se
-  omiten los pases de cobertura y el filtro de reconstrucción N64.
-- La captura descarga filas del framebuffer activo y publica 320×240
-  RGBA5551 big-endian. Usa sólo 40 KiB de memoria temporal, sin reservar
-  más VRAM. La transferencia VIF1 sigue el
-  [SDK de ps2dev](https://github.com/ps2dev/ps2sdk/blob/master/ee/debug/src/screenshot.c),
-  adaptada al formato CT16S y al ancho del framebuffer. Conserva el fence
-  FINISH de gsKit para que la siguiente cola pueda continuar.
-- Los paneles originales IA8 ya contienen alfa parcial y usan el mezclador
-  XLU. Por ejemplo, 2228 de los 2560 texels de `gPauseSelectItem11Tex`
-  tienen alfa 11/15. Al restaurar una captura válida, esas partes permiten
-  ver el escenario. Se conserva su alfa y el comportamiento original.
-- El título usa una máscara I4 de 64×64 y ruido I8 de 32×32, con shifts y
-  desplazamiento de medio texel. Antes TEXEL1 se evaluaba como TEXEL0.
-  Ahora ese material combina ambos datos, su fracción LOD, colores y alfa
-  de los dos ciclos. Una tabla reutilizada evita resolver el combinador
-  por cada píxel. La caché incluye desplazamiento y contenido de ambas
-  fuentes; la ruta queda limitada a este material y sus dimensiones.
-- Las pruebas EE comprueban 230400 píxeles descargados, orden de bytes,
-  límites, comandos inválidos, segunda captura sin cambiar la imagen y
-  continuidad de la cola. El GS también pasa el dibujo de paneles IA8 con
-  alfa cero, parcial y opaco sobre una imagen conocida.
-  El aura pasa 81920 comprobaciones de canales con scroll fraccionario,
-  distintas tintas, alfa, reutilización y mutación de la segunda textura.
-  También pasan audio, retrato y los 120 fotogramas del diagnóstico.
-  Registros: `build/PS2/pcsx2-pause-flame-pass.log` y
-  `build/PS2/pcsx2-pause-flame-final-pass.log`. La sesión en juego muestra
-  varias capturas correctas al reabrir el inventario; se conserva en
+- The user points out corruption and a delay when opening pause, missing
+  inventory transparency, and an unmoving aura around the title.
+  They later confirm that both inventory issues improved and that the aura
+  now moves like a flame.
+- The N64 background copy operated on `curFrameBuffer`, which the native
+  renderer does not fill: drawing lives in GS VRAM. Its coverage passes were
+  drawn on the screen, and the CPU filter read a buffer without a valid image.
+  `Play_Draw` now emits a native capture after the scene ends, before the
+  HUD. It waits for completion and uses that background for pause; on PS2,
+  the coverage passes and N64 reconstruction filter are omitted.
+- The capture downloads rows from the active framebuffer and publishes 320×240
+  big-endian RGBA5551. It uses only 40 KiB of temporary memory, without allocating
+  more VRAM. The VIF1 transfer follows the
+  [ps2dev SDK](https://github.com/ps2dev/ps2sdk/blob/master/ee/debug/src/screenshot.c),
+  adapted to CT16S format and the framebuffer width. It preserves gsKit's
+  FINISH fence so that the next queue can continue.
+- The original IA8 panels already contain partial alpha and use the XLU
+  blender. For example, 2228 of the 2560 texels in `gPauseSelectItem11Tex`
+  have alpha 11/15. With a valid capture restored, those parts allow
+  the scenery to show through. Their alpha and original behavior are preserved.
+- The title uses an I4 mask of 64×64 and I8 noise of 32×32, with shifts and
+  a half-texel offset. Previously, TEXEL1 was evaluated as TEXEL0.
+  That material now combines both data sources, its LOD fraction, colors, and alpha
+  from both cycles. A reused table avoids resolving the combiner
+  for every pixel. The cache includes the offset and content of both
+  sources; the path is limited to this material and its dimensions.
+- The EE tests check 230400 downloaded pixels, byte order,
+  bounds, invalid commands, a second capture without changing the image, and
+  queue continuity. The GS also passes drawing IA8 panels with
+  zero, partial, and opaque alpha over a known image.
+  The aura passes 81920 channel checks with fractional scrolling,
+  different tints, alpha, reuse, and mutation of the second texture.
+  Audio, portrait, and the diagnostic's 120 frames also pass.
+  Logs: `build/PS2/pcsx2-pause-flame-pass.log` and
+  `build/PS2/pcsx2-pause-flame-final-pass.log`. The game session shows
+  several correct captures when reopening inventory; it is preserved in
   `build/PS2/pcsx2-pause-flame-game-confirmed.log`.
-- El juego enlaza 720 objetos. Se conserva
-  `build/PS2-ntsc12/oot_ps2-before-pause-flame.elf` como copia anterior.
-  El objetivo de 20 FPS estables y la validación completa de escenas
-  siguen pendientes; estas correcciones no los dan por alcanzados.
+- The game links 720 objects.
+  `build/PS2-ntsc12/oot_ps2-before-pause-flame.elf` is preserved as the previous copy.
+  The stable 20 FPS target and full scene validation
+  remain pending; these corrections do not establish them as achieved.
 
-## Modelos recibidos y retrato de equipamiento — 2026-10-04
+## Received models and equipment portrait — 2026-10-04
 
-- El usuario confirma el retrato de equipamiento, aunque conserva su
-  resolución original de 64×112. Los objetos seguían ausentes: convertir
-  sus recursos era necesario, pero no corregía el evento que los activa.
-- El diagnóstico registra la carga de la rupia terminada (`queue=1`),
-  mientras `draw=0` permanece al acabar la animación de 22 fotogramas.
-  `Animation_OnFrameImpl` reconstruía el fotograma actual mediante
-  `(current - speed) + speed`. Con la velocidad ajustada 2/3 y tasa 1.5,
-  el redondeo EE pierde precisión justo en el último fotograma, 21, y
-  omite el evento. Se comparan los extremos del intervalo con el fotograma
-  actual real, manteniendo la convención original de vuelta y fotograma 0.
-  El código N64 queda intacto. Referencia del redondeo predeterminado:
-  [configuración de PCSX2](https://github.com/PCSX2/pcsx2/blob/master/pcsx2/Pcsx2Config.cpp).
-- La prueba del predicado real en EE falla exactamente en ese caso con
-  el código anterior (`pcsx2-animation-before-item-fix.log`) y pasa los
-  102401 casos tras corregirlo: velocidades positivas/negativas, fracciones,
-  distintas tasas y vueltas. También pasan audio, gráficos, retrato y
-  120 fotogramas en `build/PS2/pcsx2-item-animation-pass.log`.
-- En juego se registra `draw=110`, carga completada y referencia entre
-  las manos al recibir la rupia. El usuario confirma: «Sí, aparece».
-  Se conservan `pcsx2-item-frame-21-not-shown.log` y
-  `pcsx2-item-animation-confirmed.log`; se retiran las trazas repetidas y
-  quedan únicamente dos registros por recepción, carga y aparición.
-  Siguiente revisión solicitada: corrupción al abrir la pausa, transparencia
-  del inventario y aura animada del título.
-- El usuario confirma que las texturas de Link y el acceso a la nueva sala
-  funcionan. Señala modelos ausentes al recibir la espada y otros objetos,
-  y una imagen corrupta en el lugar del retrato de Link del equipamiento.
-  Aclara después que el corazón de recuperación funciona correctamente.
-- Los objetos recibidos se cargan desde Player, sin figurar necesariamente
-  en las listas de objetos de las salas. El perfil play ahora convierte los
-  77 segmentos `object_gi_*`, usando sus rangos explícitos de extracción.
-  `check_ps2_received_items.py` verifica 214 listas gráficas, 143 grupos de
-  vértices y 57 texturas; conserva los 145 segmentos previos byte por byte.
-  La prueba con los datos anteriores falla por faltar `object_gi_key`.
-  Registros: `received-items-check.log`, `received-items-before-check.log`
-  y `kokiri-after-items-check.log`, dentro de `build/PS2`.
-- El renderer sólo seguía el puntero de color, dibujando siempre en el
-  framebuffer mostrado. Por eso el prerender de 64×112 nunca llegaba a la
-  textura del equipamiento. Se añade un destino separado CT32 con Z24,
-  reservado antes de la caché, y coordenadas a escala 1 durante ese dibujo.
-  Dos comandos nativos de la lista delimitan el retrato y restauran después
-  el framebuffer y la profundidad principales. No cambian la salida normal
-  de 640×448 ni la interpolación de texturas.
-- La lectura por VIF1 usa `ps2_screenshot` del SDK. Se publica RGBA5551 en
-  el orden de bytes que consume el decodificador, con el fondo transparente.
-  Se sustituye únicamente el proceso N64 de cobertura/VI de este retrato;
-  no se aplica el filtro CPU a un búfer que el GS no había escrito.
-  El retrato se reutiliza mientras no cambien el segmento, edad o equipo.
-- La comprobación inicial detectó que el descriptor nativo en la pila EE
-  se interpretaba como dirección segmentada; ahora usa su dirección física.
-  Otra comprobación detectó la pérdida de FINISH: el SDK reconoce y borra
-  el evento, mientras gsKit lo espera antes de enviar la siguiente cola.
-  Se envía un FINISH independiente después de la lectura para conservar
-  esa secuencia. Referencias: [lectura del SDK](https://github.com/ps2dev/ps2sdk/blob/master/ee/debug/src/screenshot.c)
-  y [envío de colas de gsKit](https://github.com/ps2dev/gsKit/blob/master/ee/gs/src/gsCore.c).
-- La prueba de GS dibuja dos imágenes distintas en el mismo destino y
-  compara sus 14336 píxeles, alfa, límites de RAM, viewport, restauración
-  de profundidad y actualización de la textura. Pasa con cero diferencias,
-  junto al resto de gráficos/audio y 120 fotogramas posteriores; registro
-  `build/PS2/pcsx2-portrait-items-pass.log`. Se conserva el ensayo sin FINISH
-  en `pcsx2-portrait-before-fence-fix.log`: completa la primera lectura y
-  se bloquea al intentar enviar el segundo dibujo.
-- Juego enlazado con 719 objetos. ELF y datos instalados con SHA256 idéntico
-  a los archivos verificados. El usuario guarda la partida antes de reiniciar.
-  Se abre la versión nueva; las confirmaciones posteriores del equipamiento
-  y de un objeto recibido están descritas arriba. Los respaldos `oot_ps2-before-item-portrait.elf`
-  y `oot-before-item-models.z64/json` quedan en `build/PS2-ntsc12`.
-  La sesión real ya completa tres lecturas del retrato, sigue respondiendo
-  y mantiene PCM sin retrasos ni descartes. La caché dispone de 1760 KiB
-  tras reservar los dos destinos de 32 KiB; conserva las 512 entradas.
+- The user confirms the equipment portrait, although it retains its
+  original 64×112 resolution. Items remained absent: converting
+  their resources was necessary, but did not fix the event that activates them.
+- Diagnostics record completed rupee loading (`queue=1`),
+  while `draw=0` remains at the end of the 22-frame animation.
+  `Animation_OnFrameImpl` reconstructed the current frame through
+  `(current - speed) + speed`. With adjusted speed 2/3 and rate 1.5,
+  EE rounding loses precision exactly at the last frame, 21, and
+  skips the event. The interval endpoints are compared with the actual
+  current frame, preserving the original wrap and frame 0 convention.
+  N64 code remains intact. Reference for default rounding:
+  [PCSX2 configuration](https://github.com/PCSX2/pcsx2/blob/master/pcsx2/Pcsx2Config.cpp).
+- The test of the actual predicate on EE fails at exactly that case with
+  the previous code (`pcsx2-animation-before-item-fix.log`) and passes
+  all 102401 cases after correction: positive/negative speeds, fractions,
+  different rates, and wraps. Audio, graphics, portrait, and
+  120 frames also pass in `build/PS2/pcsx2-item-animation-pass.log`.
+- In-game logging records `draw=110`, completed loading, and a reference between
+  the hands when receiving the rupee. The user confirms: «Yes, it appears».
+  `pcsx2-item-frame-21-not-shown.log` and
+  `pcsx2-item-animation-confirmed.log` are preserved; repeated traces are removed,
+  leaving only two records per receipt, for loading and appearance.
+  Next requested revision: corruption when opening pause, inventory
+  transparency, and an animated title aura.
+- The user confirms that Link's textures and access to the new room
+  work. They report missing models when receiving the sword and other items,
+  and a corrupted image in place of Link's equipment portrait.
+  They later clarify that the recovery heart works correctly.
+- Received items are loaded from Player, without necessarily appearing
+  in room object lists. The play profile now converts all
+  77 `object_gi_*` segments, using their explicit extraction ranges.
+  `check_ps2_received_items.py` verifies 214 graphics lists, 143 vertex
+  groups, and 57 textures; it preserves the 145 previous segments byte for byte.
+  The test with previous data fails because `object_gi_key` is missing.
+  Logs: `received-items-check.log`, `received-items-before-check.log`,
+  and `kokiri-after-items-check.log`, within `build/PS2`.
+- The renderer only followed the color pointer, always drawing into the
+  displayed framebuffer. The 64×112 prerender therefore never reached the
+  equipment texture. A separate CT32 target with Z24 is added,
+  allocated before the cache, with coordinates at scale 1 during that drawing.
+  Two native list commands delimit the portrait and afterward restore
+  the main framebuffer and depth. Normal 640×448 output
+  and texture interpolation are unchanged.
+- Reading through VIF1 uses the SDK's `ps2_screenshot`. RGBA5551 is published in
+  the byte order consumed by the decoder, with a transparent background.
+  Only this portrait's N64 coverage/VI process is replaced;
+  the CPU filter is not applied to a buffer the GS had not written.
+  The portrait is reused while the segment, age, and equipment remain unchanged.
+- The initial check detected that the native descriptor on the EE stack
+  was interpreted as a segmented address; it now uses its physical address.
+  Another check detected loss of FINISH: the SDK acknowledges and clears
+  the event, while gsKit waits for it before submitting the next queue.
+  An independent FINISH is sent after the read to preserve
+  that sequence. References: [SDK read](https://github.com/ps2dev/ps2sdk/blob/master/ee/debug/src/screenshot.c)
+  and [gsKit queue submission](https://github.com/ps2dev/gsKit/blob/master/ee/gs/src/gsCore.c).
+- The GS test draws two different images into the same target and
+  compares their 14336 pixels, alpha, RAM bounds, viewport, depth
+  restoration, and texture update. It passes with zero differences,
+  along with the rest of graphics/audio and 120 subsequent frames; log
+  `build/PS2/pcsx2-portrait-items-pass.log`. The attempt without FINISH is preserved
+  in `pcsx2-portrait-before-fence-fix.log`: it completes the first read and
+  hangs when trying to submit the second drawing.
+- The game links 719 objects. ELF and data are installed with SHA256 identical
+  to the verified files. The user saves before restarting.
+  The new version is opened; subsequent confirmations of equipment
+  and a received item are described above. The backups `oot_ps2-before-item-portrait.elf`
+  and `oot-before-item-models.z64/json` are kept in `build/PS2-ntsc12`.
+  The actual session already completes three portrait reads, remains responsive,
+  and maintains PCM without delays or drops. The cache has 1760 KiB
+  after allocating both 32 KiB targets; it retains all 512 entries.
 
-## Ventanas de textura de Link y salas restantes de Kokiri — 2026-10-03
+## Link's texture windows and remaining Kokiri rooms — 2026-10-03
 
-- El usuario percibe otra mejora de rendimiento, con caídas al mirar a
-  ciertas cámaras, y señala una mancha rosa detrás de la oreja de Link y
-  un patrón verde oscuro en el torso. No aporta una nueva cifra de FPS.
-  También vuelve a encontrar un bloqueo al pasar a otra parte del bosque.
-- Las listas originales cargan el pelo como RGBA16 de 16×16, pero fijan
-  una ventana de 32×16 con máscara horizontal de 16 texels. La túnica usa
-  I8 de 16×32 con una ventana de 32×32, espejo y clamp. El port confundía
-  la ventana con la imagen y leía bytes del siguiente recurso como texels;
-  además sólo reconocía espejo cuando el bit de clamp estaba apagado.
-- Se decodifica el periodo que puede seleccionar la máscara, conservando
-  el stride de LOADTILE o la fila TMEM de LOADBLOCK. Luego se materializan
-  la repetición o el espejo dentro de la ventana limitada del GS. Las
-  coordenadas se interpolan como antes, y la caché incluye las dimensiones
-  de la imagen enviada, además de los texels y paletas que sí se usan.
-  El orden clamp→mask/mirror se contrastó con el código de referencia de
+- The user perceives another performance improvement, with drops in
+  certain camera views, and reports a pink mark behind Link's ear and
+  a dark green pattern on his torso. They provide no new FPS figure.
+  They also encounter another hang when moving to another part of the forest.
+- The original lists load the hair as RGBA16 of 16×16, but set
+  a 32×16 window with a horizontal mask of 16 texels. The tunic uses
+  I8 of 16×32 with a 32×32 window, mirroring, and clamp. The port confused
+  the window with the image and read bytes of the next resource as texels;
+  it also recognized mirroring only when the clamp bit was off.
+- The period selectable by the mask is decoded, preserving
+  the LOADTILE stride or LOADBLOCK TMEM row. Repetition or mirroring is then
+  materialized within the bounded GS window. Coordinates
+  are interpolated as before, and the cache includes the dimensions
+  of the submitted image, along with the texels and palettes actually used.
+  The clamp→mask/mirror order was checked against the reference code from
   [angrylion-rdp-plus](https://github.com/ata4/angrylion-rdp-plus/blob/master/src/core/n64video/rdp/tex.c).
-- La nueva prueba usa los formatos, máscaras y filas del pelo y la túnica,
-  con ventanas de 24 y 32 texels, repetición, espejo y bytes de relleno que
-  delatan lecturas del recurso siguiente. También comprueba los límites
-  GS, la clave de caché y cambios de RAM dentro y fuera del periodo usado.
-  Pasan sus 5376 texels, el resto de gráficos y audio y 120 fotogramas en
-  `build/PS2/pcsx2-link-tile-window-pass.log`. La primera comprobación tenía
-  14 diferencias de alfa en el valor I8 255: la referencia nueva esperaba
-  128, pero el decodificador existente conserva 127. Se ajustó la referencia
-  para verificar la corrección de filas sin alterar la cuantización de alfa.
-- Los dos registros del bloqueo terminan en Scene_CommandObjectList y
-  Actor_Spawn sin cargar una escena diferente de Kokiri. La imagen anterior
-  sólo convertía `spot04_room_0`: faltaban `spot04_room_1` y `spot04_room_2`.
-  El perfil play ahora incluye las tres salas y sus dependencias. Se añade
-  un registro por carga de sala para identificar futuras transiciones.
-- `check_ps2_kokiri_rooms.py` valida comandos, objetos, actores y texturas
-  contra la ROM original: 33 recursos de escena y 68/46/22 de las salas,
-  además de sus direcciones VROM. Los 139 segmentos previos son idénticos
-  byte por byte. La misma comprobación falla en la imagen anterior por
-  faltar `spot04_room_1`. Registros: `build/PS2/kokiri-rooms-check.log` y
-  `build/PS2/kokiri-rooms-before-check.log`. Juego enlazado con 718 objetos
-  e instalado junto a la nueva imagen de datos; ambos coinciden por SHA256
-  con sus archivos verificados. La ventana responde y el arranque no registra
-  excepciones ni bloques PCM perdidos. El usuario confirma la corrección de
-  Link y que ya puede entrar en la zona; el registro muestra la carga de
-  `spot04_room_2` y el regreso a la sala 0 sin excepciones. Al recoger la
-  espada aparece otro fallo del modelo recibido y la vista de equipamiento
-  muestra corrupto el retrato de Link; se investigan por separado.
-- Respaldos de la versión anterior: `oot_ps2-before-link-windows.elf` y
-  `oot-before-kokiri-rooms.z64/json`, dentro de `build/PS2-ntsc12`.
+- The new test uses the hair and tunic formats, masks, and rows,
+  with 24- and 32-texel windows, repetition, mirroring, and padding bytes that
+  reveal reads of the next resource. It also checks GS
+  bounds, the cache key, and RAM changes inside and outside the used period.
+  Its 5376 texels, the rest of graphics and audio, and 120 frames pass in
+  `build/PS2/pcsx2-link-tile-window-pass.log`. The first check had
+  14 alpha differences at I8 value 255: the new reference expected
+  128, but the existing decoder retains 127. The reference was adjusted
+  to verify the row correction without altering alpha quantization.
+- Both hang logs end in Scene_CommandObjectList and
+  Actor_Spawn without loading a scene other than Kokiri. The previous image
+  converted only `spot04_room_0`: `spot04_room_1` and `spot04_room_2` were missing.
+  The play profile now includes all three rooms and their dependencies. One
+  record per room load is added to identify future transitions.
+- `check_ps2_kokiri_rooms.py` validates commands, objects, actors, and textures
+  against the original ROM: 33 scene resources and 68/46/22 room resources,
+  as well as their VROM addresses. The 139 previous segments are identical
+  byte for byte. The same check fails on the previous image because
+  `spot04_room_1` is missing. Logs: `build/PS2/kokiri-rooms-check.log` and
+  `build/PS2/kokiri-rooms-before-check.log`. The game links 718 objects
+  and is installed alongside the new data image; both match their verified
+  files by SHA256. The window responds, and startup records no
+  exceptions or lost PCM blocks. The user confirms the Link correction
+  and that they can now enter the area; the log shows loading
+  `spot04_room_2` and returning to room 0 without exceptions. When picking up the
+  sword, another received-model failure appears, and the equipment view
+  shows a corrupted Link portrait; these are investigated separately.
+- Backups of the previous version: `oot_ps2-before-link-windows.elf` and
+  `oot-before-kokiri-rooms.z64/json`, within `build/PS2-ntsc12`.
 
-## Mezcla NEAD y ciclo final de materiales — 2026-10-03
+## NEAD mixing and final material cycle — 2026-10-03
 
-- El usuario confirma 18 FPS quieto y 16 caminando en la misma vista de
-  vallas y plantas, conservando imagen y audio correctos. El nuevo perfil
-  mide unos 30–31 ms de traducción descontando DSP, con 7–10 ms de DSP
-  intercalados y otras interrupciones todavía incluidas. Las tablas de
-  material cuestan 1,5–2 ms; ENVMIX_NEAD cuesta 1,3 ms por tarea de audio.
-  Captura: `build/PS2/pcsx2-channel-kernels-kokiri-profile.log`.
-- La mezcla NEAD usa productos con signo de 32 bits: s16 × u16 cabe en
-  ese rango y conserva los 16 bits retenidos por la conversión anterior.
-  Se despliegan las ocho muestras de cada grupo, manteniendo el orden de
-  lecturas, escrituras, saturación, XOR y rampas, también con alias entre
-  los búferes. Los controles solapados conservan la ruta anterior.
-- El builder de tablas omite el segundo ciclo cuando todos los canales
-  evaluados sólo copian su valor del primer ciclo, ya limitado a 0–255.
-  RGB sigue incluyendo el alfa intermedio; cualquier otra ecuación
-  conserva ambos ciclos. No se cambian las constantes ni las claves de
-  caché ni se omiten comprobaciones de texturas modificadas en RAM.
-- Pruebas EE/GS completas: 53248 casos de mezcla, incluidos búferes largos
-  y solapados; 20 materiales y 2880 máscaras parciales comparados con la
-  referencia escalar para todos los valores de texel; 1408 pasadas con
-  ciclo final omitido y 1046 conservadas. Pasan RGBA16, LRU, RESAMPLE,
-  FILTER, iluminación, recorte, diálogo y 120 fotogramas sin diferencias.
-  Registro: `build/PS2/pcsx2-envmix-identity-pass.log`.
-- Micropruebas comparables con la versión anterior: mezcla
-  20159461→15479007 ciclos (23 % menos), caché de tablas por canal
-  11978894→9004768 (25 %). Son mejoras de trabajos aislados y no una
-  predicción de FPS. Juego enlazado con 718 objetos, instalado con SHA256
-  idéntico al ELF nuevo y abierto sin los perfiles optativos. Pendiente
-  comparación del rendimiento del juego. La ventana responde y el primer
-  minuto de producción PCM no pierde bloques ni registra retrasos.
-  Respaldo:
+- The user confirms 18 FPS while standing still and 16 while walking in the same view of
+  fences and plants, with correct image and audio retained. The new profile
+  measures about 30–31 ms of translation after subtracting DSP, with 7–10 ms of DSP
+  interleaved and other interrupts still included. Material
+  tables cost 1,5–2 ms; ENVMIX_NEAD costs 1,3 ms per audio task.
+  Capture: `build/PS2/pcsx2-channel-kernels-kokiri-profile.log`.
+- NEAD mixing uses signed 32-bit products: s16 × u16 fits within
+  that range and preserves the 16 bits retained by the previous conversion.
+  The eight samples in each group are unrolled, preserving the order of
+  reads, writes, saturation, XOR, and ramps, including aliasing between
+  buffers. Overlapping controls retain the previous path.
+- The table builder omits the second cycle when all evaluated
+  channels only copy their first-cycle value, already bounded to 0–255.
+  RGB still includes intermediate alpha; every other equation
+  retains both cycles. Constants and cache keys are unchanged,
+  and checks of textures modified in RAM are not omitted.
+- Full EE/GS tests: 53248 mixing cases, including long and
+  overlapping buffers; 20 materials and 2880 partial masks compared with the
+  scalar reference for every texel value; 1408 passes with
+  the final cycle omitted and 1046 retained. RGBA16, LRU, RESAMPLE,
+  FILTER, lighting, clipping, dialogue, and 120 frames pass without differences.
+  Log: `build/PS2/pcsx2-envmix-identity-pass.log`.
+- Microtests comparable with the previous version: mixing
+  20159461→15479007 cycles (23 % fewer), per-channel table cache
+  11978894→9004768 (25 %). These improve isolated tasks and do not
+  predict FPS. The game links 718 objects, is installed with SHA256
+  identical to the new ELF, and opened without optional profiles. Game
+  performance comparison remains pending. The window responds, and the first
+  minute of PCM production loses no blocks and records no delays.
+  Backup:
   `build/PS2-ntsc12/oot_ps2-before-signed-envmix.elf`.
-- Al final de la sesión anterior se registran accesos inválidos en la
-  carga de objetos de escena y en Actor_Spawn. El usuario confirma que
-  entró a una zona todavía no preparada y pide dejarla para después de
-  optimizar los FPS. Se conserva el registro completo en
-  `build/PS2/pcsx2-channel-kernels-end-session.log`; ampliar la conversión
-  de recursos de esa zona sigue pendiente.
+- At the end of the previous session, invalid accesses are recorded during
+  scene object loading and Actor_Spawn. The user confirms that
+  they entered an area not yet prepared and asks to leave it until after
+  FPS optimization. The complete log is preserved in
+  `build/PS2/pcsx2-channel-kernels-end-session.log`; expanding asset conversion
+  for that area remains pending.
 
-## Perfil de la vista lenta de Kokiri — 2026-10-03
+## Profile of the slow Kokiri view — 2026-10-03
 
-- El usuario confirma que desaparecieron las letras sobre la pared de la
-  tienda. La nueva captura del exterior, mirando hacia las vallas y plantas,
-  marca 14 FPS; la respuesta sitúa esa vista en 14–16 FPS. Sigue pendiente
-  mantener los 20 FPS naturales de la partida en todas las cámaras.
-- El perfil de esa cámara mide unos 41 ms de traducción tras descontar
-  14–18 ms de síntesis DSP; otras interrupciones siguen incluidas. Las
-  tablas del combinador consumen 3,5–4,2 ms con 9–10 construcciones por
-  fotograma. Dos fuentes I8 de 32×64 se vuelven a convertir con siete
-  colores de entorno cuyo alfa cambia entre fotogramas. RESAMPLE cuesta
-  0,7–1,6 ms por tarea de audio y FILTER alrededor de 1 ms. No se registran
-  bloques PCM perdidos ni nuevos errores de colas en la captura conservada
-  en `build/PS2/pcsx2-kokiri-before-channel-kernels-profile.log`.
-- Las tablas del combinador reutilizan por separado R, G, B y alfa según
-  las constantes que afectan a cada canal. Se propagan COMBINED y
-  COMBINED_ALPHA entre ciclos, conservando el alfa intermedio que necesita
-  RGB. Los canales donantes se copian antes de sustituir la entrada LRU,
-  incluso cuando esa entrada es el único donante de un canal. El builder
-  parcial conserva los canales no solicitados y las tablas RGBA16.
-- RESAMPLE usa punteros consecutivos cuando toda la caminata y el historial
-  caben en el búfer real; conserva la ruta enmascarada para desbordamientos
-  e índices altos. FILTER despliega sus ocho productos por salida y usa
-  sumas de 32 bits sin signo, preservando los bits 15–30 del resultado
-  anterior de 64 bits. Se conserva la actualización secuencial de LUTs
-  solapadas y el historial crudo antes de copiar el resultado.
-- Se evita proyectar inicialmente vértices exteriores, que se rechazan o
-  vuelven a proyectarse después del recorte. W degenerado, iluminación y
-  texgen se conservan. El recorte reutiliza distancias por plano, evita
-  divisiones enteras para recorrer aristas y omite copias interiores.
-- Diagnóstico EE/GS completo sin diferencias: 10496 casos RESAMPLE con
-  ambas rutas, 5121 FILTER y continuidad; 20 materiales y 2880 máscaras
-  parciales con referencia escalar, RGBA16 y LRU; 20432 polígonos y 192
-  comparaciones de puntos GS completos, niebla, decals y G_CULLDL. Pasan
-  también la vida de descriptores, diálogo, iluminación, colas, resto de
-  audio y 120 fotogramas en `build/PS2/pcsx2-channel-kernels-pass.log`.
-- Micropruebas: RESAMPLE 16289975→11482973 ciclos (30 % menos), FILTER
-  34074103→9350015 (73 %), tablas completas→caché por canal
-  36307363→11978894 (67 %, incluida la copia de salida del helper),
-  recorte 30798583→21546576 (30 %). El lote con 75 % de vértices exteriores
-  baja de 9950956 a 8190698 (18 %); el totalmente visible es comparable
-  (9647164→9695667). Son trabajos aislados y no se extrapolan a los FPS.
-- Juego reconstruido con 718 objetos, instalado y abierto sin los perfiles
-  optativos. El ELF instalado coincide por SHA256 con el recién enlazado;
-  el arranque produce PCM sin bloques perdidos y la ventana responde.
-  Comparación del usuario en la misma vista: 18 FPS quieto y 16 caminando,
-  con imagen y audio correctos. Todavía no son 20 FPS estables.
-  Respaldo de la versión anterior:
+- The user confirms that the letters on the shop wall disappeared.
+  The new outside capture, looking toward fences and plants,
+  shows 14 FPS; their reply places that view at 14–16 FPS. Maintaining
+  the game's natural 20 FPS in every camera view remains pending.
+- The profile of that camera measures about 41 ms of translation after subtracting
+  14–18 ms of DSP synthesis; other interrupts remain included. Combiner
+  tables consume 3,5–4,2 ms with 9–10 builds per
+  frame. Two I8 sources of 32×64 are converted again with seven
+  environment colors whose alpha changes between frames. RESAMPLE costs
+  0,7–1,6 ms per audio task and FILTER around 1 ms. No lost PCM
+  blocks or new queue errors are recorded in the capture preserved
+  in `build/PS2/pcsx2-kokiri-before-channel-kernels-profile.log`.
+- Combiner tables reuse R, G, B, and alpha separately according to
+  the constants affecting each channel. COMBINED and
+  COMBINED_ALPHA propagate between cycles, preserving the intermediate alpha needed by
+  RGB. Donor channels are copied before replacing the LRU entry,
+  even when that entry is a channel's only donor. The partial
+  builder preserves unrequested channels and RGBA16 tables.
+- RESAMPLE uses consecutive pointers when the entire traversal and history
+  fit in the actual buffer; it preserves the masked path for overflows
+  and high indices. FILTER unrolls its eight products per output and uses
+  unsigned 32-bit sums, preserving bits 15–30 of the previous
+  64-bit result. Sequential updates of overlapping LUTs
+  and raw history are preserved before copying the result.
+- Exterior vertices are not projected initially, as they are rejected or
+  projected again after clipping. Degenerate W, lighting, and
+  texgen are preserved. Clipping reuses distances per plane, avoids
+  integer divisions to traverse edges, and omits interior copies.
+- Full EE/GS diagnostic without differences: 10496 RESAMPLE cases with
+  both paths, 5121 FILTER cases and continuity; 20 materials and 2880 partial
+  masks with a scalar reference, RGBA16, and LRU; 20432 polygons and 192
+  comparisons of complete GS points, fog, decals, and G_CULLDL. Descriptor
+  lifetime, dialogue, lighting, queues, the rest of audio,
+  and 120 frames also pass in `build/PS2/pcsx2-channel-kernels-pass.log`.
+- Microtests: RESAMPLE 16289975→11482973 cycles (30 % fewer), FILTER
+  34074103→9350015 (73 %), complete tables→per-channel cache
+  36307363→11978894 (67 %, including the helper's output copy),
+  clipping 30798583→21546576 (30 %). The batch with 75 % exterior vertices
+  drops from 9950956 to 8190698 (18 %); the fully visible batch is comparable
+  (9647164→9695667). These are isolated tasks and are not extrapolated to FPS.
+- The game is rebuilt with 718 objects, installed, and opened without optional
+  profiles. The installed ELF matches the newly linked one by SHA256;
+  startup produces PCM without lost blocks, and the window responds.
+  User comparison in the same view: 18 FPS while standing still and 16 while walking,
+  with correct image and audio. This is still not stable 20 FPS.
+  Backup of the previous version:
   `build/PS2-ntsc12/oot_ps2-before-channel-kernels.elf`.
 
-## Letras sobre la pared y caída al seleccionar semillas — 2026-10-03
+## Letters on the wall and slowdown when selecting seeds — 2026-10-03
 
-- El usuario percibe mejora general con la reutilización de geometría,
-  pero detecta letras enormes en la pared al seleccionar semillas Deku en
-  la tienda, con caída a 8 FPS. El diálogo inferior mantiene su tamaño.
-  La sesión registra 271 cargas y sólo 28 hits por fotograma, cero retiros
-  por textura y unos 94 ms de traducción. Registro anterior conservado en
+- The user perceives an overall improvement with geometry reuse,
+  but notices huge letters on the wall when selecting Deku Seeds in
+  the shop, with a drop to 8 FPS. The dialogue below retains its size.
+  The session records 271 uploads and only 28 hits per frame, zero texture
+  retirements, and about 94 ms of translation. The previous log is preserved in
   `build/PS2/pcsx2-lighting-queues-runtime.log`.
-- La expulsión LRU podía perder un descriptor usado por dibujos GIF aún
-  pendientes aunque la nueva carga ocupara otra región libre de VRAM.
-  La región anterior quedaba sin historial y una fuente posterior podía
-  sobrescribirla sin FINISH. Ahora se retiran los dibujos antes de perder
-  ese descriptor, además de comprobar el solapamiento de VRAM.
-- La capacidad sube de 256 a 512 descriptores, con 128 buckets y el mismo
-  presupuesto de VRAM. La sombra y el color del texto generan variantes
-  para cada fuente; el conjunto del diálogo superaba las 256 entradas y
-  obligaba a recargarlas continuamente. Se sigue verificando todo el
-  contenido RAM y las entradas de mezclas, sin congelar texturas animadas.
-- Regresión en GS real con 513 glifos encolados: al descartar el primer
-  descriptor, su región `0x230000` no solapa la nueva `0x2b0000`, pero se
-  produce el FINISH necesario. Un conjunto de 300 glifos genera 300 cargas
-  en el primer recorrido y cero en el segundo. El resto de renderizado,
-  audio, iluminación, colas y 120 fotogramas pasa sin fallos en
-  `build/PS2/pcsx2-dialogue-cache-pass.log`. Juego reconstruido con 718
-  objetos. El mismo diagnóstico con la condición anterior, conservando
-  las 512 entradas, falla exactamente en el retiro: cero FINISH en lugar
-  de uno (`build/PS2/pcsx2-descriptor-old.log`). Eso verifica que ampliar
-  capacidad por sí solo no corrige el fallo de vida de VRAM.
-- Versión instalada y abierta sin perfil. Respaldo
-  `build/PS2-ntsc12/oot_ps2-before-dialogue-cache.elf`. Pendiente comparación
-  del mismo producto en la tienda y de FPS en otras vistas; no se afirma
-  fidelidad completa al original a partir del smoke.
+- LRU eviction could lose a descriptor used by GIF draws still
+  pending, even if the new upload occupied another free VRAM region.
+  The previous region lost its history, and a later source could
+  overwrite it without FINISH. Draws are now retired before losing
+  that descriptor, in addition to checking VRAM overlap.
+- Capacity increases from 256 to 512 descriptors, with 128 buckets and the same
+  VRAM budget. Text shadow and color generate variants
+  for each font source; the dialogue set exceeded 256 entries and
+  forced continuous reloading. All RAM content
+  and blending inputs are still checked, without freezing animated textures.
+- Regression on the actual GS with 513 queued glyphs: when discarding the first
+  descriptor, its region `0x230000` does not overlap the new `0x2b0000`, but
+  the required FINISH occurs. A set of 300 glyphs generates 300 uploads
+  on the first traversal and zero on the second. The rest of rendering,
+  audio, lighting, queues, and 120 frames passes without failures in
+  `build/PS2/pcsx2-dialogue-cache-pass.log`. The game is rebuilt with 718
+  objects. The same diagnostic with the previous condition, retaining
+  all 512 entries, fails exactly at retirement: zero FINISH instead
+  of one (`build/PS2/pcsx2-descriptor-old.log`). This verifies that increasing
+  capacity alone does not fix the VRAM lifetime failure.
+- The version is installed and opened without profiling. Backup
+  `build/PS2-ntsc12/oot_ps2-before-dialogue-cache.elf`. Comparison of the
+  same shop product and FPS in other views remains pending; full
+  fidelity to the original is not claimed based on the smoke test.
 
-## Reutilización temprana de puntos e iluminación — 2026-10-03
+## Early point reuse and lighting — 2026-10-03
 
-- Resultado de la versión anterior confirmado por el usuario: tienda a
-  20 FPS quieto y 14–16 caminando; exterior normalmente 14–16, llegando a
-  20 según la cámara. La primera vista del exterior todavía provoca una
-  caída mayor antes de estabilizarse. Se percibe mejora, pero aún no se
-  mantiene la velocidad natural en todas las vistas.
-- La búsqueda del punto GS texturado compartido se hace antes de repetir
-  su color y profundidad. Los indicadores de SHADE y niebla se calculan
-  una vez por grupo TRI. Los puntos temporales de recorte y decals siguen
-  preparando sus valores completos; el suelo de dos pases conserva su
-  orden. La referencia añade SHADE RGB/alfa, límites de profundidad,
-  índices repetidos y comprobación efectiva del tag de niebla.
-- La iluminación reutiliza RGB por normal bajo la misma tabla de luces,
-  comprobada una vez por G_VTX. 256 entradas ocupan 3 KiB; la generación
-  invalida en O(1), con borrado sólo al desbordarse el contador. Alfa y
-  demás campos del vértice se conservan. Sin luces direccionales se copia
-  directamente el ambiente. La conversión a entero con signo conserva
-  el resultado de colores limitados a 0–255 y evita ramas del EE.
-- La primera pasada compara 133650 casos de iluminación, cada uno con
-  ruta escalar, caché y repetición con otro alfa: cero diferencias.
-  Microprueba con las mismas luces/normales: 5003932 frente a 3476681 ciclos
-  (30 % menos en ese trabajo aislado). Puntos GS, audio y 120 fotogramas
-  pasan en `build/PS2/pcsx2-lighting-point-pass.log`. No se extrapola a FPS.
-- Revisión independiente del lookup temprano: no se leen colores ni
-  profundidades descartados cuando se reutiliza un punto; los cambios de
-  estado siguen terminando los grupos TRI. La prueba del envío texturado
-  en lotes baja de 309397 ciclos en la captura anterior a 187347 en esta;
-  ambas capturas son micropruebas, no medidas del juego completo.
+- Result of the previous version confirmed by the user: shop at
+  20 FPS while standing still and 14–16 while walking; outside usually 14–16, reaching
+  20 depending on the camera. The first outside view still causes a
+  larger drop before stabilizing. An improvement is perceived, but the natural
+  speed is not yet maintained in every view.
+- Lookup of a shared textured GS point occurs before repeating
+  its color and depth. SHADE and fog indicators are calculated
+  once per TRI group. Temporary clipping and decal points still
+  prepare their full values; the two-pass floor retains its
+  order. The reference adds SHADE RGB/alpha, depth bounds,
+  repeated indices, and an effective check of the fog tag.
+- Lighting reuses RGB per normal under the same light table,
+  checked once per G_VTX. 256 entries occupy 3 KiB; the generation
+  invalidates in O(1), clearing only when the counter overflows. Alpha and
+  other vertex fields are preserved. Without directional lights, the ambient
+  value is copied directly. Conversion to signed integer preserves
+  the result of colors bounded to 0–255 and avoids EE branches.
+- The first pass compares 133650 lighting cases, each with a
+  scalar path, cache, and repetition with another alpha: zero differences.
+  Microtest with the same lights/normals: 5003932 versus 3476681 cycles
+  (30 % fewer in that isolated task). GS points, audio, and 120 frames
+  pass in `build/PS2/pcsx2-lighting-point-pass.log`. This is not extrapolated to FPS.
+- Independent review of early lookup: discarded colors and
+  depths are not read when reusing a point; state changes
+  still end TRI groups. The batched textured submission test
+  drops from 309397 cycles in the previous capture to 187347 in this one;
+  both captures are microtests, not measurements of the full game.
 
-## Vida de colas temporales tras cargas y animaciones — 2026-10-03
+## Temporary queue lifetimes after loads and animations — 2026-10-03
 
-- El registro de la sesión anterior acumula errores de tabla de colas
-  llena al prolongar el juego. Las colas locales de DMA y las posiciones
-  de la cola de animación conservaban su registro de semáforos después de
-  completar la tarea; la liberación del heap no cubre sus vidas cortas.
-- En PS2 se liberan tras su último mensaje las colas de cuatro rutas DMA,
-  la espera de temporizador, la tarea de sincronización del scheduler y
-  la carga de un fotograma de animación. Se incluyen las salidas de error
-  DMA. No se amplía el límite de 64 ni se liberan colas dentro del receive
-  genérico. La lógica de otras plataformas se conserva.
-- La prueba de vida de colas añade 384 tareas terminadas en 96 direcciones
-  distintas, manteniendo una cola pendiente independiente, además de las
-  768 vidas de heap ya cubiertas. La última pasada pasa esos 1152 ciclos,
-  iluminación, renderizado, audio y 120 fotogramas sin fallos:
-  `build/PS2/pcsx2-lighting-queue-pass.log`. El juego con los siete callsites
-  se reconstruye con 718 objetos. Versión instalada y abierta sin perfil;
-  respaldo `build/PS2-ntsc12/oot_ps2-before-lighting-queues.elf`, registro
-  anterior en `build/PS2/pcsx2-color-runs-runtime.log`. Pendiente comparar
-  FPS y comprobar una sesión larga con los callsites corregidos.
+- The previous session's log accumulates queue-table-full errors
+  as play continues. Local DMA queues and animation queue
+  slots retained their semaphore registration after
+  completing the task; heap freeing does not cover their short lifetimes.
+- On PS2, queues are released after their last message in four DMA paths,
+  the timer wait, the scheduler synchronization task, and
+  loading an animation frame. DMA error exits
+  are included. The limit of 64 is not increased, and queues are not freed within generic
+  receive. Other platforms' logic is preserved.
+- The queue lifetime test adds 384 completed tasks at 96 different
+  addresses, retaining an independent pending queue, in addition to the
+  768 heap lifetimes already covered. The final pass passes those 1152 cycles,
+  lighting, rendering, audio, and 120 frames without failures:
+  `build/PS2/pcsx2-lighting-queue-pass.log`. The game with the seven callsites
+  is rebuilt with 718 objects. The version is installed and opened without profiling;
+  backup `build/PS2-ntsc12/oot_ps2-before-lighting-queues.elf`, previous log
+  in `build/PS2/pcsx2-color-runs-runtime.log`. FPS comparison
+  and checking a long session with the corrected callsites remain pending.
 
-## Perfil sin síntesis y lotes de geometría sin textura — 2026-10-03
+## Profile excluding synthesis and untextured geometry batches — 2026-10-03
 
-- El usuario confirma la mejora de presentación: 16–18 FPS caminando,
-  alrededor de 20 quieto (a veces 18 según cámara); tienda a 14–16 FPS.
-  Registro de esa versión: `build/PS2/pcsx2-present-overlap-runtime.log`.
-- El perfil optativo descuenta los ciclos de síntesis DSP de sus tiempos
-  gráficos. Una lectura repetida del contador evita capturar un inicio
-  interrumpido a mitad de la medición. Preparación de notas, otros hilos e
-  interrupciones siguen incluidos; no son tiempos exclusivos completos.
-  La captura de la tienda resta 8–13 ms de DSP: quedan aproximadamente
-  45 ms, con 12 ms de carga/proceso de vértices y 25 ms de triángulos.
-  Unas 2577 evaluaciones de color sin textura cuestan 4 ms por fotograma.
-  Registro: `build/PS2/pcsx2-shop-self-profile-runtime.log`.
-- Los grupos TRI consecutivos ahora agrupan también geometría sin textura,
-  hasta 20 triángulos por paquete, y reutilizan el color de los vértices
-  originales compartidos. Cualquier cambio de estado/carga/salto termina
-  el grupo. La profundidad de decal sigue calculándose por triángulo;
-  los vértices temporales de recorte conservan su evaluación independiente.
-  El suelo de dos pases texturados mantiene su orden anterior.
-- Referencia de puntos GS entre envío inmediato y lotes: color, alfa,
-  niebla, profundidad de decal, recorte, culling, capacidad y cambio de
-  material/vértice. La primera pasada detectó que el envío TRI2 inmediato
-  debía restablecer su tipo después de un lote sin textura; se corrigió
-  antes de instalar. Microprueba final: 397057 frente a 247976 ciclos (38 % menos
-  en el envío aislado de geometría sin textura, sin extrapolar a FPS).
-- La segunda pasada completa pasa renderizado, audio, fondo de inventario
-  y 120 fotogramas sin fallos en `build/PS2/pcsx2-color-run-pass.log`.
-  La transición posterior hacia TRI2 texturado también pasa: 100 paquetes
-  inmediatos frente a 10 en lotes, sin diferencias. Juego reconstruido
-  con 718 objetos. Comparación posterior: tienda quieto 20, caminando
-  14–16; exterior normalmente 14–16, con algunas vistas a 20.
-- Revisión independiente del cambio: se corrigió el modo de la fixture de
-  niebla para activarla realmente y se comprueba que los puntos usan XYZF2.
-  Esa última pasada completa también pasa. Versión abierta con perfil
-  desactivado; respaldo `build/PS2-ntsc12/oot_ps2-before-color-runs.elf`.
+- The user confirms the presentation improvement: 16–18 FPS while walking,
+  around 20 while standing still (sometimes 18 depending on the camera); shop at 14–16 FPS.
+  Log of that version: `build/PS2/pcsx2-present-overlap-runtime.log`.
+- The optional profile subtracts DSP synthesis cycles from its graphics
+  times. A repeated counter read avoids capturing a start
+  interrupted midway through measurement. Note preparation, other threads, and
+  interrupts remain included; these are not fully exclusive times.
+  The shop capture subtracts 8–13 ms of DSP: approximately
+  45 ms remain, with 12 ms of vertex loading/processing and 25 ms of triangles.
+  About 2577 untextured color evaluations cost 4 ms per frame.
+  Log: `build/PS2/pcsx2-shop-self-profile-runtime.log`.
+- Consecutive TRI groups now also batch untextured geometry,
+  up to 20 triangles per packet, and reuse the color of the original
+  shared vertices. Any state change/load/jump ends
+  the group. Decal depth is still calculated per triangle;
+  temporary clipping vertices retain their independent evaluation.
+  The two-pass textured floor retains its previous order.
+- GS point reference between immediate and batched submission: color, alpha,
+  fog, decal depth, clipping, culling, capacity, and material/vertex
+  change. The first pass detected that immediate TRI2 submission
+  needed to restore its type after an untextured batch; this was corrected
+  before installation. Final microtest: 397057 versus 247976 cycles (38 % fewer
+  in isolated untextured geometry submission, without extrapolating to FPS).
+- The second full pass passes rendering, audio, inventory background,
+  and 120 frames without failures in `build/PS2/pcsx2-color-run-pass.log`.
+  The subsequent transition to textured TRI2 also passes: 100 immediate
+  packets versus 10 batched, without differences. The game is rebuilt
+  with 718 objects. Subsequent comparison: shop while standing still 20, walking
+  14–16; outside usually 14–16, with some views at 20.
+- Independent review of the change: the fog fixture mode was corrected
+  to actually enable fog, and points are checked to use XYZF2.
+  That final full pass also passes. The version is opened with profiling
+  disabled; backup `build/PS2-ntsc12/oot_ps2-before-color-runs.elf`.
 
-## Actualización de CPU durante la presentación GS — 2026-10-02
+## CPU update during GS presentation — 2026-10-02
 
-- Resultado confirmado por el usuario tras las optimizaciones de audio:
-  sonido correcto, 16–18 FPS quieto con máximos de 20; caminando, 10–14 FPS.
-  El objetivo sigue pendiente durante el movimiento. El registro muestra
-  actualización CPU de unos 4–6 ms y presentación de unos 10 ms, además
-  de traducción gráfica y síntesis de audio.
-- Se separan envío/retiro y presentación. El worker emite FINISH, ejecuta
-  la cola y espera al GS antes de liberar los datos de la tarea y avisar
-  DP_DONE. Libera primero el buzón para aceptar una tarea pendiente sin
-  bloquear al scheduler. La CPU puede avanzar durante la espera del refresco;
-  el worker termina de presentar antes de interpretar la siguiente lista.
-  Se conservan prioridades de audio y límites de juego/menú de 20/30 Hz.
-- Se arma el refresco antes de DP_DONE. La presentación conserva un refresco
-  ocurrido mientras la CPU actualiza, evitando borrarlo y esperar otro al
-  reanudarse el worker. El cambio de buffer y setactive siguen la secuencia
-  del SDK instalado, comprobada también frente al código oficial de gsKit:
+- Result confirmed by the user after the audio optimizations:
+  correct sound, 16–18 FPS while standing still with peaks of 20; 10–14 FPS
+  while walking. The target remains unmet during movement. The log shows
+  CPU updates of about 4–6 ms and presentation of about 10 ms, in addition
+  to graphics translation and audio synthesis.
+- Submission/retirement and presentation are separated. The worker emits FINISH,
+  executes the queue, and waits for the GS before releasing the task data and
+  signaling DP_DONE. It first frees the mailbox to accept a pending task without
+  blocking the scheduler. The CPU can advance while waiting for the refresh;
+  the worker finishes presenting before interpreting the next list.
+  Audio priorities and the 20/30 Hz game/menu limits are preserved.
+- The refresh is armed before DP_DONE. Presentation preserves a refresh
+  that occurred while the CPU was updating, avoiding clearing it and waiting for
+  another when the worker resumes. The buffer swap and setactive follow the
+  installed SDK's sequence, also checked against the official gsKit code:
   https://github.com/ps2dev/gsKit/blob/master/ee/gs/src/gsCore.c.
-- Prueba del puente real de tareas: 64 fotogramas con traducción y presentación
-  artificialmente lentas. Audio antes de DP, envío pendiente sin esperar la
-  presentación, buffers de comandos distintos y presentación serializada:
-  cero fallos en `build/PS2/pcsx2-present-task-pass.log`.
-- Diagnóstico GS real: tres presentaciones tras esperar 20 ms conservan
-  el refresco y alternan los buffers sin otra espera de vblank (máximo
-  153 ciclos medidos en esa llamada). Audio/renderizado completos y 120
-  fotogramas pasan en `build/PS2/pcsx2-present-gs-pass.log`. Juego reconstruido
-  con 718 objetos y abierto; respaldo
-  `build/PS2-ntsc12/oot_ps2-before-present-overlap.elf`. Pendiente comparación
-  del exterior e inventario por el usuario; no se afirma una mejora de FPS
-  a partir de estas pruebas aisladas.
+- Test of the actual task bridge: 64 frames with artificially slow translation
+  and presentation. Audio before DP, pending submission without waiting for
+  presentation, separate command buffers, and serialized presentation:
+  zero failures in `build/PS2/pcsx2-present-task-pass.log`.
+- Actual GS diagnostic: three presentations after a 20 ms wait preserve
+  the refresh and alternate buffers without another vblank wait (a maximum
+  of 153 cycles measured in that call). Full audio/rendering and 120
+  frames pass in `build/PS2/pcsx2-present-gs-pass.log`. Game rebuilt
+  with 718 objects and opened; backup:
+  `build/PS2-ntsc12/oot_ps2-before-present-overlap.elf`. User comparison of
+  the outdoor area and inventory is pending; no FPS improvement is claimed
+  from these isolated tests.
 
-## Reutilización de controles del mezclador NEAD — 2026-10-02
+## Reusing NEAD mixer controls — 2026-10-02
 
-- La mezcla conserva ganancias y máscaras XOR en variables locales durante
-  cada grupo de ocho muestras. Sigue actualizando la envolvente entre grupos
-  y conserva el orden de lectura/escritura cuando los buffers se solapan.
-  Si los controles están dentro de un destino, se usa el bucle anterior.
-  No se reduce la frecuencia, precisión, reverberación ni número de notas.
-- Referencia independiente: 40960 casos con longitudes redondeadas, rampas
-  de volumen, saturación, inversión XOR, intercambio de canales húmedos y
-  solapamientos de muestras/controles/steps. Cero diferencias de memoria y
-  estado final. 1000 bloques de 256 muestras: 22480504 ciclos anteriores
-  frente a 20190423 del nuevo camino, aproximadamente 10 % menos en la
-  mezcla aislada. No representa un porcentaje de mejora de FPS.
-- Diagnóstico completo pasa audio y 120 fotogramas:
-  `build/PS2/pcsx2-envmix-pass.log`. Juego reconstruido con 718 objetos y
-  abierto; respaldo `build/PS2-ntsc12/oot_ps2-before-envmix-cached.elf`.
-  Registro de la versión ADPCM anterior preservado en
-  `build/PS2/pcsx2-adpcm-unrolled-runtime.log`. Pendiente comparación de FPS
-  en el exterior y confirmación del sonido por el usuario.
+- Mixing keeps gains and XOR masks in local variables during
+  each group of eight samples. It continues updating the envelope between groups
+  and preserves read/write order when buffers overlap.
+  If the controls are inside a destination, the previous loop is used.
+  Frequency, precision, reverb, and note count are not reduced.
+- Independent reference: 40960 cases with rounded lengths, volume ramps,
+  saturation, XOR inversion, wet-channel swapping, and
+  sample/control/step overlaps. Zero differences in memory and
+  final state. 1000 blocks of 256 samples: 22480504 cycles previously
+  versus 20190423 on the new path, approximately 10 % less in
+  isolated mixing. This does not represent a percentage improvement in FPS.
+- The full diagnostic passes audio and 120 frames:
+  `build/PS2/pcsx2-envmix-pass.log`. Game rebuilt with 718 objects and
+  opened; backup: `build/PS2-ntsc12/oot_ps2-before-envmix-cached.elf`.
+  Log from the previous ADPCM version preserved in
+  `build/PS2/pcsx2-adpcm-unrolled-runtime.log`. User comparison of outdoor FPS
+  and confirmation of the sound are pending.
 
-## Coste de síntesis y predictor ADPCM — 2026-10-02
+## Synthesis cost and ADPCM predictor — 2026-10-02
 
-- El contador anterior de audio medía la preparación de notas, pero dejaba
-  fuera la síntesis ejecutada por el scheduler. El nuevo contador mide esa
-  tarea completa: aproximadamente 6–8 ms por bloque a 60 bloques por segundo
-  en las escenas observadas. Ese trabajo interrumpe al renderer y también
-  aparece dentro de sus tiempos. No son tiempos exclusivos de cada hilo.
-- Perfil privado por opcode, activado sólo con
-  `host:ps2-audio-profile.enable`: ADPCM cuesta 2,4–3,7 ms por tarea muestreada,
-  ENVMIXER 1,8–2,7 ms y RESAMPLE 1,3–2 ms. Registros preservados en
-  `build/PS2/pcsx2-dsp-profile-runtime.log` y
-  `build/PS2/pcsx2-audio-op-profile-runtime.log`. El archivo de activación
-  se retiró antes de abrir la versión para jugar.
-- Predictor ADPCM de ocho muestras desplegado para EE: elimina el bucle
-  triangular de productos, conserva suma de 32 bits, saturación e historial.
-  Las entradas parciales y los buffers solapados usan el camino anterior.
-  4096 casos, longitudes 0–8, extremos, desbordamiento y aliasing producen
-  exactamente las mismas muestras. 10000 llamadas: 5541506 ciclos de la
-  referencia frente a 3500004 del nuevo predictor, aproximadamente 37 % menos
-  en esa operación aislada, sin extrapolarlo a los FPS del juego.
-- Diagnóstico completo pasa audio y 120 fotogramas en
-  `build/PS2/pcsx2-adpcm-unrolled-pass.log`. Juego reconstruido con 718 objetos
-  y abierto; respaldo `build/PS2-ntsc12/oot_ps2-before-adpcm-unrolled.elf`.
-  Pendiente comparar los FPS del exterior y comprobar el sonido al jugar.
+- The previous audio counter measured note preparation but excluded
+  the synthesis performed by the scheduler. The new counter measures that
+  entire task: approximately 6–8 ms per block at 60 blocks per second
+  in the observed scenes. That work interrupts the renderer and also
+  appears in its timings. These are not exclusive times for each thread.
+- Private per-opcode profile, enabled only with
+  `host:ps2-audio-profile.enable`: ADPCM costs 2.4–3.7 ms per sampled task,
+  ENVMIXER 1.8–2.7 ms, and RESAMPLE 1.3–2 ms. Logs preserved in
+  `build/PS2/pcsx2-dsp-profile-runtime.log` and
+  `build/PS2/pcsx2-audio-op-profile-runtime.log`. The enable file
+  was removed before opening the version for gameplay.
+- Eight-sample ADPCM predictor unrolled for EE: removes the triangular
+  product loop, preserving the 32-bit sum, saturation, and history.
+  Partial inputs and overlapping buffers use the previous path.
+  4096 cases, lengths 0–8, extremes, overflow, and aliasing produce
+  exactly the same samples. 10000 calls: 5541506 cycles for the
+  reference versus 3500004 for the new predictor, approximately 37 % less
+  in that isolated operation, without extrapolating it to the game's FPS.
+- The full diagnostic passes audio and 120 frames in
+  `build/PS2/pcsx2-adpcm-unrolled-pass.log`. Game rebuilt with 718 objects
+  and opened; backup: `build/PS2-ntsc12/oot_ps2-before-adpcm-unrolled.elf`.
+  Comparing outdoor FPS and checking the sound during gameplay are pending.
 
-## Reutilización del estado enviado al GS — 2026-10-02
+## Reusing state sent to the GS — 2026-10-02
 
-- El usuario confirma que las lecturas nativas tampoco cambian los FPS.
-  Nueva captura del exterior: el envío de triángulos ocupa aproximadamente
-  13–38 ms por muestra; actualización del juego, unos 5 ms. Las muestras
-  incluyen interrupciones y varían con la cámara. Registro:
+- The user confirms that native reads do not change FPS either.
+  New outdoor capture: triangle submission takes approximately
+  13–38 ms per sample; game updates, about 5 ms. Samples
+  include interruptions and vary with the camera. Log:
   `build/PS2/pcsx2-native-read-profile-runtime.log`.
-- ALPHA, TEST y ZBUF conservan el último valor realmente enviado por cada
-  contexto GS. Se omiten paquetes repetidos; las copias de materiales RDP
-  comparten esa referencia al hardware. Los pases de mezcla del suelo y
-  el borrado temporal de profundidad actualizan la misma caché al cambiar
-  y restaurar estado. ZBUF incluye dirección y formato de profundidad.
-  La caché se invalida al iniciar cada tarea y al inicializar el renderer,
-  para respetar los ajustes de buffers y contexto de gsKit.
-- Prueba sobre la cola GS: 300 actualizaciones repetidas del mismo modo
-  (incluidos comandos parciales y filtro) no añaden paquetes tras las tres
-  primeros envíos. Se verifican cambio y retorno de contexto, cambio
-  de dirección/formato ZBUF, restauración desde otra copia de RDPState y
-  borrado de profundidad. Diagnóstico completo pasa 120 fotogramas sin
-  fallos, incluidas las pruebas de texturas y audio:
+- ALPHA, TEST, and ZBUF retain the last value actually sent for each
+  GS context. Repeated packets are skipped; copies of RDP materials
+  share that hardware reference. Ground blending passes and
+  temporary depth clearing update the same cache when changing
+  and restoring state. ZBUF includes the depth address and format.
+  The cache is invalidated at the start of each task and when initializing
+  the renderer, respecting gsKit's buffer and context settings.
+- GS queue test: 300 repeated updates of the same mode
+  (including partial commands and filtering) add no packets after the
+  first three submissions. Context changes and switches back, ZBUF
+  address/format changes, restoration from another RDPState copy, and
+  depth clearing are verified. The full diagnostic passes 120 frames
+  without failures, including texture and audio tests:
   `build/PS2/pcsx2-gs-state-pass.log`.
-- Contadores de escrituras y reutilizaciones por fotograma, más tiempo de
-  othermode en el perfil optativo. Juego reconstruido con 718 objetos y
-  abierto sin el perfil activado; respaldo
-  `build/PS2-ntsc12/oot_ps2-before-gs-state.elf`. En una muestra del exterior
-  se emiten 323 estados y se reutilizan 735. El usuario confirma FPS iguales;
-  no se da por resuelto el objetivo de 20 FPS estables. Registro:
+- Per-frame write and reuse counters, plus othermode time
+  in the optional profile. Game rebuilt with 718 objects and
+  opened with profiling disabled; backup:
+  `build/PS2-ntsc12/oot_ps2-before-gs-state.elf`. In one outdoor sample,
+  323 states are emitted and 735 are reused. The user confirms unchanged FPS;
+  the target of a stable 20 FPS is not considered achieved. Log:
   `build/PS2/pcsx2-gs-state-runtime.log`.
 
-## Lecturas nativas de comandos y geometría — 2026-10-02
+## Native command and geometry reads — 2026-10-02
 
-- Los campos de vértices, matrices y viewport comunican al compilador su
-  alineación real de dos bytes; las palabras usan cuatro. El intérprete lee
-  ambos comandos con una sola decisión de alineación. El objeto EE utiliza
-  LH/LHU y LW en los caminos alineados, evitando las lecturas byte a byte y
-  copias a la pila anteriores. Se mantienen las fuentes sin alinear y el
-  modo opcional de assets big-endian.
-- Prueba de 4096 casos: 16 desplazamientos, valores con y sin signo,
-  palabras individuales y parejas de comandos. GCC transformaba el primer
-  oráculo en cargas LWL/LWR; las comparaciones fallaban pese a coincidir
-  los valores impresos. La referencia independiente lee bytes volátiles y
-  devuelve una palabra desde memoria (LW). Las comparaciones pasan sin diferencias;
-  también pasan las referencias de PC en ambos modos de endianness.
-- Para 50000 comandos alineados, 2037223 ciclos del lector anterior frente
-  a 709046 del nuevo (aproximadamente 65 % menos en esta lectura aislada).
-  Sin alinear: 2034519 frente a 2122237; ambos checksums coinciden. Ese
-  pequeño coste adicional corresponde a comprobar alineación. Diagnóstico
-  completo: 120 fotogramas y cero fallos en
-  `build/PS2/pcsx2-native-read-pass.log`, incluidas texturas, audio y guardado.
-- Juego reconstruido con 718 objetos; respaldo de la versión anterior:
-  `build/PS2-ntsc12/oot_ps2-before-native-read.elf`. El efecto sobre los FPS
-  del juego no mejoró según el usuario; no se extrapola la microprueba
-  al rendimiento del exterior.
+- Vertex, matrix, and viewport fields communicate their actual two-byte
+  alignment to the compiler; words use four bytes. The interpreter reads
+  both commands with a single alignment decision. The EE object uses
+  LH/LHU and LW on aligned paths, avoiding the previous byte-by-byte reads and
+  stack copies. Unaligned sources and the optional big-endian asset
+  mode are retained.
+- Test of 4096 cases: 16 offsets, signed and unsigned values,
+  individual words, and command pairs. GCC transformed the first
+  oracle into LWL/LWR loads; comparisons failed even though the printed
+  values matched. The independent reference reads volatile bytes and
+  returns a word from memory (LW). Comparisons pass with no differences;
+  PC references also pass in both endianness modes.
+- For 50000 aligned commands, 2037223 cycles for the previous reader versus
+  709046 for the new one (approximately 65 % less in this isolated read).
+  Unaligned: 2034519 versus 2122237; both checksums match. That
+  small additional cost comes from checking alignment. Full
+  diagnostic: 120 frames and zero failures in
+  `build/PS2/pcsx2-native-read-pass.log`, including textures, audio, and saving.
+- Game rebuilt with 718 objects; backup of the previous version:
+  `build/PS2-ntsc12/oot_ps2-before-native-read.elf`. The game's FPS
+  did not improve according to the user; the microtest is not extrapolated
+  to outdoor performance.
 
-## Lecturas alineadas en comprobación de texturas — 2026-10-02
+## Aligned reads in texture checks — 2026-10-02
 
-- Inspección del objeto EE: el memcpy de cuatro bytes del hash generaba
-  cuatro LBU, cuatro SB a la pila y un LW para cada palabra, incluso para
-  fuentes alineadas. El bucle ahora comprueba alineación una sola vez y
-  comunica al compilador la alineación de cuatro bytes. El objeto generado
-  usa un LW por palabra en ese camino; las fuentes sin alinear y las colas
-  conservan la lectura anterior. No cambia el algoritmo XXH32 ni se omiten
-  bytes, filas o fuentes del suelo.
-- Vectores de referencia, 16 alineaciones, dos semillas, colas y mutaciones
-  de cada byte pasan. Para 1000 hashes con semillas distintas y contenido
-  idéntico: 2048 bytes requieren 5678896 ciclos alineados frente a 12931413
-  del camino sin alinear; 4096 bytes, 11259006 frente a 25781022. Los checksums
-  coinciden (aproximadamente 56 % menos ciclos en esa operación aislada).
-- Diagnóstico completo pasa 120 fotogramas y cero fallos:
-  `build/PS2/pcsx2-aligned-hash-pass.log`. Juego reconstruido con 718 objetos
-  y abierto para medir el efecto real; respaldo
-  `build/PS2-ntsc12/oot_ps2-before-aligned-hash.elf`. El usuario confirma
-  FPS similares y una ligera mejora percibida al caminar. No se extrapola
-  el porcentaje del hash al juego completo; siguen pendientes 20 FPS estables.
+- EE object inspection: the hash's four-byte memcpy generated
+  four LBU, four SB to the stack, and one LW for each word, even for
+  aligned sources. The loop now checks alignment only once and
+  communicates four-byte alignment to the compiler. The generated object
+  uses one LW per word on that path; unaligned sources and tails
+  retain the previous read. The XXH32 algorithm is unchanged, and no
+  bytes, rows, or ground sources are skipped.
+- Reference vectors, 16 alignments, two seeds, tails, and mutations
+  of every byte pass. For 1000 hashes with different seeds and identical
+  contents: 2048 bytes require 5678896 aligned cycles versus 12931413
+  on the unaligned path; 4096 bytes, 11259006 versus 25781022. Checksums
+  match (approximately 56 % fewer cycles in that isolated operation).
+- The full diagnostic passes 120 frames and zero failures:
+  `build/PS2/pcsx2-aligned-hash-pass.log`. Game rebuilt with 718 objects
+  and opened to measure the actual effect; backup:
+  `build/PS2-ntsc12/oot_ps2-before-aligned-hash.elf`. The user confirms
+  similar FPS and a slight perceived improvement while walking. The hash
+  percentage is not extrapolated to the full game; a stable 20 FPS remains pending.
 
-## Reutilización de vértices GS — 2026-10-02
+## Reusing GS vertices — 2026-10-02
 
-- Los grupos consecutivos TRI reutilizan RGBAQ, STQ y XYZ de los vértices
-  originales compartidos. También conservan su niebla y evitan repetir la
-  aplicación del mismo tile. La caché dura sólo el grupo: cualquier comando
-  de estado, carga de vértices, salto o fin de lista lo termina. Vaciar un
-  paquete por capacidad conserva los datos. Los vértices temporales de
-  recorte y decals con sesgo de profundidad por pendiente quedan excluidos;
-  el suelo de dos pasadas mantiene su camino anterior.
-- Captura exclusiva del diagnóstico compara los puntos GS completos con
-  el camino inmediato, incluyendo perspectiva, niebla, alfa dinámico,
-  decals, recorte y cambios de coordenadas/PRIM entre grupos. Coinciden sin
-  diferencias. En 42 triángulos con tres vértices compartidos, 126
-  preparaciones pasan a 3 y 123 reutilizaciones. El diagnóstico completo
-  pasa 120 fotogramas: `build/PS2/pcsx2-point-reuse-pass.log`.
-- El perfil privado separa compilación de material (incluida en conversión)
-  y preparación de puntos (incluida en envío). Los contadores muestran
-  puntos calculados y reutilizados. El juego compila con 718 objetos y se
-  abre para comprobar rendimiento e imagen; respaldo
-  `build/PS2-ntsc12/oot_ps2-before-point-reuse.elf`. El usuario confirma
-  cinemática igual, 10–12 FPS caminando y 14–16 quieto: no hay una mejora
-  perceptible de FPS con este cambio. Registro:
-  `build/PS2/pcsx2-point-reuse-runtime.log`. No se da por conseguido el
-  objetivo de 20 FPS.
+- Consecutive TRI groups reuse RGBAQ, STQ, and XYZ from shared
+  original vertices. They also retain their fog and avoid repeating
+  the application of the same tile. The cache lasts only for the group: any state
+  command, vertex load, jump, or end of list ends it. Flushing a
+  packet due to capacity retains the data. Temporary clipping vertices
+  and decals with slope-based depth bias are excluded;
+  the two-pass ground retains its previous path.
+- Diagnostic-only capture compares full GS points with
+  the immediate path, including perspective, fog, dynamic alpha,
+  decals, clipping, and coordinate/PRIM changes between groups. They match
+  with no differences. In 42 triangles sharing three vertices, 126
+  preparations become 3, with 123 reuses. The full diagnostic
+  passes 120 frames: `build/PS2/pcsx2-point-reuse-pass.log`.
+- The private profile separates material compilation (included in conversion)
+  and point preparation (included in submission). Counters show
+  computed and reused points. The game compiles with 718 objects and is
+  opened to check performance and the image; backup:
+  `build/PS2-ntsc12/oot_ps2-before-point-reuse.elf`. The user confirms
+  an unchanged cutscene, 10–12 FPS while walking and 14–16 while standing still:
+  this change gives no perceptible FPS improvement. Log:
+  `build/PS2/pcsx2-point-reuse-runtime.log`. The target of
+  20 FPS is not considered achieved.
 
-## Colores de geometría sin textura — 2026-10-02
+## Colors of untextured geometry — 2026-10-02
 
-- Tras la conversión por tablas, el usuario confirma 14–16 FPS quieto y
-  alrededor de 12 FPS al moverse; antes observaba 10–12 FPS. También indica
-  caídas cuando Link aparece en la cinemática. No se atribuyen todas esas
-  caídas al modelo sin medir otros factores.
-- Los polígonos sin textura compilan selectores y constantes del combinador
-  por material, conservando los cuatro canales de sombreado, dependencias
-  de alfa combinado, dos ciclos y saturación en cada ciclo. SHADE se aplica
-  directamente cuando la ecuación final lo permite. La clave comprueba los
-  dos comandos, tipo de ciclo, PRIM y ENV incluso si se restaura el estado
-  sin llamar a setters. El evaluador escalar anterior se conserva como oráculo.
-- Prueba diferencial: 64 materiales, cuatro tipos de ciclo, todos los valores
-  de cada canal de sombreado por separado y mezclados, sin diferencias. Para
-  10000 evaluaciones, los tres casos medidos pasan de 8114418/7983042/15601124
-  a 2469549/1188681/5104464 ciclos EE (aproximadamente 67–85 % menos trabajo
-  en ese cálculo aislado; no representa el aumento de FPS del juego).
-  Diagnóstico completo: `build/PS2/pcsx2-vertex-color-pass.log`, 120 fotogramas
-  y cero fallos, incluido audio y las pruebas de texturas existentes.
-- El perfil privado añade tiempo y número de evaluaciones de colores sin
-  textura, incluidos en la preparación de triángulos. El juego compila con
-  718 objetos; respaldo `build/PS2-ntsc12/oot_ps2-before-vertex-color.elf`.
-  El usuario responde «No noto diferencia»: no se atribuye una mejora de
-  FPS a este cambio. El perfil real muestra que el cálculo de colores sin
-  textura ya ocupa poco tiempo; sigue investigándose el resto del envío.
-  Registro: `build/PS2/pcsx2-vertex-color-runtime.log`.
+- After table-based conversion, the user confirms 14–16 FPS while standing still and
+  about 12 FPS while moving; previously, they observed 10–12 FPS. They also report
+  drops when Link appears in the cutscene. Those drops are not all attributed
+  to the model without measuring other factors.
+- Untextured polygons compile combiner selectors and constants
+  per material, preserving the four shade channels, combined alpha
+  dependencies, two cycles, and saturation in each cycle. SHADE is applied
+  directly when the final equation allows it. The key checks both
+  commands, cycle type, PRIM, and ENV even if state is restored
+  without calling setters. The previous scalar evaluator is retained as an oracle.
+- Differential test: 64 materials, four cycle types, all values
+  of each shade channel individually and mixed, with no differences. For
+  10000 evaluations, the three measured cases go from 8114418/7983042/15601124
+  to 2469549/1188681/5104464 EE cycles (approximately 67–85 % less work
+  in that isolated calculation; this does not represent the game's FPS increase).
+  Full diagnostic: `build/PS2/pcsx2-vertex-color-pass.log`, 120 frames
+  and zero failures, including audio and the existing texture tests.
+- The private profile adds the time and number of untextured color evaluations,
+  included in triangle preparation. The game compiles with
+  718 objects; backup: `build/PS2-ntsc12/oot_ps2-before-vertex-color.elf`.
+  The user replies “I don't notice a difference”: no FPS improvement is
+  attributed to this change. The actual profile shows that untextured color
+  calculation already takes little time; the rest of submission is still under investigation.
+  Log: `build/PS2/pcsx2-vertex-color-runtime.log`.
 
-## Conversión de intensidad y paletas — 2026-10-02
+## Intensity and palette conversion — 2026-10-02
 
-- Diagnóstico optativo de ocupación y motivos de recarga de texturas, limitado
-  a 24 registros por fotograma muestreado. Se imprime después de medir el
-  renderizado y permanece desactivado en arranques normales. Con Link quieto
-  en el exterior, predominan cambios de color/alfa en I4/I8 (hadas y efectos),
-  no cambios de los bytes fuente. La caché usa casi sus 1792 KiB; aumentar
-  solamente el número de entradas no elimina ese trabajo. Algunas muestras
-  gastan 20–24 ms en conversión, incluyendo interrupciones de otros hilos.
-  Registro: `build/PS2/pcsx2-texture-cache-profile-runtime.log`.
-- I4, I8, IA4, IA8, CI4 y CI8 preparan una tabla de 16 o 256 colores finales
-  por carga. Cada texel se expande con una lectura de tabla y una escritura
-  de 32 bits. IA16 prepara tablas separadas para intensidad y alfa. Se conserva
-  exactamente la cuantización del alfa GS anterior, las paletas CI4, los
-  espejos y los materiales de dos texturas; siguen comprobándose todos los
-  bytes fuente para detectar animaciones y cambios del fondo del inventario.
-- Prueba diferencial en EE: todos los códigos de entrada de los siete
-  formatos, las 65536 parejas de intensidad/alfa IA16, cinco materiales y
-  paletas CI4 0/3/15 coinciden con la conversión anterior. El diagnóstico
-  completo pasa 120 fotogramas, incluido audio, guardado y renderer:
+- Optional diagnostic of texture occupancy and reload reasons, limited
+  to 24 entries per sampled frame. It prints after measuring
+  rendering and remains disabled on normal launches. With Link standing still
+  outdoors, I4/I8 color/alpha changes predominate (fairies and effects),
+  rather than source-byte changes. The cache uses nearly all of its 1792 KiB;
+  increasing only the entry count does not eliminate that work. Some samples
+  spend 20–24 ms on conversion, including interruptions from other threads.
+  Log: `build/PS2/pcsx2-texture-cache-profile-runtime.log`.
+- I4, I8, IA4, IA8, CI4, and CI8 prepare a table of 16 or 256 final colors
+  per load. Each texel is expanded with one table read and one
+  32-bit write. IA16 prepares separate tables for intensity and alpha. The
+  previous GS alpha quantization, CI4 palettes, mirroring, and two-texture
+  materials are preserved exactly; all source bytes are still checked
+  to detect animations and inventory background changes.
+- Differential EE test: all input codes for the seven
+  formats, the 65536 IA16 intensity/alpha pairs, five materials, and
+  CI4 palettes 0/3/15 match the previous conversion. The full diagnostic
+  passes 120 frames, including audio, saving, and the renderer:
   `build/PS2/pcsx2-compact-textures-pass.log`.
-- El usuario confirma 14–16 FPS quieto y unos 12 al moverse, frente a los
-  10–12 FPS anteriores. Es otra mejora parcial; todavía no se alcanzan
-  20 FPS estables. Registro: `build/PS2/pcsx2-compact-textures-runtime.log`.
+- The user confirms 14–16 FPS while standing still and about 12 while moving, versus
+  the previous 10–12 FPS. This is another partial improvement; a stable
+  20 FPS has still not been reached. Log: `build/PS2/pcsx2-compact-textures-runtime.log`.
 
-## Franjas del inventario y agrupación de geometría — 2026-10-02
+## Inventory strips and geometry batching — 2026-10-02
 
-- El usuario confirma que el audio está corregido y que, con la nueva
-  agrupación de franjas, «El inventario ahora va bien». El exterior sigue
-  a 8–10 FPS y todavía requiere optimización. Primero se estabilizará la
-  versión en PCSX2; las pruebas en PS2 real serán una fase posterior.
-- PreRender deja de limitar sus cargas a los 4 KiB de TMEM de N64 en PS2:
-  el traductor nativo lee la RAM fuente directamente. Usa franjas de hasta
-  32 filas, acotadas por el búfer de conversión de 256 KiB. Una copia de
-  320x240 pasa de 40 a 8 franjas; la composición con cobertura, de 60 a 8.
-  En CT32, gsKit reserva 40 KiB tanto para una franja de 320x6 como para
-  una de 320x32: el fondo pasa de 1600 KiB a 320 KiB. La cobertura utiliza
-  otra dirección TMEM lógica para mantener separados ambos orígenes.
-- TEXRECT descuenta el origen de LOADTILE antes de dibujar la subregión,
-  como ya hacían los vértices 3D. Conserva las coordenadas del dibujo y
-  evita muestrear fuera de una franja cuya fuente ya está desplazada.
-- Prueba con las listas generadas por PreRender de producción: copia,
-  composición con cobertura, tinte y copia de región cubren las 240 filas
-  con ocho rectángulos. El primer dibujo carga ocho texturas; el siguiente
-  carga cero, incluso después de introducir 64 iconos adicionales. Cambiar
-  un píxel recarga únicamente una franja. Diagnósticos completos pasan
-  120 fotogramas: `build/PS2/pcsx2-prerender-pass.log` y
+- The user confirms that audio is fixed and that, with the new
+  strip batching, “The inventory now works well.” The outdoor area still
+  runs at 8–10 FPS and needs further optimization. The PCSX2 version will
+  be stabilized first; tests on an actual PS2 will be a later phase.
+- PreRender no longer limits its loads to the 4 KiB of N64 TMEM on PS2:
+  the native translator reads source RAM directly. It uses strips of up to
+  32 rows, bounded by the 256 KiB conversion buffer. A 320x240 copy
+  goes from 40 to 8 strips; coverage composition, from 60 to 8.
+  In CT32, gsKit allocates 40 KiB for both a 320x6 strip and
+  a 320x32 strip: the background goes from 1600 KiB to 320 KiB. Coverage uses
+  another logical TMEM address to keep both sources separate.
+- TEXRECT subtracts the LOADTILE origin before drawing the subregion,
+  as 3D vertices already did. It preserves drawing coordinates and
+  avoids sampling outside a strip whose source is already offset.
+- Test with the lists generated by production PreRender: copy,
+  coverage composition, tint, and region copy cover all 240 rows
+  with eight rectangles. The first draw loads eight textures; the next
+  loads zero, even after introducing 64 additional icons. Changing
+  one pixel reloads only one strip. Full diagnostics pass
+  120 frames: `build/PS2/pcsx2-prerender-pass.log` and
   `build/PS2/pcsx2-indexed-cache-pass.log`.
-- Las búsquedas de caché se indexan en 64 grupos por dirección de origen,
-  conservando las comprobaciones de contenido, paleta y material. Los
-  reemplazos desvinculan las entradas expulsadas antes de reutilizarlas.
-  Las pruebas de colisiones, cambios de RAM, reemplazos y cercas GS pasan.
-  El usuario no percibe una mejora adicional de FPS en el exterior con
-  este índice; no se da por resuelto ese cuello de botella.
-- Los comandos consecutivos TRI1/TRI2/QUAD comparten paquetes de hasta
-  20 triángulos. Se vacían antes de cualquier cambio de estado, carga de
-  vértices, salto o fin de lista; los materiales de dos pasadas del suelo
-  siguen dibujándose por separado. Pruebas de comandos mezclados, límites
-  de capacidad, polígonos descartados y cambios de estado pasan. Una
-  comparación de 200 triángulos reduce 100 paquetes a 10 y pasa de 450379
-  a 418223 ciclos EE (alrededor del 7 % en esa prueba aislada). El usuario
-  sigue observando 8–10 FPS en el exterior: el ahorro no resuelve el lag.
-  Diagnóstico: `build/PS2/pcsx2-triangle-runs-pass.log`.
-- El perfil detallado separa matrices, transformación, luces, generación
-  de coordenadas, recorte y preparación de triángulos. En una vista quieta
-  del exterior, 3555 vértices requieren unos 2–3 ms de transformación y
-  2–3 ms de luces; las matrices y el recorte rondan 1 ms cada uno. La
-  preparación de triángulos consume 22–40 ms, incluidas búsquedas y
-  conversiones de texturas. Las interrupciones pueden aumentar cualquier
-  muestra; no deben sumarse tiempos de fases incluidas unas dentro de otras.
-  Registro: `build/PS2/pcsx2-geometry-profile-runtime.log`.
-- La conversión RGBA16 combina la expansión 5-5-5-1 y la tabla del material
-  en una sola pasada, usando canales empaquetados; los caminos que combinan
-  dos texturas conservan su cálculo anterior de alfa. Las escalas recíprocas
-  de las dimensiones GS se preparan al cargar o recuperar una textura y los
-  desplazamientos de coordenadas usan potencias de dos exactas. No se cambia
-  la resolución ni el formato de color. Pruebas exhaustivas de 65536 entradas
-  para copia, tinte y dos ciclos pasan, al igual que 512 combinaciones de
-  desplazamientos y perspectiva con coordenadas negativas y orígenes de tile.
-  El diagnóstico completo pasa 120 fotogramas, incluyendo la prueba del
-  audio corregido: `build/PS2/pcsx2-fused-textures-pass.log`.
-  Juego reconstruido con 718 objetos y abierto para medir FPS reales;
-  respaldo `build/PS2-ntsc12/oot_ps2-before-fused-textures.elf`.
-  Tras probarla, el usuario confirma «12 fps ahora 10-12», frente a los
-  8–10 FPS anteriores. Es una mejora parcial; todavía no se alcanzan
-  20 FPS estables. Registro: `build/PS2/pcsx2-fused-textures-runtime.log`.
-  Se retira la activación privada del perfil para que los próximos arranques
-  normales no realicen mediciones por comando.
+- Cache lookups are indexed in 64 groups by source address,
+  preserving content, palette, and material checks. Replacements
+  unlink evicted entries before reusing them.
+  Collision, RAM change, replacement, and GS fence tests pass.
+  The user perceives no further outdoor FPS improvement from
+  this index; that bottleneck is not considered resolved.
+- Consecutive TRI1/TRI2/QUAD commands share packets of up to
+  20 triangles. They are flushed before any state change, vertex
+  load, jump, or end of list; two-pass ground materials
+  continue to be drawn separately. Tests of mixed commands, capacity
+  limits, discarded polygons, and state changes pass. A
+  comparison of 200 triangles reduces 100 packets to 10 and goes from 450379
+  to 418223 EE cycles (about 7 % in that isolated test). The user
+  still observes 8–10 FPS outdoors: the savings do not resolve the lag.
+  Diagnostic: `build/PS2/pcsx2-triangle-runs-pass.log`.
+- The detailed profile separates matrices, transformation, lighting, coordinate
+  generation, clipping, and triangle preparation. In a static outdoor view,
+  3555 vertices require about 2–3 ms for transformation and
+  2–3 ms for lighting; matrices and clipping take about 1 ms each.
+  Triangle preparation consumes 22–40 ms, including texture
+  lookups and conversions. Interruptions can increase any
+  sample; times for phases included within other phases must not be added together.
+  Log: `build/PS2/pcsx2-geometry-profile-runtime.log`.
+- RGBA16 conversion combines 5-5-5-1 expansion and the material table
+  in a single pass, using packed channels; paths combining
+  two textures retain their previous alpha calculation. Reciprocal scales
+  of GS dimensions are prepared when loading or retrieving a texture, and
+  coordinate shifts use exact powers of two. Neither resolution
+  nor color format changes. Exhaustive tests of 65536 inputs
+  for copy, tint, and two cycles pass, as do 512 combinations of
+  shifts and perspective with negative coordinates and tile origins.
+  The full diagnostic passes 120 frames, including the test of
+  corrected audio: `build/PS2/pcsx2-fused-textures-pass.log`.
+  Game rebuilt with 718 objects and opened to measure actual FPS;
+  backup: `build/PS2-ntsc12/oot_ps2-before-fused-textures.elf`.
+  After testing it, the user confirms “12 fps now 10-12,” versus the
+  previous 8–10 FPS. This is a partial improvement; a stable
+  20 FPS has still not been reached. Log: `build/PS2/pcsx2-fused-textures-runtime.log`.
+  The private profile enable file is removed so that subsequent normal
+  launches do not perform per-command measurements.
 
-## Perfil de renderizado, texturas y voz — 2026-10-02
+## Rendering, texture, and voice profiling — 2026-10-02
 
-- El arranque y los menús limitan ahora la admisión gráfica a 30 Hz como
-  máximo (dos retraces). La partida conserva su updateRate=3, equivalente
-  a un máximo de 20 Hz. VPS=60 del emulador mide retraces y no es la tasa
-  de fotogramas del juego. El planificador de producción pasa los casos
-  updateRate=0/1/2/3, prioridades, DP ocupado y vuelta del contador.
-- Perfil optativo mediante `host:ps2-gfx-profile.enable`, muestreado cada
-  60 fotogramas con COP0 Count. Separa vértices, triángulos, rectángulos,
-  búsquedas de caché, conversión y carga GS. Los tiempos incluyen interrupciones
-  de otros hilos; las fases de textura están incluidas en tri/rect. Sin el
-  archivo privado no se lee el contador en cada comando.
-- Cuello de botella observado: en el exterior una muestra emplea 55 ms
-  en convertir texturas dentro de 93 ms de traducción gráfica; el inventario
-  recarga 85–122 texturas por fotograma y consume 123–244 ms. La actualización
-  de la partida es mucho menor que su espera por el renderizado. Registros
-  previos: `build/PS2/pcsx2-before-lut-runtime.log`.
-- Las tablas del combinador compilan los selectores una vez y evalúan sus
-  referencias simplificadas. Caché ampliada de 16 a 64 materiales. Prueba
-  diferencial contra las ecuaciones anteriores: 31 materiales, tres tipos
-  de ciclo, todos los valores de cada canal, incluidos alfa y transparencias.
-  Usuario confirma cierta mejora, pero sigue observando 12 FPS o menos y
-  lag al abrir el inventario: el objetivo de rendimiento aún no está logrado.
-- Segunda optimización: XXH32 por bloques reemplaza la cadena FNV por byte
-  al comprobar el contenido de texturas. Se siguen leyendo todos los bytes,
-  incluso filas no contiguas y el segundo material de los caminos. Vectores
-  de libxxhash, 16 alineaciones y cambios en cada byte pasan en EE; 2000
-  comparaciones independientes pasan en el host. No se omiten comprobaciones
-  por fotograma que puedan recuperar el parpadeo del suelo.
-- Una lectura inválida de vértices al abrir el inventario producía TLB misses
-  en f3dex2_vtx. Se descarta la carga fuera de RAM EE y se invalidan los
-  vértices afectados; una recarga válida posterior funciona. El origen de
-  ese puntero corrupto todavía requiere diagnóstico.
-- La captura privada acepta `voice` en `host:ps2-audio-capture.enable` y
-  empieza con la primera petición del banco de voz. Se capturó la voz infantil
-  0x6820 antes de la salida: el usuario confirma que también se escucha mal.
-  Esto sitúa ese defecto antes del controlador IOP, aunque no excluye otros
-  fallos de reproducción. Se añaden parámetros de las notas durante la captura.
-- Corregido HILOGAIN: el juego define su argumento como UQ4.4 sin signo.
-  El intérprete lo trataba como int8 y convertía ganancias >=0x80 en negativas.
-  Pruebas de ambas polaridades y saturación para 0x10/0x7f/0x80/0xff pasan.
-  No se da por solucionada la voz hasta confirmar su comportamiento real.
-- Usuario confirma que la ganancia no cambia el corte de la voz ni elimina
-  los golpes durante el inventario; la segunda optimización no mejora su
-  percepción de FPS. El perfil confirma que el menú sigue recargando unas
-  134–137 texturas por fotograma: falta reducir esa carga.
-- Causa concreta encontrada en Audio_ProcessNotes: una comprobación N64
-  rechazaba parentLayer por estar por debajo de 0x7fffffff. Todas las capas
-  válidas de EE viven por debajo de 32 MiB, por lo que las notas activas no
-  actualizaban inicialización, tono y volumen. En PS2 se valida el rango de
-  RAM nativa; N64 conserva su comprobación. Se añade una prueba de producción
-  con capa EE válida que verifica estado inicial, tono, volumen y silencio
-  tras mutear en el siguiente tick.
-  La prueba pasa (tono 0xa000, volumen 723/723 en la primera nota) y el
-  diagnóstico completo pasa 120 fotogramas sin fallos en
-  `build/PS2/pcsx2-live-notes-pass.log`. Versión reconstruida y abierta;
-  respaldo `build/PS2-ntsc12/oot_ps2-before-live-notes.elf`.
-  El usuario confirma: «el audio ya esta corregido» con esta última versión.
-  El registro de la partida ya muestra notas inicializándose durante la
-  captura (antes no aparecían): `build/PS2/pcsx2-live-notes-runtime.log`.
-  Los archivos de activación privada se retiran tras capturar; en los
-  siguientes arranques no se activa el perfil ni la grabación de sonido.
-- Pruebas nuevas de ADPCM con predictor no nulo: decodificación entera frente
-  a bloques separados, historial y A_LOOP. Diagnóstico completo pasa 120
-  fotogramas y cero fallos: `build/PS2/pcsx2-hash-gain-pass.log`.
-  Juego construido con 718 objetos y abierto con la memory card existente.
-  Respaldo anterior: `build/PS2-ntsc12/oot_ps2-before-hash-gain.elf`.
+- Startup and menus now limit graphics admission to a maximum of 30 Hz
+  (two retraces). Gameplay retains its updateRate=3, equivalent
+  to a maximum of 20 Hz. The emulator's VPS=60 measures retraces and is not
+  the game's frame rate. The production scheduler passes the
+  updateRate=0/1/2/3 cases, priorities, busy DP, and counter wraparound.
+- Optional profile through `host:ps2-gfx-profile.enable`, sampled every
+  60 frames with COP0 Count. Separates vertices, triangles, rectangles,
+  cache lookups, conversion, and GS upload. Times include interruptions
+  from other threads; texture phases are included in tri/rect. Without the
+  private file, the counter is not read on every command.
+- Observed bottleneck: in the outdoor area, one sample spends 55 ms
+  converting textures within 93 ms of graphics translation; the inventory
+  reloads 85–122 textures per frame and consumes 123–244 ms. Gameplay
+  updates take much less time than waiting for rendering. Previous logs:
+  `build/PS2/pcsx2-before-lut-runtime.log`.
+- Combiner tables compile selectors once and evaluate their
+  simplified references. Cache expanded from 16 to 64 materials. Differential
+  test against the previous equations: 31 materials, three cycle types,
+  all values of each channel, including alpha and transparency.
+  The user confirms some improvement but still observes 12 FPS or less and
+  lag when opening the inventory: the performance target has not yet been achieved.
+- Second optimization: block-based XXH32 replaces the per-byte FNV chain
+  when checking texture contents. All bytes are still read,
+  including noncontiguous rows and the second material in the paths. libxxhash
+  vectors, 16 alignments, and changes to every byte pass on EE; 2000
+  independent comparisons pass on the host. Per-frame checks that could
+  bring back the ground flicker are not skipped.
+- An invalid vertex read when opening the inventory caused TLB misses
+  in f3dex2_vtx. Loads outside EE RAM are discarded, and the
+  affected vertices are invalidated; a subsequent valid reload works. The origin
+  of that corrupt pointer still requires diagnosis.
+- Private capture accepts `voice` in `host:ps2-audio-capture.enable` and
+  starts with the first voice-bank request. Child voice
+  0x6820 was captured before output: the user confirms that it also sounds wrong.
+  This places that defect before the IOP driver, although it does not exclude
+  other playback faults. Note parameters are added during capture.
+- HILOGAIN fixed: the game defines its argument as unsigned UQ4.4.
+  The interpreter treated it as int8 and turned gains >=0x80 negative.
+  Tests of both polarities and saturation for 0x10/0x7f/0x80/0xff pass.
+  The voice is not considered fixed until its actual behavior is confirmed.
+- The user confirms that gain does not change the voice cutoff or eliminate
+  the thumps in the inventory; the second optimization does not improve
+  their perceived FPS. The profile confirms that the menu still reloads about
+  134–137 textures per frame: that load still needs to be reduced.
+- A specific cause found in Audio_ProcessNotes: an N64 check
+  rejected parentLayer for being below 0x7fffffff. All valid EE layers
+  live below 32 MiB, so active notes did not
+  update initialization, pitch, and volume. PS2 validates the native RAM
+  range; N64 retains its check. A production test is added
+  with a valid EE layer that verifies initial state, pitch, volume, and silence
+  after muting on the next tick.
+  The test passes (pitch 0xa000, volume 723/723 on the first note), and the
+  full diagnostic passes 120 frames without failures in
+  `build/PS2/pcsx2-live-notes-pass.log`. Version rebuilt and opened;
+  backup: `build/PS2-ntsc12/oot_ps2-before-live-notes.elf`.
+  The user confirms: “the audio is now fixed” with this latest version.
+  The gameplay log now shows notes initializing during
+  capture (previously they did not appear): `build/PS2/pcsx2-live-notes-runtime.log`.
+  Private enable files are removed after capture; subsequent
+  launches do not enable profiling or sound recording.
+- New ADPCM tests with a nonzero predictor: whole-stream decoding versus
+  separate blocks, history, and A_LOOP. The full diagnostic passes 120
+  frames and zero failures: `build/PS2/pcsx2-hash-gain-pass.log`.
+  Game built with 718 objects and opened with the existing memory card.
+  Previous backup: `build/PS2-ntsc12/oot_ps2-before-hash-gain.elf`.
 
-## Sincronización de fotogramas GS — 2026-10-02
+## GS frame synchronization — 2026-10-02
 
-- Usuario confirma que ya oye algunos efectos antes ausentes; la voz de
-  Link se corta mientras la música continúa. El audio no se da por corregido.
-- Solo en PS2, el planificador deja de esperar por los buffers ficticios de
-  N64 después del aviso DP_DONE: el hilo gráfico ya terminó la presentación
-  del GS. La admisión de nuevas tareas respeta updateRate desde su inicio
-  anterior (20 Hz con updateRate=3, 30 Hz con 2, 60 Hz con 1), sin acumular recuperaciones tras
-  un fotograma lento. Se conservan la exclusión DP y prioridad de audio,
-  además de la actualización lógica VI y del framebuffer de fallos.
-- Prueba del planificador de producción pasa límites de 20/30 Hz,
-  fotogramas tardíos, prioridad de audio, DP ocupado, tareas de sincronización
-  y vuelta del contador. Diagnóstico completo: 120 fotogramas y cero fallos,
-  `build/PS2/pcsx2-sched-pass.log`. Build del juego: 716 objetos.
-- Comparación de la secuencia del título alrededor del fotograma 600,
-  con las mismas cuentas de geometría (1608 triángulos, 691 dibujos): el
-  período CPU pasa de 61,4 ms a 50,6 ms, cerca del límite de 20 FPS.
-  Traducción gráfica permanece en unos 31 ms. La partida exterior (escena
-  85) todavía tiene muestras de 66–102 ms por fotograma, según cámara y
-  geometría: no se ha alcanzado una tasa estable de 20 FPS fuera de la casa.
-  Este cambio no corrige la voz entrecortada.
-- Versión abierta con ventana visible y memory card existente. Respaldo
-  del ELF anterior: `build/PS2-ntsc12/oot_ps2-before-gs-pacing.elf`.
+- The user confirms that some previously missing effects are now audible; Link's
+  voice cuts off while the music continues. Audio is not considered fixed.
+- On PS2 only, the scheduler stops waiting for the dummy N64 buffers after
+  the DP_DONE signal: the graphics thread has already finished GS
+  presentation. Admission of new tasks respects updateRate from the previous
+  start (20 Hz with updateRate=3, 30 Hz with 2, 60 Hz with 1), without accumulating catch-up work after
+  a slow frame. DP exclusion and audio priority are preserved,
+  along with logical VI and fault framebuffer updates.
+- The production scheduler test passes 20/30 Hz limits,
+  late frames, audio priority, busy DP, synchronization tasks,
+  and counter wraparound. Full diagnostic: 120 frames and zero failures,
+  `build/PS2/pcsx2-sched-pass.log`. Game build: 716 objects.
+- Comparison of the title sequence around frame 600,
+  with the same geometry counts (1608 triangles, 691 draws): the
+  CPU period goes from 61.4 ms to 50.6 ms, close to the 20 FPS limit.
+  Graphics translation remains at about 31 ms. Outdoor gameplay (scene
+  85) still has samples of 66–102 ms per frame, depending on camera and
+  geometry: a stable rate of 20 FPS outside the house has not been reached.
+  This change does not fix the choppy voice.
+- Version opened with a visible window and the existing memory card. Backup
+  of the previous ELF: `build/PS2-ntsc12/oot_ps2-before-gs-pacing.elf`.
 
-## Secuencias de sonido y caché de lecturas — 2026-10-02
+## Sound sequences and read cache — 2026-10-02
 
-- Usuario confirma que el audio interno capturado se escucha limpio, pero
-  los chasquidos aumentan con el lag de salida y no oye las voces de Link.
-  El exterior aún baja a 8–10 FPS; el objetivo de rendimiento no está logrado.
-- Corregidos dos operandos de tablas de secuencias que se leían como u16
-  nativos aunque los scripts permanecen big-endian. Las envolventes ENV
-  dentro de secuencias también conservaban ese orden: ADSR ahora identifica
-  su origen al inicializarse y lee sus puntos correctamente. Las fuentes
-  de sonido ya convertidas y las envolventes compiladas conservan su lectura
-  nativa. El estado ADSR mantiene su tamaño/layout. Pendiente confirmar
-  jugando el efecto sobre las voces y el sonido; no se dan por solucionados.
-- Caché LRU de 64 KiB para pequeñas lecturas repetidas de ROM, compartida
-  bajo el mutex existente. Las cargas grandes no expulsan sectores de audio.
-  El writeback de la lectura limita su rango usando SyncDCache del SDK.
-  Se añade medición de actualización, espera, audio y lecturas/aciertos.
-- Pruebas EE: envolvente BE sin alineación, alias de secuencia, salto ADSR,
-  comparación con fuente nativa y reinicialización; lectura entre sectores,
-  acierto sin E/S, expulsión, final parcial, fuera de rango, reapertura y
-  lectores concurrentes. Diagnóstico completo pasa 120 fotogramas, cero
-  fallos: `build/PS2/pcsx2-rom-cache-envelope-pass.log`.
+- The user confirms that the captured internal audio sounds clean, but
+  clicks increase with output lag and Link's voices are inaudible.
+  The outdoor area still drops to 8–10 FPS; the performance target has not been achieved.
+- Fixed two sequence-table operands that were read as native u16
+  even though the scripts remain big-endian. ENV envelopes within
+  sequences also retained that byte order: ADSR now identifies
+  its origin on initialization and reads its points correctly. Already-converted
+  sound sources and compiled envelopes retain their native
+  reads. ADSR state retains its size/layout. Confirmation of
+  the effect on voices and sound during gameplay is pending; they are not considered fixed.
+- 64 KiB LRU cache for small, repeated ROM reads, shared
+  under the existing mutex. Large loads do not evict audio sectors.
+  Read writeback limits its range using the SDK's SyncDCache.
+  Update, wait, audio, and read/hit measurements are added.
+- EE tests: unaligned BE envelope, sequence alias, ADSR jump,
+  comparison with native source, and reinitialization; cross-sector reads,
+  hits without I/O, eviction, partial end, out-of-range access, reopening, and
+  concurrent readers. The full diagnostic passes 120 frames, zero
+  failures: `build/PS2/pcsx2-rom-cache-envelope-pass.log`.
 
-## Cola PCM y esperas de texturas — 2026-10-01
+## PCM queue and texture waits — 2026-10-01
 
-- Usuario confirma corregido el parpadeo del suelo; sombras y escalones
-  mejoraron. El módulo libsd del SDK redujo los chasquidos, pero el audio
-  sigue defectuoso y el exterior aún puede caer a 10 FPS.
-- El registro anterior mide traducción de gráficos de 55–77 ms en bloques
-  de juego, con 7–19 recargas/esperas de texturas por fotograma muestreado.
-  Hubo 15 bloques PCM descartados en unos siete minutos. Estos tiempos
-  incluyen interrupciones de otros hilos; no son una medida aislada del GS.
-- La caché recuerda qué accesos quedaron retirados por una barrera FINISH.
-  Sobrescribir VRAM con lecturas pendientes conserva la espera; otras
-  texturas retiradas por esa misma barrera evitan esperas duplicadas.
-  Cada nueva vinculación de una textura vuelve a marcarla como pendiente,
-  también si su descriptor seguía cargado. Se conserva Z24, alfa y espejo.
-- Se cachea la decodificación de combinadores por sus palabras y modos,
-  conservando las ecuaciones, colores y factores de cada material.
-- TRI2 agrupa sus triángulos supervivientes con el mismo material en un
-  paquete GS; no agrupa el suelo de dos pasadas ni cruza comandos. Pruebas
-  pasan descarte parcial/total, siguiente TRI1 y orden de las dos pasadas.
-  En una muestra exterior, 1325 dibujos usaron 887 paquetes y 17 subidas
-  tuvieron una espera. El contador seguía en 10 FPS: menos paquetes no
-  equivale a demostrar una mejora suficiente en la tasa de fotogramas.
-- audsrv del SDK podía avanzar más allá de las muestras disponibles y
-  reproducir datos antiguos, confundiendo cola vacía y llena. El proyecto
-  compila una copia local del servidor IOP con ocupación explícita,
-  acceso serializado, lectura circular y relleno de silencio al faltar PCM.
-  Los cambios de formato reinician la cola; se consume al llegar la señal
-  de transferencia SPU2. El SDK instalado permanece sin modificaciones.
-  Fuentes y licencias: `src/platform/ps2/iop/audsrv/UPSTREAM.md`.
-- Pruebas EE pasan cola llena, vuelta circular, veinte agotamientos,
-  recuperación y reinicio, además de retiro compartido y reutilización
-  posterior de texturas. Renderer/audio completo pasa 120 fotogramas:
-  `build/PS2/pcsx2-pcm-ring-fence-pass.log`. Usuario confirma chasquidos
-  iguales tras corregir la cola. En unos cuatro minutos no hubo descartes,
-  pero aparecieron después; partidas distintas impiden comparar la tasa.
-- Captura privada opcional acepta un retraso en bloques PCM; la muestra de
-  partida de dos segundos tiene pico 7223/32768, cero saturaciones y salto
-  máximo 3425. Usuario la escucha limpia. No descarta fallos de síntesis
-  en otros momentos. Bandera de captura retirada tras la prueba.
+- The user confirms that ground flickering is fixed; shadows and steps
+  improved. The SDK's libsd module reduced clicks, but audio
+  remains faulty and the outdoor area can still drop to 10 FPS.
+- The previous log measures graphics translation of 55–77 ms in gameplay
+  blocks, with 7–19 texture reloads/waits per sampled frame.
+  There were 15 discarded PCM blocks in about seven minutes. These times
+  include interruptions from other threads; they are not an isolated GS measurement.
+- The cache remembers which accesses were retired by a FINISH barrier.
+  Overwriting VRAM with pending reads retains the wait; other
+  textures retired by that same barrier avoid duplicate waits.
+  Every new texture binding marks it pending again,
+  even if its descriptor was still loaded. Z24, alpha, and mirroring are preserved.
+- Combiner decoding is cached by its words and modes,
+  preserving each material's equations, colors, and factors.
+- TRI2 groups its surviving triangles with the same material into a
+  GS packet; it does not group two-pass ground or cross commands. Tests
+  pass partial/total rejection, a subsequent TRI1, and the order of both passes.
+  In one outdoor sample, 1325 draws used 887 packets and 17 uploads
+  had a wait. The counter remained at 10 FPS: fewer packets do not
+  demonstrate a sufficient improvement in frame rate.
+- The SDK's audsrv could advance beyond the available samples and
+  play old data, confusing an empty queue with a full one. The project
+  compiles a local copy of the IOP server with explicit occupancy,
+  serialized access, circular reads, and silence filling when PCM is missing.
+  Format changes reset the queue; it is consumed when the
+  SPU2 transfer signal arrives. The installed SDK remains unmodified.
+  Sources and licenses: `src/platform/ps2/iop/audsrv/UPSTREAM.md`.
+- EE tests pass a full queue, circular wraparound, twenty underruns,
+  recovery, and reset, along with shared retirement and subsequent
+  texture reuse. Full renderer/audio passes 120 frames:
+  `build/PS2/pcsx2-pcm-ring-fence-pass.log`. The user confirms unchanged clicks
+  after fixing the queue. There were no discarded blocks in about four minutes,
+  but they appeared later; different play sessions prevent comparing the rate.
+- Optional private capture accepts a delay in PCM blocks; the two-second
+  gameplay sample has a peak of 7223/32768, zero clipping, and a maximum
+  jump of 3425. The user hears it as clean. This does not rule out synthesis faults
+  at other times. Capture flag removed after the test.
 
-## Grabación: sombras, repetición en espejo y salida de audio — 2026-10-01
+## Recording: shadows, mirrored repeat, and audio output — 2026-10-01
 
-- Revisada grabación local de 48,42 segundos: selección de partida, casa
-  de Link y salida al bosque. El audio de Windows contiene saltos grandes
-  y picos de escala completa. La captura nativa previa de dos segundos del
-  título alcanza solo 570/32768 y no satura; son momentos diferentes, por
-  lo que esa comparación todavía no demuestra dónde se genera el ruido.
-- El renderer ignoraba `G_TX_MIRROR`, presente en materiales del bosque.
-  Se cachea un período normal y otro invertido por eje solicitado, con
-  coordenadas continuas y repetición GS sobre ambos períodos. Las variantes
-  de espejo tienen claves independientes; se conserva alfa y no se genera
-  la imagen ampliada en los aciertos de caché. Texturas demasiado grandes
-  mantienen la aproximación anterior para respetar el buffer disponible.
-- Sombras usan `SETUPDL_44` / `G_RM_ZB_OVL_SURF2` (`ZMODE_DEC`). Se añade
-  sesgo de profundidad proporcional a la pendiente únicamente a decals
-  con comparación y sin escritura Z. Se limita y satura en Z16/Z24; la
-  geometría ordinaria conserva sus profundidades. Es una aproximación a
-  la tolerancia delta-Z de N64; el usuario confirma mejoría jugando.
-- Colores y combinadores repetidos sin cambios conservan las texturas
-  cargadas, evitando hashes y búsquedas adicionales. Los cambios reales
-  siguen invalidando; no se modifica la velocidad de simulación.
-- Navi usa verde al señalar objetos de categorías PROP/BG/etc., según
-  `sAttentionColors` y `Attention_SetNaviState` en `src/code/z_actor.c`.
-  La grabación muestra la acción `Check` junto al cuadro de la casa.
-  Ese cambio de color es coherente con el comportamiento original.
-- Se incorpora el módulo `freesd.irx` / libsd del SDK antes de audsrv,
-  conservando alternativa ROM si falla. Prueba de compatibilidad de salida,
-  el usuario confirma después menos chasquidos. El build enlaza 716 objetos.
-- Diagnóstico EE completo pasa 120 fotogramas; pruebas de espejo S/T,
-  píxeles alfa, variantes de caché, coordenadas, pendientes de decals,
-  límites y oclusión dan cero fallos. Registro:
-  `build/PS2/pcsx2-shadow-mirror-pass.log`. Usuario confirma mejoría de
-  sombras/escalones y reducción del ruido, todavía sin solución completa.
+- Reviewed a local 48.42-second recording: file selection, Link's
+  house, and exit into the forest. Windows audio contains large jumps
+  and full-scale peaks. The previous two-second native title
+  capture reaches only 570/32768 and does not clip; these are different moments,
+  so the comparison still does not demonstrate where the noise is generated.
+- The renderer ignored `G_TX_MIRROR`, present in forest materials.
+  One normal period and one reversed period are cached per requested axis, with
+  continuous coordinates and GS repeat across both periods. Mirrored variants
+  have independent keys; alpha is preserved, and the enlarged image is not
+  generated on cache hits. Textures that are too large
+  retain the previous approximation to respect the available buffer.
+- Shadows use `SETUPDL_44` / `G_RM_ZB_OVL_SURF2` (`ZMODE_DEC`). A
+  slope-proportional depth bias is added only to decals
+  with comparison and no Z writes. It is limited and saturated in Z16/Z24;
+  ordinary geometry retains its depths. This approximates the
+  N64's delta-Z tolerance; the user confirms improvement during gameplay.
+- Repeated, unchanged colors and combiners retain loaded
+  textures, avoiding additional hashes and lookups. Actual changes
+  still invalidate them; simulation speed is unchanged.
+- Navi uses green when pointing to objects in PROP/BG/etc. categories, according to
+  `sAttentionColors` and `Attention_SetNaviState` in `src/code/z_actor.c`.
+  The recording shows the `Check` action next to the picture in the house.
+  That color change is consistent with the original behavior.
+- The SDK's `freesd.irx` / libsd module is included before audsrv,
+  retaining the ROM fallback if it fails. Output compatibility test;
+  the user subsequently confirms fewer clicks. The build links 716 objects.
+- The full EE diagnostic passes 120 frames; S/T mirroring,
+  alpha pixel, cache variant, coordinate, decal slope,
+  limit, and occlusion tests have zero failures. Log:
+  `build/PS2/pcsx2-shadow-mirror-pass.log`. The user confirms improved
+  shadows/steps and reduced noise, with a full solution still pending.
 
-## Diagnóstico de chasquidos — 2026-10-01
+## Click diagnosis — 2026-10-01
 
-- Usuario confirma que el árbol ya se oculta correctamente, pero los
-  chasquidos siguen iguales también con salida continua a 48 kHz.
-- Captura privada opcional del PCM estéreo de síntesis antes de enviarlo
-  a audsrv. Crear `ps2-audio-capture.enable` junto al ELF activa una captura
-  de 256000 bytes tras 900 bloques enviados. A 32 kHz son dos segundos.
-  Se acumula en RAM y escribe una sola vez `ps2-audio-native.raw`; esa
-  escritura puede detener brevemente el fotograma diagnóstico.
-  Sin el archivo de activación no se reserva ni copia PCM.
-- Compilación completa y diagnóstico EE pasan, incluyendo las pruebas de
-  audio y 120 fotogramas: `build/PS2/pcsx2-pcm-capture-pass.log`.
-  La captura permite separar defectos en síntesis de fallos de reproducción;
-  aún no se considera resuelto el ruido.
+- The user confirms that the tree is now correctly occluded, but
+  clicks remain unchanged even with continuous 48 kHz output.
+- Optional private capture of synthesized stereo PCM before sending it
+  to audsrv. Creating `ps2-audio-capture.enable` next to the ELF enables a
+  256000-byte capture after 900 submitted blocks. At 32 kHz, this is two seconds.
+  It accumulates in RAM and writes `ps2-audio-native.raw` once; that
+  write may briefly stall the diagnostic frame.
+  Without the enable file, PCM is neither allocated nor copied.
+- The full build and EE diagnostic pass, including audio
+  tests and 120 frames: `build/PS2/pcsx2-pcm-capture-pass.log`.
+  Capture allows synthesis defects to be separated from playback faults;
+  the noise is not yet considered resolved.
 
-## Recursos vecinos del bosque inicial — 2026-10-01
+## Neighboring resources of the starting forest — 2026-10-01
 
-- El registro capturó un fallo en `Room_SetupFirstRoom` al entrar en
-  `spot10` (Bosques Perdidos, entrada 011e). La escena no estaba convertida
-  y su lista de habitaciones se leía como punteros nativos inválidos.
-- Perfil `play` añade `spot10` con sus diez habitaciones, casas de los
-  Kokiri y tienda; se extraen también sus dependencias de objetos.
-  La imagen nueva contiene 139 segmentos nativos. Se verifican sus listas
-  de habitaciones y rangos ROM, checksum y conservación byte por byte
-  de los segmentos anteriormente adaptados. Falta recorrer esas escenas.
+- The log captured a fault in `Room_SetupFirstRoom` when entering
+  `spot10` (Lost Woods, entrance 011e). The scene had not been converted,
+  and its room list was read as invalid native pointers.
+- The `play` profile adds `spot10` with its ten rooms, the Kokiri
+  houses, and the shop; their object dependencies are also extracted.
+  The new image contains 139 native segments. Their room lists
+  and ROM ranges, checksum, and byte-for-byte preservation of
+  previously adapted segments are verified. Exploring those scenes is still pending.
 
-## Salida PCM continua a 48 kHz — 2026-10-01
+## Continuous 48 kHz PCM output — 2026-10-01
 
-- Usuario confirma que el FIR anterior no eliminó el ruido/chasquidos.
-  No se considera resuelto el audio por el resultado de la prueba FIR.
-- La síntesis conserva 32 kHz; la salida EE interpola PCM estéreo a 48 kHz
-  manteniendo fase y muestra anterior entre bloques. audsrv recibe su formato
-  nativo, evitando su conversión de 341 a 512 muestras repetidas por bloque.
-  Referencia: [upsamplers audsrv](https://github.com/ps2dev/ps2sdk/blob/master/iop/sound/audsrv/src/upsamplers.c).
-- El feedback AI convierte la cola IOP a bytes de la frecuencia del juego
-  antes de restar su reserva. La capacidad se comprueba con el tamaño de
-  salida completo antes de modificar la fase; se preservan ambos canales.
-- Prueba EE verifica interpolación de una rampa estéreo, salida continua
-  frente a corte tras 11 muestras, rechazo sin avanzar estado, 48 kHz
-  directo y feedback AI. Diagnóstico completo pasa 120 fotogramas:
-  `build/PS2/pcsx2-output-resample-pass.log`. El usuario confirma después
-  que los chasquidos persisten: la conversión no resolvió el fallo audible.
+- The user confirms that the previous FIR did not eliminate noise/clicks.
+  Audio is not considered resolved based on the FIR test result.
+- Synthesis retains 32 kHz; EE output interpolates stereo PCM to 48 kHz,
+  maintaining phase and the previous sample between blocks. audsrv receives its native
+  format, avoiding its conversion of 341 to 512 repeated samples per block.
+  Reference: [audsrv upsamplers](https://github.com/ps2dev/ps2sdk/blob/master/iop/sound/audsrv/src/upsamplers.c).
+- AI feedback converts the IOP queue to bytes at the game's sample rate
+  before subtracting its reserve. Capacity is checked against the full
+  output size before modifying phase; both channels are preserved.
+- The EE test verifies interpolation of a stereo ramp, continuous output
+  versus a split after 11 samples, rejection without advancing state, direct 48 kHz
+  output, and AI feedback. The full diagnostic passes 120 frames:
+  `build/PS2/pcsx2-output-resample-pass.log`. The user subsequently confirms
+  that clicks persist: the conversion did not resolve the audible fault.
 
-## Oclusión tras ampliar VRAM y filtro de audio — 2026-10-01
+## Occlusion after expanding VRAM and audio filter — 2026-10-01
 
-- Corregida regresión: `gsKit_init_screen` cambia CT16/Z24 a CT16/Z16.
-  El renderer seguía enviando Z de 24 bits y el truncamiento rompía el orden
-  de profundidad. Se usa CT16S/Z24 para conservar RGB5551, precisión y caché
-  de 1792 KiB. Se registra el formato efectivo tras inicializar la pantalla.
-  Referencia: [gsKit init](https://github.com/ps2dev/gsKit/blob/master/ee/gs/src/gsInit.c).
-- La conversión de profundidad consulta el formato efectivo, limita sus
-  extremos y soporta también Z16 sin desbordamientos. Prueba EE recorre
-  65537 profundidades en cuatro formatos y exige orden monótono y límites.
-- El filtro FIR importado indexaba directamente pares de muestras y
-  coeficientes con el orden de palabras de memoria emulada, aunque los
-  buffers EE son consecutivos. La ruta PS2 usa muestras n-k y conserva
-  los ocho samples de entrada anteriores. El impulso de dos bloques falla
-  en 9 muestras antes del cambio y pasa con cero diferencias después.
-- Diagnóstico EE completo pasa 120 fotogramas con color=0a, depth=01
-  (CT16S/Z24), recortes, caché y audio. Registro:
+- Regression fixed: `gsKit_init_screen` changes CT16/Z24 to CT16/Z16.
+  The renderer was still sending 24-bit Z, and truncation broke depth
+  ordering. CT16S/Z24 is used to preserve RGB5551, precision, and a
+  1792 KiB cache. The effective format is logged after screen initialization.
+  Reference: [gsKit init](https://github.com/ps2dev/gsKit/blob/master/ee/gs/src/gsInit.c).
+- Depth conversion checks the effective format, limits its
+  extremes, and also supports Z16 without overflow. The EE test traverses
+  65537 depths in four formats and requires monotonic ordering and bounds.
+- The imported FIR filter directly indexed sample and coefficient pairs
+  using the word order of emulated memory, even though EE
+  buffers are consecutive. The PS2 path uses samples n-k and preserves
+  the previous eight input samples. The two-block impulse fails
+  at 9 samples before the change and passes with zero differences afterward.
+- The full EE diagnostic passes 120 frames with color=0a, depth=01
+  (CT16S/Z24), clipping, cache, and audio. Log:
   `build/PS2/pcsx2-depth-filter-pass.log`.
-- La versión CT16 anterior redujo recargas en el fotograma 600 del título
-  de 102 a 1; la media de traducción del bloque pasó de 54003 a 29027 us.
-  Es una comparación del título, no una medición del exterior ni una
-  confirmación de calidad audible. Oclusión confirmada por el usuario;
-  falta validar los caminos jugando.
+- The previous CT16 version reduced reloads in title frame 600
+  from 102 to 1; mean translation time for the block went from 54003 to 29027 us.
+  This compares the title; it is neither an outdoor measurement nor
+  confirmation of audible quality. Occlusion confirmed by the user;
+  paths still need validation during gameplay.
 
-## VRAM y retención de texturas animadas — 2026-10-01
+## VRAM and animated texture retention — 2026-10-01
 
-- Color GS pasa de CT24 (almacenado en palabras de 32 bits) a RGB5551 CT16,
-  el formato del framebuffer original. Se conservan salida 640×448 y se solicita Z24;
-  la regresión del formato efectivo se corrige en la entrada anterior. La reserva crece de
-  704 a 1792 KiB, limitada al espacio realmente disponible menos 32 KiB.
-  Referencia de tamaños: [gsKit](https://github.com/ps2dev/gsKit/blob/master/ee/gs/src/gsTexture.c).
-- Una versión anterior de la misma fuente/material se reutiliza al cambiar
-  sus bytes, paleta o factores constantes en otro fotograma. Las variantes
-  utilizadas juntas se conservan; antes se acumulaban versiones históricas
-  que expulsaban texturas estables. Se mantiene FINISH antes de sobrescribir.
-- Prueba EE con 320 cambios de color conserva 32 texturas estables, la VRAM
-  de la textura cambiante y dos colores simultáneos de la misma fuente.
-  Pasan también recortes combinados, caché, audio y 120 fotogramas en CT16.
-  Registro `build/PS2/pcsx2-cache-reuse-ct16-pass.log`, reserva real 1835008 bytes.
-  La variante CT24 también pasa con 720896 bytes en
+- GS color changes from CT24 (stored in 32-bit words) to RGB5551 CT16,
+  the original framebuffer format. The 640×448 output is preserved and Z24 is requested;
+  the effective-format regression is fixed in the previous entry. The allocation grows from
+  704 to 1792 KiB, limited to the actual available space minus 32 KiB.
+  Size reference: [gsKit](https://github.com/ps2dev/gsKit/blob/master/ee/gs/src/gsTexture.c).
+- A previous version of the same source/material is reused when its
+  bytes, palette, or constant factors change in another frame. Variants
+  used together are retained; historical versions previously accumulated
+  and evicted stable textures. FINISH before overwriting is retained.
+- The EE test with 320 color changes retains 32 stable textures, the VRAM
+  of the changing texture, and two simultaneous colors from the same source.
+  Combined clipping, cache, audio, and 120 frames in CT16 also pass.
+  Log: `build/PS2/pcsx2-cache-reuse-ct16-pass.log`, actual allocation 1835008 bytes.
+  The CT24 variant also passes with 720896 bytes in
   `build/PS2/pcsx2-cache-reuse-ct24-pass.log`.
-- Añadida prueba de remuestreo: una nota a pitch 0,75 dividida en dos bloques
-  produce exactamente los mismos samples que un bloque continuo, conservando
-  historia FIR y fase. No confirma todavía fidelidad musical del juego.
-- Compilación completa de 715 objetos en `oot_ps2-next.elf`. Pendiente comparar
-  la nueva versión en el exterior con una misma cámara y verificar los caminos.
+- Resampling test added: a note at pitch 0.75 split into two blocks
+  produces exactly the same samples as one continuous block, preserving
+  FIR history and phase. This does not yet confirm the game's musical fidelity.
+- Full build of 715 objects in `oot_ps2-next.elf`. Comparing the new
+  version outdoors with the same camera and checking paths are pending.
 
-## Materiales recortados de dos texturas, estéreo y medición — 2026-10-01
+## Cutout two-texture materials, stereo, and measurement — 2026-10-01
 
-- Usuario confirma solucionados los huecos transparentes de la escalera.
-  Continúan pendientes parpadeos en caminos exteriores, rendimiento y audio
-  distorsionado; no se consideran resueltos por esa confirmación.
-- Añadida combinación RGBA previa al recorte para el material de dos tiles
-  RGBA16 con igual mapa usado en `spot04`. La clave de caché comprueba ambas
-  fuentes, sus bytes, strides y PRIM_LOD_FRAC. Conserva la ruta normal cuando
-  los tiles tienen mapas distintos. Pruebas EE pasan alfa cero/completo,
-  mezcla parcial, mutación de la segunda fuente y retención de la caché.
-- Retiradas dos consultas de SHADE por vértice y paquetes CLAMP redundantes
-  cuando el valor/contexto no cambia. Medición de traducción y flip cada
-  300 tareas para distinguir coste de CPU y espera de presentación.
-- `StereoData` conserva en EE los bits originales de los bytes de secuencia
-  y comandos; antes sus campos se interpretaban en orden inverso. La prueba
-  verifica cada bandera de canal fuerte, auriculares y política estéreo.
-  Esto corrige la interpretación; aún falta confirmar su impacto audible.
-- Diagnóstico renderer/audio pasa 120 fotogramas y el puente de tareas pasa
-  64 entregas con audio antes de DP. Registros:
+- The user confirms that the transparent holes in the staircase are fixed.
+  Flickering on outdoor paths, performance, and distorted audio
+  remain pending; they are not considered resolved by that confirmation.
+- RGBA combination before cutout added for the two-tile RGBA16 material
+  with the same mapping used in `spot04`. The cache key checks both
+  sources, their bytes, strides, and PRIM_LOD_FRAC. The normal path is retained when
+  tiles have different mappings. EE tests pass zero/full alpha,
+  partial blending, second-source mutation, and cache retention.
+- Removed two per-vertex SHADE queries and redundant CLAMP packets
+  when the value/context does not change. Translation and flip measured every
+  300 tasks to distinguish CPU cost from presentation waits.
+- `StereoData` preserves the original bits of sequence and command bytes
+  on EE; its fields were previously interpreted in reverse order. The test
+  verifies each strong-channel, headphone, and stereo-policy flag.
+  This corrects interpretation; its audible impact still needs confirmation.
+- The renderer/audio diagnostic passes 120 frames, and the task bridge passes
+  64 deliveries with audio before DP. Logs:
   `build/PS2/pcsx2-path-stereo-pass.log`, `build/PS2/pcsx2-task-profile-pass.log`.
-  El registro anterior produjo 370,136 s de PCM en 370,508 s, sin descartes;
-  esa continuidad no confirma calidad musical. Se mantiene la temporización
-  original: durante Play, R_UPDATE_RATE=3 (aproximadamente 20 FPS NTSC).
+  The previous log produced 370.136 s of PCM in 370.508 s, with no discarded blocks;
+  that continuity does not confirm musical quality. Original timing is
+  retained: during Play, R_UPDATE_RATE=3 (approximately 20 FPS NTSC).
 
-## Mezcla de suelo y reserva de audio — 2026-10-01
+## Ground blending and audio reserve — 2026-10-01
 
-- El material del suelo de `spot04` mezcla TEXEL0 y TEXEL1 mediante
-  ENV_ALPHA y después aplica SHADE. El renderer antes sustituía TEXEL1
-  por TEXEL0. Ahora reconoce ese combinador opaco y dibuja dos pasadas GS,
-  cada una con su tile, coordenadas, profundidad y niebla. Otros combinadores
-  de dos texturas siguen pendientes. Cambiar ENV_ALPHA conserva ambas
-  texturas en caché; con alfa cero solo dibuja la primera pasada.
-- La longitud AI comunicada al motor excluye 20 ms de reserva de audsrv.
-  Antes incluía toda la cola IOP, lo que mantenía al sintetizador en bloques
-  mínimos. La prueba enlaza el driver real con un servidor simulado y verifica
-  32/48 kHz, reserva, errores y rechazo de bloques que no caben completos.
-- Pruebas EE nativas pasan mezcla de dos texturas, retención de caché al
-  cambiar el factor, exclusión de materiales recortados y driver de audio.
-  Compilación completa: 715 objetos. Registro:
-  `build/PS2/pcsx2-ground-audio-pass.log`. La verificación visual del suelo
-  y la continuidad del audio en el juego siguen pendientes.
+- The ground material in `spot04` blends TEXEL0 and TEXEL1 using
+  ENV_ALPHA, then applies SHADE. The renderer previously replaced TEXEL1
+  with TEXEL0. It now recognizes that opaque combiner and draws two GS passes,
+  each with its own tile, coordinates, depth, and fog. Other two-texture
+  combiners remain pending. Changing ENV_ALPHA retains both
+  textures in the cache; with zero alpha, only the first pass is drawn.
+- The AI length reported to the engine excludes 20 ms of audsrv reserve.
+  It previously included the entire IOP queue, keeping the synthesizer on
+  minimum-sized blocks. The test links the actual driver with a simulated server and verifies
+  32/48 kHz, reserve, errors, and rejection of blocks that do not fit in full.
+- Native EE tests pass two-texture blending, cache retention when
+  changing the factor, exclusion of cutout materials, and the audio driver.
+  Full build: 715 objects. Log:
+  `build/PS2/pcsx2-ground-audio-pass.log`. Visual verification of the ground
+  and audio continuity in the game remain pending.
 
-## Recortes de alfa y coste de la caché — 2026-10-01
+## Alpha cutouts and cache cost — 2026-10-01
 
-- El test GS ahora reconoce CVG_X_ALPHA usado por materiales TEX_EDGE,
-  aunque G_AC_THRESHOLD esté desactivado. Aproxima cobertura parcial con
-  umbral de medio alfa y descarta también color/profundidad en los huecos.
-  Para el test explícito utiliza el alfa del blend color y actualiza su
-  umbral al cambiarlo. Pruebas EE pasan modo de escalera, superficie opaca,
-  umbral variable y conservación del test/escritura de profundidad.
-- La elección de espacio VRAM usa edades por bloque y máximo deslizante,
-  conservando el criterio anterior de expulsión con una búsqueda lineal.
-  Evita esperar FINISH en regiones sin usos previos; mantiene la espera
-  al sobrescribir una región o eliminar un descriptor válido. Pasan las
-  pruebas de retención de 32 tiras, 128 glifos, textura grande y expulsión.
-- Añadidos contadores por fotograma de aciertos, cargas y esperas para medir
-  la presión de la caché. Aún falta verificar visualmente la escalera y
-  comparar rendimiento en una misma cámara del juego.
+- The GS test now recognizes CVG_X_ALPHA used by TEX_EDGE materials,
+  even when G_AC_THRESHOLD is disabled. It approximates partial coverage with
+  a half-alpha threshold and also discards color/depth in the holes.
+  For the explicit test, it uses blend-color alpha and updates its
+  threshold when that changes. EE tests pass staircase mode, opaque surfaces,
+  a variable threshold, and preservation of depth testing/writing.
+- VRAM space selection uses per-block ages and a sliding maximum,
+  preserving the previous eviction criterion with a linear search.
+  It avoids waiting for FINISH in regions with no previous use; it retains the wait
+  when overwriting a region or removing a valid descriptor. Tests of
+  32-strip retention, 128 glyphs, a large texture, and eviction pass.
+- Per-frame hit, load, and wait counters added to measure
+  cache pressure. Visual verification of the staircase and performance
+  comparison with the same in-game camera are still pending.
 
-## Audio independiente del renderer y fondos JPEG — 2026-10-01
+## Audio independent of the renderer and JPEG backgrounds — 2026-10-01
 
-- Conectada niebla nativa GS a triángulos con y sin textura, usando FGE,
-  XYZF2 y FOGCOL. Antes solo existía un cálculo genérico sin conexión al
-  dibujo. Ahora interpreta los parámetros reales G_MW_FOG sobre Z/W,
-  invierte el factor para GS y limita la activación a la etapa estándar
-  FOG_SHADE_A de dos ciclos. Conserva la profundidad de 24 bits y restaura
-  el estado de niebla antes de dibujar fondos/textos. Pruebas EE pasan
-  inicio, mitad, saturación, rango estrecho y desactivación por material.
-  Referencia de emisión STQ: [gsKit](https://github.com/ps2dev/gsKit/blob/master/ee/gs/src/gsTexture.c).
-- La traducción de gráficos pasa del scheduler a un hilo EE de prioridad
-  libultra 10, inferior a Graph (11) y AudioMgr (12). Entrega SP al despachar
-  y conserva DP ocupado hasta completar el dibujo y el cambio de pantalla.
-  Retiradas las alarmas cada 128 comandos. La prueba nativa pasa 64 tareas
-  lentas, con audio antes de DP y orden correcto de los avisos.
-- Corregida durante las pruebas la prioridad inicial 13 del nuevo hilo:
-  impedía atender AudioMgr a tiempo. Con prioridad 10, el juego envía
-  14,939 segundos de PCM en 15 segundos, sin descartes ni intervalos mayores
-  que dos bloques. El intento anterior enviaba 9,920 segundos en 68,251
-  segundos, con 577 intervalos tardíos y 148 descartes. Las métricas miden
-  entrega a audsrv; no confirman todavía fidelidad musical ni FPS sostenidos.
-- Decodificador nativo con libjpeg ya instalado en el SDK: dimensiones y
-  capacidad limitadas a 320×240, salida RGBA5551 big-endian y copia únicamente
-  después de terminar. Entrada dañada conserva el JPEG original. Las pruebas
-  EE pasan colores conocidos, repetición, dimensiones y corrupción.
-- Reconocimiento de cambios F3DEX2/S2DEX y rectángulos de fondo COPY/1CYCLE.
-  Fondos RGBA16 sin giro ni origen desplazado se dibujan en tiras de hasta
-  32 filas. La prueba verifica ocho tiras para 320×240 y sus píxeles, incluso
-  después de cargar otras texturas. Otros formatos/orígenes siguen pendientes.
-- Diagnóstico acotado de cámara y fondo en habitaciones de imagen única.
-  Los recursos de la casa contienen polígonos verdes sin textura; aún falta
-  comprobar en la cinemática cuándo deben cubrirlos el fondo y los fundidos.
-- El juego decodifica el JPEG real 320×240 de la casa y registra fondos
-  S2DEX dibujados. PCSX2 indica 20 FPS en la cinemática observada. Una prueba
-  larga continúa produciendo PCM cerca de tiempo real, aunque registra
-  algunos descartes adicionales; no confirma audio perfecto ni un benchmark
-  comparable de todas las escenas.
-- Compilación completa: 715 objetos. Registros locales de pruebas:
+- Native GS fog connected to textured and untextured triangles, using FGE,
+  XYZF2, and FOGCOL. Previously, only a generic calculation existed with no connection
+  to drawing. It now interprets actual G_MW_FOG parameters over Z/W,
+  inverts the factor for GS, and limits activation to the standard two-cycle
+  FOG_SHADE_A stage. It preserves 24-bit depth and restores
+  fog state before drawing backgrounds/text. EE tests pass
+  start, midpoint, saturation, narrow range, and per-material disabling.
+  STQ emission reference: [gsKit](https://github.com/ps2dev/gsKit/blob/master/ee/gs/src/gsTexture.c).
+- Graphics translation moves from the scheduler to an EE thread with libultra
+  priority 10, below Graph (11) and AudioMgr (12). It delivers SP on dispatch
+  and keeps DP busy until drawing and the screen swap are complete.
+  Alarms every 128 commands removed. The native test passes 64 slow
+  tasks, with audio before DP and correct signal ordering.
+- The new thread's initial priority of 13 was corrected during tests:
+  it prevented AudioMgr from being serviced on time. With priority 10, the game submits
+  14.939 seconds of PCM in 15 seconds, with no discarded blocks or intervals longer
+  than two blocks. The previous attempt submitted 9.920 seconds in 68.251
+  seconds, with 577 late intervals and 148 discarded blocks. Metrics measure
+  delivery to audsrv; they do not yet confirm musical fidelity or sustained FPS.
+- Native decoder using libjpeg, already installed in the SDK: dimensions and
+  capacity limited to 320×240, big-endian RGBA5551 output, and copying only
+  after completion. Damaged input retains the original JPEG. EE tests
+  pass known colors, repetition, dimensions, and corruption.
+- Recognition of F3DEX2/S2DEX changes and COPY/1CYCLE background rectangles.
+  RGBA16 backgrounds with no rotation or shifted origin are drawn in strips of up to
+  32 rows. The test verifies eight strips for 320×240 and their pixels, even
+  after loading other textures. Other formats/origins remain pending.
+- Bounded camera and background diagnostic in single-image rooms.
+  The house resources contain untextured green polygons; checking
+  when the background and fades should cover them in the cutscene is still pending.
+- The game decodes the house's actual 320×240 JPEG and logs drawn
+  S2DEX backgrounds. PCSX2 indicates 20 FPS in the observed cutscene. A long
+  test continues producing PCM close to real time, although it logs
+  some additional discarded blocks; it does not confirm perfect audio or a comparable
+  benchmark across all scenes.
+- Full build: 715 objects. Local test logs:
   `build/PS2/pcsx2-jpeg-background-pass.log`,
-  `build/PS2/pcsx2-task-priority-pass.log` y
+  `build/PS2/pcsx2-task-priority-pass.log` and
   `build/PS2-ntsc12/pcsx2-game.log`.
 
-## Letras del nombre, caché del teclado y memory card — 2026-10-01
+## Name letters, keyboard cache, and memory card — 2026-10-01
 
-- `Font_LoadOrderedFont` interpreta las mitades big-endian del mensaje que
-  ordena las letras NTSC. Antes se intercambiaban los bytes de los códigos
-  SHIFT-JIS y se cargaban otros glifos. PS2 también limita longitud y destino.
-  La prueba EE enlaza el cargador real, comprueba letras latinas, salto de línea
-  y un mensaje sin terminador, sin leer fuera de su longitud.
-- Caché ampliada de 64 a 256 entradas, con bloques de 1 KiB en los mismos
-  704 KiB de VRAM. El teclado provocaba conversiones repetidas al superar
-  64 combinaciones de letra/color. La prueba conserva 128 glifos entre pasadas,
-  además de tiras medianas, texturas grandes, expulsión y colores del combinador.
-  Esto evita trabajo repetido; aún falta un benchmark comparable de FPS.
-- Fundidos `TEXEL_ALPHA * PRIMITIVE_ALPHA` compatibles pasan el factor variable
-  al vértice GS. Las claves de textura/LUT excluyen ese factor. La prueba cambia
-  el alfa sin recargar VRAM y rechaza los estados que necesitan la ruta CPU.
-  RGBA32, IA8 e IA16 convierten alfa 255 a 128, evitando el máximo 127 anterior.
-- `libmc` recibe flags IOP directamente: sustituidos los flags newlib por
-  `FIO_O_*`. La lectura antes devolvía -5. Verificado contra el código de
+- `Font_LoadOrderedFont` interprets the big-endian halves of the message that
+  orders NTSC letters. Previously, the bytes of SHIFT-JIS codes
+  were swapped and other glyphs were loaded. PS2 also limits length and destination.
+  The EE test links the actual loader, checks Latin letters, a line break,
+  and an unterminated message, without reading beyond its length.
+- Cache expanded from 64 to 256 entries, with 1 KiB blocks in the same
+  704 KiB of VRAM. The keyboard caused repeated conversions when exceeding
+  64 letter/color combinations. The test retains 128 glyphs between passes,
+  along with medium strips, large textures, eviction, and combiner colors.
+  This avoids repeated work; a comparable FPS benchmark is still pending.
+- Compatible `TEXEL_ALPHA * PRIMITIVE_ALPHA` fades pass the variable factor
+  to the GS vertex. Texture/LUT keys exclude that factor. The test changes
+  alpha without reloading VRAM and rejects states that need the CPU path.
+  RGBA32, IA8, and IA16 convert alpha 255 to 128, avoiding the previous maximum of 127.
+- `libmc` receives IOP flags directly: newlib flags replaced with
+  `FIO_O_*`. Reads previously returned -5. Verified against the code of
   [PS2SDK](https://github.com/ps2dev/ps2sdk/blob/master/ee/rpc/memorycard/src/libmc.c).
-- Guardado alterno `save.dat`/`save.bak`, revisión y checksum, comprobación del
-  cierre y relectura antes de declarar éxito. Lee también el formato anterior.
-  Un error conserva la copia previa y permite reintentar la inicialización.
-- Diagnóstico con MCMAN/MCSERV y una tarjeta virtual nueva: pasan dos escrituras,
-  selección de la revisión reciente, daño de la copia nueva y recuperación
-  de la anterior. Tras cerrar y reiniciar PCSX2 pasan los 32768 bytes persistidos.
-  La prueba usa `OOT_PS2_TEST`, separada del guardado del juego `OOT_PS2`.
-- Activada la nueva `oot-port.ps2` en la configuración aislada; la tarjeta que
-  estaba configurada se conserva. El juego registra guardados verificados hasta
-  la revisión 5 y entra en la escena 52. Esto no valida una partida completa.
-- Logs privados: `build/PS2/pcsx2-smoke-glyph-cache.log`,
+- Alternating `save.dat`/`save.bak` saving, revision and checksum, close
+  checking, and rereading before declaring success. The previous format is also read.
+  An error preserves the previous copy and allows initialization to be retried.
+- Diagnostic with MCMAN/MCSERV and a new virtual card: two writes pass,
+  selection of the latest revision, damage to the new copy, and recovery
+  of the previous one. After closing and restarting PCSX2, all 32768 persisted bytes pass.
+  The test uses `OOT_PS2_TEST`, separate from the game's save `OOT_PS2`.
+- The new `oot-port.ps2` enabled in the isolated configuration; the previously
+  configured card is retained. The game logs verified saves up to
+  revision 5 and enters scene 52. This does not validate a complete playthrough.
+- Private logs: `build/PS2/pcsx2-smoke-glyph-cache.log`,
   `build/PS2/pcsx2-memorycard-write-recovery.log`,
-  `build/PS2/pcsx2-memorycard-cold-restart.log` y
+  `build/PS2/pcsx2-memorycard-cold-restart.log` and
   `build/PS2-ntsc12/pcsx2-font-card-first-game.log`.
 
-## Caché, reflejos y pruebas del selector — 2026-10-01
+## Cache, reflections, and file-select tests — 2026-10-01
 
-La captura del título muestra a Link montado en Epona, terreno, murallas y
-el logo Zelda con sus colores. Start abre el selector y se ven sus textos,
-botones y fondo. **Aún no se ha validado una partida jugable completa.**
+The title capture shows Link riding Epona, terrain, walls, and
+the Zelda logo in its colors. Start opens file select, showing its text,
+buttons, and background. **A complete playable run has not yet been validated.**
 
-- Caché de texturas con 64 entradas y asignación según tamaño sobre los mismos
-  704 KiB de VRAM. Retira los dibujos antes de sobreescribir regiones y anula
-  todos los descriptores que se solapan. El diagnóstico comprueba retención
-  de 32 texturas medianas y carga de una textura de 256×256 dentro del límite.
-- Caché de tablas del combinador: reutiliza sus 512 evaluaciones por estado.
-  Las claves incluyen solo componentes prim/env que el combinador utiliza.
-  Pruebas de cambios de color, expulsión y colores irrelevantes en ciclo COPY.
-- Hash de los bytes de fuente y paleta conserva la caché entre fotogramas
-  sin dejar obsoletas las texturas modificadas en la misma dirección RAM.
-- Coordenadas esféricas y lineales de reflexión desde la normal transformada
-  por modelview y los dos vectores LookAt de MOVEMEM. Pruebas con identidad,
-  giro, modo lineal y un vector LookAt personalizado.
-- El renderer cede brevemente el hilo cada 128 comandos para permitir muestreo
-  del mando durante fotogramas lentos. Start se ha comprobado en el emulador.
-- Perfil `play`: 104 segmentos, incluidas 573 tablas de animación del jugador
-  en orden nativo y recursos iniciales. Se conservan JPEG comprimidos intactos;
-  su decodificación y dibujo de fondos prerenderizados siguen pendientes.
-- La prueba prolongada anterior agotaba la tabla lateral de colas al cambiar
-  de escena. Al liberar una asignación o destruir una arena PS2 se eliminan
-  sus semáforos. El diagnóstico enlaza el asignador real y pasa 768 ciclos,
-  limpieza de arenas y preservación de una cola ajena.
-- Logs privados: `build/PS2/pcsx2-smoke-cache-final.log` y
-  `build/PS2-ntsc12/pcsx2-lut-filechoose.log`. En la versión intermedia se
-  observaron 4–10 FPS en el título y 20 en el selector; no son un benchmark
-  definitivo ni una validación de rendimiento en hardware PS2.
+- Texture cache with 64 entries and size-based allocation over the same
+  704 KiB of VRAM. It retires draws before overwriting regions and invalidates
+  all overlapping descriptors. The diagnostic checks retention
+  of 32 medium textures and loading a 256×256 texture within the limit.
+- Combiner table cache: reuses its 512 evaluations per state.
+  Keys include only prim/env components that the combiner uses.
+  Tests of color changes, eviction, and irrelevant colors in COPY cycle.
+- Hashing source and palette bytes preserves the cache between frames
+  without leaving modified textures stale at the same RAM address.
+- Spherical and linear reflection coordinates from the normal transformed
+  by modelview and both LookAt vectors from MOVEMEM. Tests with identity,
+  rotation, linear mode, and a custom LookAt vector.
+- The renderer briefly yields the thread every 128 commands to allow controller
+  sampling during slow frames. Start has been checked in the emulator.
+- `play` profile: 104 segments, including 573 player animation tables
+  in native order and initial resources. Compressed JPEGs are preserved intact;
+  decoding them and drawing prerendered backgrounds remain pending.
+- The previous extended test exhausted the queue side table when changing
+  scenes. Freeing an allocation or destroying a PS2 arena removes
+  its semaphores. The diagnostic links the actual allocator and passes 768 cycles,
+  arena cleanup, and preservation of an unrelated queue.
+- Private logs: `build/PS2/pcsx2-smoke-cache-final.log` and
+  `build/PS2-ntsc12/pcsx2-lut-filechoose.log`. The intermediate version showed
+  4–10 FPS in the title and 20 in file select; these are neither a final
+  benchmark nor validation of performance on PS2 hardware.
 
-## Matriz del escenario, texturas y SRAM — 2026-09-30
+## Scene matrix, textures, and SRAM — 2026-09-30
 
-El juego enlaza con 713 objetos. Las capturas posteriores a corregir la matriz
-identidad muestran terreno, luna, murallas y el título Zelda con sus colores.
-**Todavía no es jugable:** siguen pendientes fidelidad visual, rendimiento y
-validación de la partida. La escena ronda 4 FPS.
+The game links with 713 objects. Captures after correcting the identity
+matrix show terrain, the moon, walls, and the Zelda title in their colors.
+**It is still not playable:** visual fidelity, performance, and gameplay
+validation remain pending. The scene runs at about 4 FPS.
 
-- `gIdentityMtx` usaba `gdSPDefMtx`, que empaqueta los componentes en palabras
-  big-endian. En el EE intercambiaba mitades contiguas, incluida la componente
-  homogénea: muchos vértices del escenario quedaban detrás de la cámara. PS2
-  inicializa la constante con mitades nativas. La prueba de matemáticas enlaza
-  `sys_matrix.c` y comprueba la constante real, además de los conversores.
-- Paletas CI4 cargadas en su posición TMEM, preservando otras paletas; se
-  invalidan los descriptores CI afectados. Añadido el decoder IA4 de tres bits
-  de intensidad y uno de alfa. Ambos pasan pruebas de píxeles en el EE.
-- Coordenadas de triángulos enviadas mediante STQ, evitando el clamp de UV
-  de los helpers de gsKit. Se conservan coordenadas negativas, repetición,
-  shifts y perspectiva cuando el RDP la activa. Clamp regional excluye el
-  relleno de las tiras que no son potencia de dos. Espejo, TEXEL1 y generación
-  de coordenadas de reflexión siguen pendientes.
-- `SsSram_ReadWrite` conectado a un shadow SRAM de 32 KiB con semáforo y
-  acceso por offset. Una escritura parcial guarda la imagen completa para
-  conservar opciones y otras partidas. Una tarjeta ausente deja SRAM vacía;
-  una escritura fallida conserva los cambios en RAM y registra el error.
-- El backend de memory card comprueba tipo/formato, creación del directorio,
-  versión y tamaño del archivo antes de calcular su checksum. No se formatea
-  ninguna tarjeta. La configuración aislada actual no tiene una tarjeta PS2
-  formateada; falta validar persistencia real en ella.
-- Diagnóstico PCSX2: SRAM vacía, escrituras parciales, recarga, error de backend,
-  límites, identidad real, IA4, paletas, STQ y pruebas anteriores pasan. Logs
-  privados: `build/PS2/pcsx2-smoke-stq.log`, `build/PS2-ntsc12/pcsx2-identity.log`.
+- `gIdentityMtx` used `gdSPDefMtx`, which packs components into big-endian
+  words. On EE, it swapped adjacent halves, including the homogeneous
+  component: many scene vertices ended up behind the camera. PS2
+  initializes the constant with native halves. The math test links
+  `sys_matrix.c` and checks the actual constant as well as the converters.
+- CI4 palettes loaded into their TMEM positions, preserving other palettes;
+  affected CI descriptors are invalidated. IA4 decoder added with three bits
+  of intensity and one of alpha. Both pass pixel tests on EE.
+- Triangle coordinates sent using STQ, avoiding the UV clamp of gsKit
+  helpers. Negative coordinates, repeat, shifts, and perspective when enabled
+  by RDP are preserved. Regional clamp excludes padding
+  in strips that are not powers of two. Mirroring, TEXEL1, and reflection
+  coordinate generation remain pending.
+- `SsSram_ReadWrite` connected to a 32 KiB shadow SRAM with a semaphore and
+  offset-based access. A partial write saves the full image to
+  preserve options and other save files. A missing card leaves SRAM empty;
+  a failed write retains changes in RAM and logs the error.
+- The memory-card backend checks type/format, directory creation,
+  file version, and size before calculating its checksum. No card
+  is formatted. The current isolated configuration has no formatted PS2
+  card; actual persistence on it still needs validation.
+- PCSX2 diagnostic: empty SRAM, partial writes, reload, backend error,
+  bounds, actual identity, IA4, palettes, STQ, and previous tests pass. Private
+  logs: `build/PS2/pcsx2-smoke-stq.log`, `build/PS2-ntsc12/pcsx2-identity.log`.
 
-## Renderer y síntesis nativa — 2026-09-30
+## Renderer and native synthesis — 2026-09-30
 
-El diagnóstico ejecutado en PCSX2 pasa PCM, mezcla, intercalado estéreo,
-ADPCM, PCM de 8 bits e historial, además de geometría y sistema. Se prueba
-el asignador permanente real y la agrupación de notificaciones de refresco.
-Los tres tests de bancos de instrumentos pasan: estructuras compartidas,
-bitfields de Sample y rechazo de punteros/libros de predicción inválidos.
-**Todavía no es un juego jugable.** Tras las correcciones, el título sigue
-animándose, alcanza 600 fotogramas enviados y entra al estado del selector de
-partida al pulsar Start. La captura muestra el logo Zelda, cielo y parte de
-Link/Epona; faltan escenario, texturas y rendimiento (unos 4 FPS).
-El audio envía buffers no silenciosos: por ejemplo, 2240 bytes aceptados por
-audsrv con amplitud máxima 12288. Esto verifica generación y envío de PCM,
-no la fidelidad de la música. No se registraron excepciones TLB ni watchdog
-en esa ejecución; se mantienen los logs privados en `build/PS2-ntsc12`.
+The diagnostic run in PCSX2 passes PCM, mixing, stereo interleaving,
+ADPCM, 8-bit PCM, and history, along with geometry and system tests. It tests
+the actual permanent allocator and batching of refresh notifications.
+All three instrument-bank tests pass: shared structures,
+Sample bitfields, and rejection of invalid pointers/predictor books.
+**It is still not a playable game.** After the fixes, the title continues
+animating, reaches 600 submitted frames, and enters the file-select
+state when Start is pressed. The capture shows the Zelda logo, sky, and part of
+Link/Epona; the scene, textures, and performance (about 4 FPS) are still lacking.
+Audio submits non-silent buffers: for example, 2240 bytes accepted by
+audsrv with a maximum amplitude of 12288. This verifies PCM generation and submission,
+not the music's fidelity. No TLB exceptions or watchdog were logged
+in that run; private logs are retained in `build/PS2-ntsc12`.
 
-- Corregido el orden de argumentos de los triángulos gouraud de gsKit: los
-  colores se estaban interpretando como coordenadas. La captura posterior
-  permite reconocer a Epona; aún tiene colores incorrectos y falta escenario.
-- Recorte homogéneo de triángulos antes de dividir por W, comprobado con
-  cruce del plano cercano y geometría completamente fuera del volumen.
-- Corregidos campos del blender, ciclo final, control real de escritura Z,
-  coordenadas de rectángulos y relación entre descriptores de carga/render
-  de texturas, incluidos sus pasos entre filas.
-- Combinador CPU para constantes prim/env y modulación por vértice; tabla de
-  búsqueda y caché de VRAM para reducir trabajo. TEXEL1 sigue aproximado con
-  TEXEL0; no reproduce todas las combinaciones, niebla ni perspectiva.
-- Corregidas notificaciones de refresco que llenaban la cola del scheduler
-  durante un fotograma lento y hacían perder los avisos SP/DP. El renderer
-  había terminado, pero Graph esperaba hasta el watchdog. En PS2 se conserva
-  un refresco pendiente; los demás mensajes mantienen su orden y semántica.
-  El watchdog sigue siendo finito (60 segundos) y registra la última etapa.
-- Los rectángulos en ciclos normales usan el combinador y la transparencia
-  primitiva; antes los fundidos negros se dibujaban opacos. El ciclo COPY
-  evita el combinador, como en el RDP.
-- Perfil de datos ampliado a escenas de demostración y sus objetos por
-  dependencias explícitas; se valida que todos los segmentos se hayan extraído.
-- Conversión de fuentes de sonido por sus punteros y estructuras: instrumentos,
-  percusión, efectos, envolventes, muestras, bucles y predictores. Datos de
-  ondas comprimidas y bytecode de secuencias permanecen intactos.
-- Intérprete de síntesis NEAD/OoT adaptado al EE, con código GPL-2.0-or-later
-  de Mupen64Plus y procedencia en `src/platform/ps2/audio/rsp_hle/README.md`.
-  El motor del juego sigue compilado como código nativo. Corregidos el orden
-  de bytes de AudioCmd y los argumentos s8/u16, y la detección de punteros
-  de muestras ya relocalizadas. Se registran tareas DSP y amplitud PCM.
-- Corregido el retorno ausente en `AudioHeap_AllocPermanent` para PS2: el
-  compilador devolvía la dirección de gAudioCtx y el DMA de instrumentos
-  sobreescribía el estado del audio. La prueba EE verifica punteros, datos
-  del caché y agotamiento del pool. Convertidos `title_static` y
-  `parameter_static` para seguir probando el selector de partida.
+- Fixed the argument order of gsKit Gouraud triangles: colors
+  were being interpreted as coordinates. The subsequent capture
+  makes Epona recognizable; its colors are still wrong and the scene is missing.
+- Homogeneous triangle clipping before dividing by W, checked with
+  near-plane crossing and geometry completely outside the volume.
+- Fixed blender fields, final cycle, actual Z-write control,
+  rectangle coordinates, and the relationship between texture load/render
+  descriptors, including their row strides.
+- CPU combiner for prim/env constants and per-vertex modulation; a lookup
+  table and a VRAM cache to reduce work. TEXEL1 is still approximated with
+  TEXEL0; it does not reproduce all combinations, fog, or perspective.
+- Fixed refresh notifications that filled the scheduler queue
+  during a slow frame and caused SP/DP signals to be lost. The renderer
+  had finished, but Graph waited until the watchdog. PS2 retains
+  one pending refresh; other messages retain their order and semantics.
+  The watchdog remains finite (60 seconds) and logs the latest stage.
+- Rectangles in normal cycles use the combiner and primitive
+  transparency; black fades were previously drawn opaque. The COPY cycle
+  bypasses the combiner, as in RDP.
+- Data profile expanded to demonstration scenes and their objects through
+  explicit dependencies; extraction of all segments is validated.
+- Soundfont conversion through their pointers and structures: instruments,
+  percussion, effects, envelopes, samples, loops, and predictors. Compressed
+  waveform data and sequence bytecode remain intact.
+- NEAD/OoT synthesis interpreter adapted to EE, with GPL-2.0-or-later code
+  from Mupen64Plus and provenance in `src/platform/ps2/audio/rsp_hle/README.md`.
+  The game engine remains compiled as native code. AudioCmd byte order
+  and s8/u16 arguments fixed, along with detection of pointers
+  to already-relocated samples. DSP tasks and PCM amplitude are logged.
+- Fixed the missing return in `AudioHeap_AllocPermanent` for PS2: the
+  compiler returned the address of gAudioCtx, and instrument DMA
+  overwrote audio state. The EE test verifies pointers, cache
+  data, and pool exhaustion. `title_static` and
+  `parameter_static` converted to continue testing file select.
 
-## Enlace completo y carga de escenas — 2026-09-26
+## Full linking and scene loading — 2026-09-26
 
-El juego completo ya enlaza con 707 objetos. PCSX2 completa `Play_Init` y la
-ejecución de diagnóstico alcanzó 900 fotogramas del estado `Play` en la secuencia
-del título sin excepciones registradas; **todavía no se ha validado como
-jugable ni se ha confirmado visualmente su imagen**.
+The full game now links with 707 objects. PCSX2 completes `Play_Init`, and the
+diagnostic run reached 900 frames in the `Play` state in the title
+sequence with no logged exceptions; **it has not yet been validated as
+playable, nor has its image been visually confirmed**.
 
-- Generador de metadatos ampliado con direcciones reales de mensajes y recursos,
-  y microcódigo original usado para identificar tareas; sin recursos ficticios.
-- Corregido el arranque que recursaba dentro de `memset`, usando newlib/SDK.
-  Corregida la lectura de región de la cabecera para el orden de bytes EE.
-- Completados servicios de estado SP/DP, FCSR y enumeración de hilos; los
-  fallos explícitos del juego se escriben en consola antes de detenerse.
-- Conversor privado `tools/prepare_ps2_rom.py`: usa las estructuras descubiertas
-  por el extractor upstream, incluidos recursos sin una declaración XML inicial.
-  Convierte campos por tamaño, preserva texturas y blobs de bytes, y registra
-  cada recurso en un manifiesto. No convierte automáticamente toda la ROM.
-- Conversión de Hyrule Field, recursos comunes, Link adulto, Epona y título.
-  Incluye objetos del escenario y sus colisiones; el perfil `title` selecciona
-  11 segmentos. Se corrigió el acceso inválido en `DynaPoly_AddBgActorToLookup`.
-  Las cinemáticas distinguen palabras, medios enteros y campos de un byte.
-  `tools/check_ps2_cutscenes.py` verifica cámara, posiciones, secuencias,
-  tiempo, texto, transiciones y rechazo de datos truncados.
-- `osContInit` conserva los puertos ya abiertos y devuelve una máscara de bits.
-  Lectura y consulta del mando notifican la finalización SI que espera PadMgr.
-- `tools/run_ps2_game.ps1` inicia la prueba con configuración aislada y conserva
-  el log anterior; solo reemplaza el proceso de esta prueba identificado por ELF.
-- Tabla de segmentos del renderer separada de la tabla del motor: los comandos
-  `G_MW_SEGMENT` escriben bases físicas del RSP sin corromper los punteros CPU.
-  La prueba EE confirma ambas tablas independientes y 120 fotogramas enviados.
-  También volvieron a pasar matrices, printf, colas, temporizadores y DMA
-  concurrente en `build/PS2/pcsx2-smoke.log`.
+- Metadata generator expanded with actual message and resource addresses,
+  and original microcode used to identify tasks; no placeholder resources.
+- Fixed startup recursion within `memset`, using newlib/SDK.
+  Header region reading corrected for EE byte order.
+- SP/DP status, FCSR, and thread enumeration services completed; explicit
+  game faults are written to the console before stopping.
+- Private converter `tools/prepare_ps2_rom.py`: uses structures discovered
+  by the upstream extractor, including resources without an initial XML declaration.
+  It converts fields by size, preserves textures and byte blobs, and logs
+  each resource in a manifest. It does not automatically convert the entire ROM.
+- Conversion of Hyrule Field, common resources, adult Link, Epona, and the title.
+  Includes scene objects and their collision data; the `title` profile selects
+  11 segments. Invalid access in `DynaPoly_AddBgActorToLookup` fixed.
+  Cutscenes distinguish words, halfwords, and single-byte fields.
+  `tools/check_ps2_cutscenes.py` verifies camera, positions, sequences,
+  timing, text, transitions, and rejection of truncated data.
+- `osContInit` preserves already-open ports and returns a bitmask.
+  Controller reading and querying signal the SI completion expected by PadMgr.
+- `tools/run_ps2_game.ps1` starts the test with an isolated configuration and preserves
+  the previous log; it replaces only this test's process, identified by ELF.
+- The renderer's segment table separated from the engine's table: commands
+  `G_MW_SEGMENT` write physical RSP bases without corrupting CPU pointers.
+  The EE test confirms both independent tables and 120 submitted frames.
+  Matrices, printf, queues, timers, and concurrent DMA
+  also passed again in `build/PS2/pcsx2-smoke.log`.
 
-Pendiente: validación visual (la captura de ventana falló por timeout), control
-interactivo y selección de partida, conversión de los demás escenarios/objetos,
-guardado del juego y procesamiento DSP de audio. El avance de fotogramas del
-título no sustituye estas verificaciones.
+Pending: visual validation (window capture timed out), interactive
+control and file selection, conversion of the remaining scenes/objects,
+game saving, and audio DSP processing. Title frame progression
+does not replace these checks.
 
-## Avance con herramientas reales — 2026-09-25 (histórico)
+## Progress with actual tools — 2026-09-25 (historical)
 
-Esta sección sustituye las conclusiones de la revisión histórica con headers
-falsos que aparece más abajo. En esta fecha el juego completo aún no enlazaba;
-el avance del 26 de septiembre está documentado arriba.
+This section supersedes the conclusions of the historical review with mock
+headers below. On this date, the full game still did not link;
+the September 26 progress is documented above.
 
-- Instalado ps2dev/GCC 15.2.0 en Ubuntu WSL; corregidas llamadas incompatibles
-  con ps2sdk/gsKit reales, flags del compilador y script de enlace del SDK.
-- Recuperados audio, libc, libc64, libu64, buffers y rutinas C de matrices y
-  trigonometría del upstream fijado en `UPSTREAM.md`.
-- Extraída la ROM local US NTSC 1.2. Generadas tablas DMA/audio en formato
-  nativo y direcciones VROM reales, sin sustituir recursos desconocidos por cero.
-- Inicialización del heap/framebuffers adaptada al espacio de direcciones EE;
-  ya no se copia código N64 sobre código nativo ni se borra el BSS desde boot.
-- Tablas de actores, estados y efectos usan código residente. Player, pausa
-  y marcas del mapa ya no intentan cargar sus instrucciones desde la ROM N64.
-  Pendiente revisar la reinicialización de datos estáticos al cambiar overlays
-  y medir el consumo total de RAM con todos los recursos integrados.
-- Arregladas las matrices de libultra para usar los mismos medios enteros de
-  16 bits que `Matrix_MtxFToMtx` y el renderer en little-endian.
-- Temporizador EE real con desbordamiento de 64 bits, alta de temporizadores
-  sin exigir memoria inicializada y envío de eventos fuera de la sección crítica.
-- Añadidos `_Printf` mediante newlib y restauración anidada de interrupciones.
-  Separado el símbolo de assert del juego del de newlib, que tiene otra firma.
-- Eliminada la mezcla de fuentes normal/Master Quest e implementaciones de
-  depuración N64/iQue en el build PS2.
-- Conversión de 110 includes de texturas: se invierte el valor numérico de cada
-  u64 para preservar los bytes originales al compilarlos en EE. No se aplica
-  esta transformación a vértices ni matrices.
-- Lecturas de ROM serializadas entre hilos mediante un semáforo. Se completan
-  las lecturas parciales y se rechazan accesos fuera del archivo; ya no se
-  presenta un relleno de ceros como una transferencia correcta. Las lecturas
-  escalares PI convierten big-endian y aceptan el alias KSEG1 del cartucho.
+- ps2dev/GCC 15.2.0 installed in Ubuntu WSL; calls incompatible
+  with actual ps2sdk/gsKit, compiler flags, and the SDK link script corrected.
+- Recovered audio, libc, libc64, libu64, buffers, and C matrix and
+  trigonometry routines from the upstream revision pinned in `UPSTREAM.md`.
+- Extracted the local US NTSC 1.2 ROM. DMA/audio tables generated in native
+  format and with actual VROM addresses, without replacing unknown resources with zero.
+- Heap/framebuffer initialization adapted to the EE address space;
+  N64 code is no longer copied over native code, nor is BSS cleared from boot.
+- Actor, state, and effect tables use resident code. Player, pause,
+  and map markers no longer try to load their instructions from the N64 ROM.
+  Reviewing static data reinitialization when changing overlays is pending,
+  as is measuring total RAM usage with all resources integrated.
+- libultra matrices fixed to use the same 16-bit halfwords
+  as `Matrix_MtxFToMtx` and the renderer in little-endian.
+- Actual EE timer with 64-bit wraparound, timer registration
+  without requiring initialized memory, and event submission outside the critical section.
+- `_Printf` through newlib and nested interrupt restoration added.
+  The game's assert symbol separated from newlib's, which has a different signature.
+- Removed the mixing of normal/Master Quest sources and N64/iQue
+  debugging implementations from the PS2 build.
+- Conversion of 110 texture includes: the numeric value of each u64
+  is reversed to preserve the original bytes when compiling them for EE. This
+  transformation is not applied to vertices or matrices.
+- ROM reads serialized between threads using a semaphore. Partial
+  reads are completed, and accesses outside the file are rejected; zero
+  padding is no longer presented as a successful transfer. Scalar PI reads
+  convert big-endian and accept the cartridge's KSEG1 alias.
 
-### Verificación
+### Verification
 
-PCSX2 2.8.0, con configuración aislada y BIOS existente, ejecutó el ELF de
-diagnóstico compilado con ps2dev. El log confirmó:
+PCSX2 2.8.0, with an isolated configuration and the existing BIOS, ran the
+diagnostic ELF compiled with ps2dev. The log confirmed:
 
 ```text
 [PS2 MATH TEST] PASS: native matrix layout and trigonometry (0)
@@ -3102,175 +3078,175 @@ diagnóstico compilado con ps2dev. El log confirmó:
 [PS2 SMOKE] PASS: 120 frames submitted
 ```
 
-La prueba OS también comprueba restauración anidada de interrupciones.
-`tools/check_ps2_texture_words.py` verificó que las 110 texturas conservan
-exactamente sus 212352 bytes originales dentro de un objeto compilado para EE.
-No se ha validado visualmente el render ni probado hardware físico.
-La última pasada compiló 709 objetos y llegó a la fase de enlace, pero falló
-con 8633 símbolos sin resolver y ninguna definición duplicada. El registro local
-es `build/PS2/game-native-final.log`; la lista deduplicada está en
-`build/PS2/unresolved-symbols.txt`. Compilar las unidades C no significa tener
-un ELF del juego funcional.
+The OS test also checks nested interrupt restoration.
+`tools/check_ps2_texture_words.py` verified that the 110 textures preserve
+exactly their 212352 original bytes within an object compiled for EE.
+Rendering has not been visually validated, and physical hardware has not been tested.
+The latest pass compiled 709 objects and reached the link stage but failed
+with 8633 unresolved symbols and no duplicate definitions. The local log
+is `build/PS2/game-native-final.log`; the deduplicated list is in
+`build/PS2/unresolved-symbols.txt`. Compiling the C units does not mean having
+a functional game ELF.
 
-### Trabajo pendiente
+### Remaining work
 
-Integrar símbolos y conversión de recursos (escenas, colisiones, esqueletos,
-animaciones y display lists); sustituir las dependencias de microcódigo/RCP,
-fallos y JPEG de N64; implementar DSP de audio y conversión de soundfonts;
-validar arranque, pantalla de título, controles y guardado con el juego real.
-La ruta de lectura de ROM todavía no proporciona todos los recursos en formato
-nativo. Activar globalmente una opción de endian no resuelve la mezcla de
-estructuras creadas por el CPU con datos leídos de la ROM.
+Integrate symbols and resource conversion (scenes, collision, skeletons,
+animations, and display lists); replace N64 microcode/RCP,
+fault, and JPEG dependencies; implement audio DSP and soundfont conversion;
+validate startup, title screen, controls, and saving with the actual game.
+The ROM read path still does not provide all resources in native
+format. Globally enabling an endian option does not resolve the mix of
+CPU-created structures and data read from ROM.
 
-## Cómo se verificó esto
+## How this was verified
 
-No basta con leer el código para saber si compila. Para este port en
-concreto:
+Reading the code is not enough to know whether it compiles. For this
+particular port:
 
-1. Se creó un conjunto de headers falsos que imitan las firmas de
-   ps2sdk/gsKit (`kernel.h`, `libpad.h`, `libmc.h`, `gsKit.h`...) para
-   poder pasar el compilador por la capa de PS2 sin tener el toolchain
-   real instalado.
-2. Se compiló en **modo 32 bits** (`-m32`), porque el EE es de 32 bits;
-   en 64 bits todos los `_Static_assert` de tamaño de struct dan falsos
-   negativos.
-3. Se compilaron los **structs reales del juego** (`include/ultra64/*.h`
-   con `-D_LANGUAGE_C=1 -DNON_MATCHING=1`) y se comparó cada firma que
-   implementa la capa PS2 contra el prototipo real. Esto encontró varios
-   errores propios (ver abajo) que una simple lectura no habría pillado.
-4. Se compilaron los **637 archivos fuente del juego** (`src/code`,
-   `src/boot`, `src/overlays`) con los flags finales del Makefile.
+1. A set of mock headers was created to imitate the signatures of
+   ps2sdk/gsKit (`kernel.h`, `libpad.h`, `libmc.h`, `gsKit.h`...) so
+   the PS2 layer could be run through the compiler without the actual
+   toolchain installed.
+2. It was compiled in **32-bit mode** (`-m32`), because EE is 32-bit;
+   in 64-bit mode, all struct-size `_Static_assert` checks give false
+   negatives.
+3. The **actual game structs** (`include/ultra64/*.h`
+   with `-D_LANGUAGE_C=1 -DNON_MATCHING=1`) were compiled, and every signature
+   implemented by the PS2 layer was compared against the actual prototype. This found several
+   mistakes made in the port (see below) that a simple reading would not have caught.
+4. All **637 game source files** (`src/code`,
+   `src/boot`, `src/overlays`) were compiled with the final Makefile flags.
 
-**Resultado de la última pasada:** 0 errores de código en los 637
-archivos del juego. Los que no compilan (462) fallan únicamente por
-`assets/... No such file or directory` — assets no extraídos, que es
-un paso previo de las herramientas del decomp, no un bug de código.
+**Result of the latest pass:** 0 code errors in all 637
+game files. Those that do not compile (462) fail only because of
+`assets/... No such file or directory` — unextracted assets, which are
+a prerequisite step of the decomp tools, rather than a code bug.
 
 ## Build system
 
-- **Makefile**: compilaba 145 archivos; ahora compila los 656 reales.
-  `src/overlays` (511 archivos: todos los actores, `z_title.c`,
-  `z_select.c`, el menú de pausa) y `src/audio` no estaban en absoluto
-  en el build.
-- Excluidos correctamente los 18 archivos `*.inc.c` (fragmentos que
-  otros `.c` incluyen, no unidades de compilación) y `fault_n64.c`
-  (choca con `fault.c` cuando `PLATFORM_N64=0`).
-- Flags que faltaban y bloqueaban el build entero: `-Iinclude/libc`,
+- **Makefile**: previously compiled 145 files; now compiles all 656 actual files.
+  `src/overlays` (511 files: all actors, `z_title.c`,
+  `z_select.c`, the pause menu) and `src/audio` were entirely absent
+  from the build.
+- Correctly excluded the 18 `*.inc.c` files (fragments included by
+  other `.c` files, rather than compilation units) and `fault_n64.c`
+  (conflicts with `fault.c` when `PLATFORM_N64=0`).
+- Missing flags that blocked the entire build: `-Iinclude/libc`,
   `-DOOT_VERSION=NTSC_1_0`, `-D_LANGUAGE_C=1`, `-DNON_MATCHING=1`,
   `-DDEBUG_FEATURES=0`, `-DOOT_DEBUG=0`, `BUILD_DATE`/`BUILD_CREATOR`.
-- Generación automática de dependencias (`-MMD -MP`).
+- Automatic dependency generation (`-MMD -MP`).
 
-## Arranque (`ps2_main.c`, `ps2_boot.c` nuevo)
+## Startup (`ps2_main.c`, new `ps2_boot.c`)
 
-- Se llamaba a `Game_Main()`, una función que no existe en ningún sitio
-  del decomp. Ahora se replica la cadena real:
+- It called `Game_Main()`, a function that does not exist anywhere
+  in the decomp. It now replicates the actual chain:
   `bootproc() → Idle_ThreadEntry → Main() → Graph_ThreadEntry`.
-- `Sched_Init()` se llamaba con 0 argumentos; la real lleva 6
+- `Sched_Init()` was called with 0 arguments; the actual function takes 6
   (`Scheduler*, stack, priority, viModeType, arg4, IrqMgr*`).
-- Orden de inicialización del IOP corregido: reset del IOP primero,
-  luego `SIO2MAN → PADMAN`, `MCMAN → MCSERV`, `LIBSD → audsrv.irx`
-  (antes se cargaba PADMAN sin SIO2MAN y se llamaba a `audsrv_init()`
-  sin cargar su IRX).
-- `rdp_to_gs_init()` no la llamaba nadie → puntero de GS a `NULL`.
+- IOP initialization order corrected: IOP reset first,
+  then `SIO2MAN → PADMAN`, `MCMAN → MCSERV`, `LIBSD → audsrv.irx`
+  (previously, PADMAN was loaded without SIO2MAN, and `audsrv_init()` was called
+  without loading its IRX).
+- Nobody called `rdp_to_gs_init()` → GS pointer was `NULL`.
 
-## Stubs de libultra (`src/platform/ps2/libultra_stub/`)
+## libultra stubs (`src/platform/ps2/libultra_stub/`)
 
-- **`osMessage.c`**: `OSMesgQueue` estaba inflado (~44 bytes en vez de
-  los 24 reales), corrompiendo la memoria vecina en cada
-  `osCreateMesgQueue()`. Ahora el struct es del tamaño exacto y los
-  semáforos van en tabla lateral.
-- **`osThread.c`**: pila del hilo confundía tope con base y usaba
-  tamaño fijo de 4 KB. Ahora usa pilas propias de 32 KB gestionadas
-  aparte, sin tocar el struct `OSThread` del juego.
-- **`osTimer.c`** (antes roto): los timers se registraban en un array
-  que nadie recorría; ahora hay una lista enlazada real y
-  `ps2_timer_tick()` la procesa cada frame.
-- **`osTask.c`**: `osSpTaskStart` no avisaba nunca de que la tarea
-  gráfica había terminado → el hilo de gráficos se quedaba colgado para
-  siempre en el primer frame. Ahora dispara los eventos SP/DP.
-- **`osEvent.c`, `osVi.c`, `osRom.c`, `osMisc.c`** (nuevos, no
-  existían): `osSetEventMesg`/retrace vertical, lectura de la "ROM" por
-  fichero vía DMA, y vibración conectada a `osMotorStart/Stop` (que en
-  realidad son **macros**, no funciones — error propio corregido tras
-  compilar contra el header real).
-- **`osContPad.c`**: doble inicialización de puertos eliminada
-  (`ps2_main.c` y este archivo abrían los mismos puertos con buffers
-  DMA distintos); mapeo de botones C corregido (Circle/R3 chocaban).
+- **`osMessage.c`**: `OSMesgQueue` was oversized (~44 bytes instead of
+  the actual 24), corrupting neighboring memory on every
+  `osCreateMesgQueue()`. The struct now has the exact size, and the
+  semaphores are stored in a side table.
+- **`osThread.c`**: the thread stack confused top with base and used
+  a fixed size of 4 KB. It now uses its own 32 KB stacks, managed
+  separately, without touching the game's `OSThread` struct.
+- **`osTimer.c`** (previously broken): timers were registered in an array
+  that nobody traversed; there is now an actual linked list, and
+  `ps2_timer_tick()` processes it each frame.
+- **`osTask.c`**: `osSpTaskStart` never signaled that the graphics
+  task had finished → the graphics thread hung forever
+  on the first frame. It now fires SP/DP events.
+- **`osEvent.c`, `osVi.c`, `osRom.c`, `osMisc.c`** (new, previously
+  absent): `osSetEventMesg`/vertical retrace, reading the "ROM" from a
+  file via DMA, and rumble connected to `osMotorStart/Stop` (which are
+  actually **macros**, rather than functions — a mistake in the port corrected after
+  compiling against the actual header).
+- **`osContPad.c`**: duplicate port initialization removed
+  (`ps2_main.c` and this file opened the same ports with different DMA
+  buffers); C-button mapping corrected (Circle/R3 conflicted).
 
-### Errores propios detectados sólo al compilar contra los headers reales
+### Mistakes in the port found only by compiling against the actual headers
 
-- `osAppNMIBuffer` estaba declarado `void*`; el real es
-  `s32 osAppNMIBuffer[0x10]` (un array, no un puntero).
-- `osMotorStart`/`osMotorStop` son macros que expanden a
-  `__osMotorAccess()`, no funciones — implementarlas como funciones no
-  las habría enlazado nunca.
+- `osAppNMIBuffer` was declared as `void*`; the actual declaration is
+  `s32 osAppNMIBuffer[0x10]` (an array, rather than a pointer).
+- `osMotorStart`/`osMotorStop` are macros that expand to
+  `__osMotorAccess()`, rather than functions — implementing them as functions
+  would never have linked them.
 - `osAfterPreNMI`, `osContStartReadData`, `osContStartQuery`,
-  `osContSetCh` devuelven `s32`, no `void`.
-- `G_MV_VIEWPORT`/`G_MV_L0` usados con los valores del F3DEX **antiguo**
-  (`0x80`/`0x86`) en vez de los de F3DEX2 (`8`/`10`). `gbi.h` pone el
-  comentario "F3DEX_GBI_2" justo en la rama contraria, es fácil
-  equivocarse.
+  `osContSetCh` return `s32`, rather than `void`.
+- `G_MV_VIEWPORT`/`G_MV_L0` used **old** F3DEX values
+  (`0x80`/`0x86`) instead of F3DEX2 values (`8`/`10`). `gbi.h` places the
+  "F3DEX_GBI_2" comment right in the opposite branch, making it easy
+  to get wrong.
 
-## Gráficos (`src/platform/ps2/gfx/`)
+## Graphics (`src/platform/ps2/gfx/`)
 
-- **`ps2_segment.h`** (nuevo): traducción de direcciones segmentadas
-  (`gSegments[]`), que antes no se hacía en ningún sitio — cualquier
-  puntero a vértices/texturas en una display list real se interpretaba
-  como dirección literal.
-- **`rdp_to_gs.c`**: `G_VTX` (0x01) colisionaba con `G_SPNOOP` en el
-  switch — dos `case` con el mismo valor ni compilan. La carga de
-  vértices caía en la rama de "no hacer nada".
-- **`f3dex2_ps2.c`**: viewport nunca se configuraba (buscaba el índice
-  en el opcode equivocado), `G_POPMTX` leía la palabra que no era,
-  geometry mode borraba los 8 bits altos por una máscara incompleta.
-- **`rdp_color.c`**: faltaban `G_SETOTHERMODE_H/L` (los que OoT usa de
-  verdad); dos archivos distintos escribían el registro `TEST` del GS
-  por separado y se pisaban.
+- **`ps2_segment.h`** (new): translation of segmented addresses
+  (`gSegments[]`), previously absent everywhere — any vertex/texture
+  pointer in an actual display list was interpreted
+  as a literal address.
+- **`rdp_to_gs.c`**: `G_VTX` (0x01) collided with `G_SPNOOP` in the
+  switch — two `case` labels with the same value do not even compile. Vertex
+  loading fell into the "do nothing" branch.
+- **`f3dex2_ps2.c`**: the viewport was never configured (it looked for the index
+  in the wrong opcode), `G_POPMTX` read the wrong word,
+  and geometry mode cleared the upper 8 bits through an incomplete mask.
+- **`rdp_color.c`**: `G_SETOTHERMODE_H/L` were missing (the ones OoT actually
+  uses); two separate files wrote the GS `TEST` register
+  independently and overwrote each other.
 
-## Audio y guardado
+## Audio and saving
 
-- Colisión de símbolos con el decomp real: `Audio_Init` y
-  `func_800F4C58` ya existen en `src/audio/game/general.c` con otra
-  firma. Todo renombrado a `PS2Audio_*`.
-- Remuestreo del mezclador perdía el acarreo (`&= 0xFFFF` descartaba
-  bits en sonidos agudos).
-- Guardado reescrito con la API real de `libmc` (`mcOpen`/`mcSync`...);
-  antes usaba `open`/`read`/`write` que no aplican a `mc0:` en PS2, y
-  nada de este archivo lo llamaba nadie.
+- Symbol collision with the actual decomp: `Audio_Init` and
+  `func_800F4C58` already exist in `src/audio/game/general.c` with a different
+  signature. Everything renamed to `PS2Audio_*`.
+- Mixer resampling lost the carry (`&= 0xFFFF` discarded
+  bits in high-pitched sounds).
+- Saving rewritten with the actual `libmc` API (`mcOpen`/`mcSync`...);
+  it previously used `open`/`read`/`write`, which do not apply to `mc0:` on PS2, and
+  nobody called anything in this file.
 
-## Linker (`linker/linkfile.ps2`, `tools/gen_segment_syms.py` nuevo)
+## Linker (`linker/linkfile.ps2`, new `tools/gen_segment_syms.py`)
 
-- No definía ninguno de los ~165 símbolos `_xxxSegmentStart/End/...`
-  que el juego referencia. `linkfile.ps2` define a mano los que hacen
-  falta para arrancar; `gen_segment_syms.py` genera automáticamente el
-  resto leyendo el código (`linker/segments.ld`).
+- It defined none of the ~165 `_xxxSegmentStart/End/...` symbols
+  referenced by the game. `linkfile.ps2` manually defines those needed
+  to boot; `gen_segment_syms.py` automatically generates the
+  rest by reading the code (`linker/segments.ld`).
 
-## Endianness de assets (`tools/swap_assets.py`, nuevo)
+## Asset endianness (`tools/swap_assets.py`, new)
 
-El hallazgo más fácil de pasar por alto de todo el port: hay DOS clases
-de display list — las de los **assets** (extraídas de la ROM,
-big-endian) y las que el juego **construye en tiempo de ejecución**
-(compiladas para PS2, little-endian). Ningún modo de lectura acierta
-con las dos. La solución es convertir los assets a little-endian una
-vez al extraerlos; `swap_assets.py` lo hace por tipo de dato (voltea
-`.dlist`/`.mtx` en palabras de 16/32 bits, respeta los 4 bytes de color
-de cada `.vtx`, y no toca en absoluto las texturas de 1 byte como I4/I8,
-que se romperían si se voltean).
+The easiest finding to overlook in the entire port: there are TWO kinds
+of display list — those in the **assets** (extracted from ROM,
+big-endian) and those the game **constructs at runtime**
+(compiled for PS2, little-endian). No read mode handles
+both correctly. The solution is to convert assets to little-endian once
+when extracting them; `swap_assets.py` does so by data type (swapping
+`.dlist`/`.mtx` in 16/32-bit words, preserving the 4 color bytes
+of each `.vtx`, and leaving 1-byte textures such as I4/I8 entirely untouched,
+as swapping them would break them).
 
-## Lo que NO está resuelto (y por qué no es un simple parche más)
+## What is NOT resolved (and why it is more than another simple patch)
 
-- **Combinador de color del RDP** (`G_SETCOMBINE`): decide cómo se
-  mezclan textura/color/sombreado en cada superficie. Sin esto casi
-  todo sale con el color equivocado. Requiere traducir la máquina de
-  combinación de N64 a los TFX del GS, e iterar mirando resultados en
-  pantalla.
-- **Síntesis de audio real** (música, no sólo efectos): el motor de
-  audio del decomp (`src/audio/`) no está ni copiado al port. Portar la
-  reproducción de secuencias MIDI-like de N64 es un subsistema entero.
-- **Relocalización de overlays**: los actores se enlazan estáticamente
-  en vez de cargarse en runtime a una dirección variable, que es como
-  funciona realmente el sistema de overlays de N64.
+- **RDP color combiner** (`G_SETCOMBINE`): determines how
+  texture/color/shading are blended on each surface. Without this, almost
+  everything has the wrong color. It requires translating the N64
+  combiner machine to GS TFX modes and iterating while looking at the results
+  on screen.
+- **Actual audio synthesis** (music, rather than just effects): the decomp's
+  audio engine (`src/audio/`) has not even been copied into the port. Porting
+  N64 MIDI-like sequence playback is an entire subsystem.
+- **Overlay relocation**: actors are linked statically
+  rather than being loaded at runtime at a variable address, which is how
+  the N64 overlay system actually works.
 
-Estos tres puntos son trabajo de meses, no bugs puntuales, y necesitan
-verse correr en la consola/emulador para iterar — no se pueden terminar
-"a ciegas".
+These three points are months of work, rather than isolated bugs, and require
+seeing them run on the console/emulator to iterate — they cannot be completed
+"blindly."
