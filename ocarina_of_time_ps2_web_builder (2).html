@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>oot-ps2 — Builder</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            transition: background-color 0.15s ease, color 0.15s ease;
+        }
+        html.dark body,
+        html.dark main,
+        html.dark section,
+        html.dark header,
+        html.dark footer,
+        html.dark div,
+        html.dark span,
+        html.dark p,
+        html.dark h1,
+        html.dark h2,
+        html.dark label,
+        html.dark a {
+            color: #ffffff;
+        }
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(128, 128, 128, 0.25);
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="bg-[#fafafa] text-neutral-900 dark:bg-[#0a0a0a] dark:text-neutral-100 font-sans antialiased min-h-screen flex flex-col justify-between">
+
+    <!-- Contenedor Principal Minimalista -->
+    <main class="w-full max-w-[600px] mx-auto px-4 pt-10 pb-8 space-y-6">
+
+        <!-- Cabecera -->
+        <header class="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-4">
+            <div class="flex items-baseline gap-2.5">
+                <h1 class="text-lg font-semibold tracking-tight text-neutral-900 dark:text-white">oot-ps2</h1>
+                <a href="https://github.com/lucianodos/oot-ps2" target="_blank" rel="noopener noreferrer"
+                   class="text-xs font-mono text-neutral-500 dark:text-white opacity-80 hover:opacity-100 transition">
+                    github.com/lucianodos/oot-ps2
+                </a>
+            </div>
+            <button id="btnThemeToggle" type="button"
+                    class="text-xs font-mono px-2.5 py-1 rounded-md border border-neutral-300 dark:border-neutral-700 text-neutral-700 dark:text-white hover:bg-neutral-100 dark:hover:bg-neutral-900 transition">
+                Oscuro
+            </button>
+        </header>
+
+        <!-- Estado de conexión con el repositorio GitHub -->
+        <section class="flex items-center justify-between px-3.5 py-2.5 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#111111] text-xs font-mono">
+            <div class="flex items-center gap-2">
+                <span id="repoDot" class="w-2 h-2 rounded-full bg-neutral-400 dark:bg-neutral-500"></span>
+                <span id="repoStatusText" class="text-neutral-700 dark:text-white">Conectando con lucianodos/oot-ps2...</span>
+            </div>
+            <div class="flex items-center gap-3">
+                <button id="btnLocalElfTrigger" type="button"
+                        class="underline opacity-75 hover:opacity-100 text-neutral-600 dark:text-white">
+                    Cargar .elf local
+                </button>
+                <button id="btnToggleWorkflow" type="button"
+                        class="underline opacity-75 hover:opacity-100 text-neutral-600 dark:text-white">
+                    GitHub Action
+                </button>
+                <input type="file" id="customElfInput" accept=".elf,.ELF" class="hidden" />
+            </div>
+        </section>
+
+        <!-- Panel desplegable: GitHub Actions para compilar el repo automáticamente en GitHub -->
+        <section id="workflowHelperPanel" class="hidden border border-neutral-200 dark:border-neutral-800 rounded-lg bg-white dark:bg-[#111111] p-4 space-y-2.5 text-xs">
+            <div class="flex items-center justify-between">
+                <span class="font-medium text-neutral-900 dark:text-white">Compilación automática en GitHub (`.github/workflows/build-ps2.yml`)</span>
+                <button id="btnCopyWorkflow" type="button"
+                        class="font-mono text-[11px] px-2.5 py-1 rounded border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition">
+                    Copiar YAML
+                </button>
+            </div>
+            <p class="text-neutral-600 dark:text-white opacity-80 leading-relaxed">
+                Agrega este archivo a tu repositorio <code class="font-mono">lucianodos/oot-ps2</code> para que GitHub compile el código C con <code class="font-mono">ps2sdk</code> y publique <code class="font-mono">oot-ps2.elf</code> automáticamente:
+            </p>
+            <pre id="workflowYamlCode" class="p-3 rounded bg-neutral-100 dark:bg-[#0a0a0a] border border-neutral-200 dark:border-neutral-800 font-mono text-[10px] overflow-x-auto leading-relaxed select-all">name: Build PS2 ELF
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: ps2dev/ps2dev:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile oot-ps2.elf
+        run: |
+          apk add --no-cache python3 make bash
+          make -j$(nproc)
+      - name: Publish oot-ps2.elf to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          files: |
+            oot-ps2.elf
+            build/oot-ps2.elf</pre>
+        </section>
+
+        <!-- Único Paso: Poner tu ROM legal de Nintendo 64 -->
+        <section class="space-y-2">
+            <div class="flex items-center justify-between text-xs">
+                <span class="font-medium text-neutral-800 dark:text-white">ROM de Nintendo 64</span>
+                <span id="romStatusBadge" class="font-mono text-neutral-500 dark:text-white opacity-80">Esperando ROM</span>
+            </div>
+
+            <div id="romDropzone"
+                 class="border border-dashed border-neutral-300 dark:border-neutral-800 hover:border-neutral-500 dark:hover:border-neutral-600 rounded-lg p-8 text-center cursor-pointer bg-white dark:bg-[#111111] transition">
+                <input type="file" id="romFileInput" accept=".z64,.n64,.v64,.rom,.bin" class="hidden" />
+                <p id="dropzonePrimaryText" class="text-sm font-medium text-neutral-800 dark:text-white">
+                    Arrastra o selecciona tu ROM legal (.z64, .v64, .n64)
+                </p>
+                <p id="dropzoneSubText" class="text-xs text-neutral-500 dark:text-white opacity-75 font-mono mt-1.5">
+                    Conversión automática a Big-Endian y empaquetado con lucianodos/oot-ps2
+                </p>
+            </div>
+        </section>
+
+        <!-- Datos de la ROM y Botones de Compilación / Armado -->
+        <section id="romDetailsSection" class="hidden space-y-4">
+            <div class="border border-neutral-200 dark:border-neutral-800 rounded-lg bg-white dark:bg-[#111111] p-4 space-y-3">
+                <div class="flex items-center justify-between border-b border-neutral-100 dark:border-neutral-800 pb-2.5">
+                    <span class="text-xs font-medium text-neutral-600 dark:text-white">ROM Verificada</span>
+                    <span id="metaFormatTag" class="text-[11px] font-mono px-2 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-white">
+                        .z64
+                    </span>
+                </div>
+
+                <div class="grid grid-cols-2 gap-y-2.5 gap-x-4 text-xs font-mono">
+                    <div>
+                        <span class="opacity-60 block text-[10px]">TÍTULO</span>
+                        <span id="valTitle">—</span>
+                    </div>
+                    <div>
+                        <span class="opacity-60 block text-[10px]">ID / VERSIÓN</span>
+                        <span id="valGameId">—</span>
+                    </div>
+                    <div>
+                        <span class="opacity-60 block text-[10px]">CRC HEADER</span>
+                        <span id="valCrc">—</span>
+                    </div>
+                    <div>
+                        <span class="opacity-60 block text-[10px]">DMADATA (`z_std_dma`)</span>
+                        <span id="valDma">—</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Botones de Salida -->
+            <div class="grid grid-cols-2 gap-3">
+                <button id="btnBuildElf" type="button"
+                        class="py-2.5 px-4 rounded-lg text-xs font-mono font-medium border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-900 dark:text-white transition flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">
+                    <span>Generar .ELF</span>
+                </button>
+                <button id="btnBuildIso" type="button"
+                        class="py-2.5 px-4 rounded-lg text-xs font-mono font-medium border border-neutral-900 dark:border-white bg-neutral-900 hover:bg-neutral-800 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-white transition flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">
+                    <span>Generar .ISO (PS2)</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- Consola de Salida y Progreso -->
+        <section class="space-y-2">
+            <div class="w-full h-1 bg-neutral-200 dark:bg-neutral-900 rounded-full overflow-hidden">
+                <div id="progressBar" class="h-full bg-neutral-800 dark:bg-white transition-all duration-200" style="width: 0%"></div>
+            </div>
+            <div id="logBox"
+                 class="border border-neutral-200 dark:border-neutral-800 rounded-lg bg-white dark:bg-[#111111] p-3 h-32 overflow-y-auto font-mono text-[11px] text-neutral-700 dark:text-white space-y-1">
+                <div>[oot-ps2] Sube tu ROM legal de N64 para armar tu ejecutable de PS2.</div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Pie de Página -->
+    <footer class="w-full max-w-[600px] mx-auto px-4 py-6 text-center border-t border-neutral-200 dark:border-neutral-900">
+        <p class="text-xs font-mono text-neutral-600 dark:text-white">Hecho por LucianoDoS</p>
+    </footer>
+
+    <script>
+        /**
+         * Constructora Web conectada a lucianodos/oot-ps2
+         * Flujo de 1 solo paso: el usuario sube su ROM legal de N64 y la aplicación
+         * descarga el motor compilado oot-ps2.elf desde el repositorio GitHub (o local)
+         * para generar el .ELF o la imagen .ISO de PlayStation 2.
+         */
+        const GITHUB_REPO = 'lucianodos/oot-ps2';
+
+        const appState = {
+            romBytes: null,       // Uint8Array (.z64 Big-Endian)
+            romName: '',
+            romInfo: null,
+            baseElfBytes: null,   // Uint8Array del oot-ps2.elf compilado desde el repo
+            baseElfName: '',
+            elfMeta: null
+        };
+
+        // Tabla CRC32 estándar
+        const CRC32_LUT = (() => {
+            const t = new Uint32Array(256);
+            for (let i = 0; i < 256; i++) {
+                let c = i;
+                for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+                t[i] = c >>> 0;
+            }
+            return t;
+        })();
+
+        function calcCrc32(u8) {
+            let crc = 0xFFFFFFFF;
+            for (let i = 0; i < u8.length; i++) {
+                crc = CRC32_LUT[(crc ^ u8[i]) & 0xFF] ^ (crc >>> 8);
+            }
+            return (crc ^ 0xFFFFFFFF) >>> 0;
+        }
+
+        function writeLog(text, isError = false) {
+            const box = document.getElementById('logBox');
+            const div = document.createElement('div');
+            div.className = isError ? 'font-semibold underline' : 'opacity-90';
+            div.textContent = text;
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function setProgress(pct) {
+            document.getElementById('progressBar').style.width = `${pct}%`;
+        }
+
+        function updateActionButtons() {
+            const hasRom = Boolean(appState.romBytes);
+            document.getElementById('btnBuildElf').disabled = !hasRom;
+            document.getElementById('btnBuildIso').disabled = !hasRom;
+        }
+
+        /**
+         * Verifica que el binario ELF32 sea un ejecutable MIPS R5900 válido de PS2
+         * con su Entry Point alineado a 4 bytes.
+         */
+        function parseAndValidatePs2Elf(u8, sourceName) {
+            if (u8.length < 52) {
+                throw new Error('El binario ELF es demasiado pequeño.');
+            }
+            const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+
+            if (u8[0] !== 0x7F || u8[1] !== 0x45 || u8[2] !== 0x4C || u8[3] !== 0x46) {
+                throw new Error('El archivo no tiene una cabecera ELF32 válida.');
+            }
+
+            const eiClass = u8[4];
+            const eiData  = u8[5];
+            const eType   = dv.getUint16(16, true);
+            const eMach   = dv.getUint16(18, true);
+            const eEntry  = dv.getUint32(24, true);
+            const ePhoff  = dv.getUint32(28, true);
+            const eShoff  = dv.getUint32(32, true);
+            const ePhentsize = dv.getUint16(42, true);
+            const ePhnum     = dv.getUint16(44, true);
+            const eShentsize = dv.getUint16(46, true);
+            const eShnum     = dv.getUint16(48, true);
+            const eShstrndx  = dv.getUint16(50, true);
+
+            if (eiClass !== 1 || eiData !== 1 || eMach !== 8 || eType !== 2) {
+                throw new Error('El binario no corresponde a un ejecutable MIPS R5900 de PlayStation 2.');
+            }
+            if ((eEntry & 3) !== 0 || eEntry < 0x00080000 || eEntry >= 0x02000000) {
+                throw new Error(`Entry Point inválido o desalineado (0x${eEntry.toString(16)}).`);
+            }
+
+            let ptLoadCount = 0;
+            for (let i = 0; i < ePhnum; i++) {
+                const phOff = ePhoff + i * ePhentsize;
+                if (phOff + 32 <= u8.length && dv.getUint32(phOff, true) === 1) {
+                    ptLoadCount++;
+                }
+            }
+            if (ptLoadCount === 0) {
+                throw new Error('El ELF no contiene segmentos ejecutables PT_LOAD.');
+            }
+
+            let releaseSection = null;
+            if (eShoff > 0 && eShnum > 0 && eShstrndx < eShnum) {
+                const strHdrOff = eShoff + eShstrndx * eShentsize;
+                if (strHdrOff + 40 <= u8.length) {
+                    const strTabOff  = dv.getUint32(strHdrOff + 16, true);
+                    const strTabSize = dv.getUint32(strHdrOff + 20, true);
+
+                    for (let i = 0; i < eShnum; i++) {
+                        const shOff = eShoff + i * eShentsize;
+                        if (shOff + 40 > u8.length) break;
+                        const shNameIdx = dv.getUint32(shOff, true);
+                        const shType    = dv.getUint32(shOff + 4, true);
+                        const shAddr    = dv.getUint32(shOff + 12, true);
+                        const shOffset  = dv.getUint32(shOff + 16, true);
+                        const shSize    = dv.getUint32(shOff + 20, true);
+
+                        let secName = '';
+                        if (strTabOff + shNameIdx < u8.length && strTabSize > 0) {
+                            let p = strTabOff + shNameIdx;
+                            while (p < u8.length && u8[p] !== 0 && secName.length < 64) {
+                                secName += String.fromCharCode(u8[p++]);
+                            }
+                        }
+
+                        if (secName === '.ps2_release_data' || secName === '.romdata') {
+                            releaseSection = { index: i, name: secName, type: shType, addr: shAddr, offset: shOffset, size: shSize };
+                        }
+                    }
+                }
+            }
+
+            return { sourceName, eEntry, ePhnum, ptLoadCount, eShnum, releaseSection };
+        }
+
+        function applyValidatedElf(u8, sourceLabel) {
+            const meta = parseAndValidatePs2Elf(u8, sourceLabel);
+            appState.baseElfBytes = u8;
+            appState.baseElfName = sourceLabel;
+            appState.elfMeta = meta;
+
+            const sizeKB = (u8.length / 1024).toFixed(1);
+            const entryHex = '0x' + meta.eEntry.toString(16).toUpperCase().padStart(8, '0');
+
+            const dot = document.getElementById('repoDot');
+            dot.className = 'w-2 h-2 rounded-full bg-neutral-900 dark:bg-white';
+            document.getElementById('repoStatusText').textContent = `Motor PS2 listo (${sourceLabel} · ${sizeKB} KB · Entry ${entryHex})`;
+            document.getElementById('workflowHelperPanel').classList.add('hidden');
+
+            writeLog(`[github] Motor PS2 cargado (${sourceLabel}, Entry=${entryHex}).`);
+            updateActionButtons();
+        }
+
+        /**
+         * Busca automáticamente el ejecutable oot-ps2.elf compilado desde:
+         * 1. Misma ruta del hosting (./oot-ps2.elf o ./build/oot-ps2.elf)
+         * 2. Rama principal de github.com/lucianodos/oot-ps2
+         * 3. Último Release publicado en github.com/lucianodos/oot-ps2/releases
+         */
+        async function syncEngineFromGitHub() {
+            const directUrls = [
+                { url: './oot-ps2.elf', label: 'oot-ps2.elf' },
+                { url: './build/oot-ps2.elf', label: 'build/oot-ps2.elf' },
+                { url: `https://raw.githubusercontent.com/${GITHUB_REPO}/main/oot-ps2.elf`, label: 'github:main/oot-ps2.elf' },
+                { url: `https://raw.githubusercontent.com/${GITHUB_REPO}/main/build/oot-ps2.elf`, label: 'github:main/build/oot-ps2.elf' },
+                { url: `https://raw.githubusercontent.com/${GITHUB_REPO}/master/oot-ps2.elf`, label: 'github:master/oot-ps2.elf' }
+            ];
+
+            for (const item of directUrls) {
+                try {
+                    const res = await fetch(item.url, { method: 'GET', cache: 'no-store' });
+                    if (res.ok) {
+                        const buf = await res.arrayBuffer();
+                        const u8 = new Uint8Array(buf);
+                        if (u8.length > 52 && u8[0] === 0x7F && u8[1] === 0x45 && u8[2] === 0x4C && u8[3] === 0x46) {
+                            applyValidatedElf(u8, item.label);
+                            return true;
+                        }
+                    }
+                } catch (_) {
+                    // Intentar siguiente origen
+                }
+            }
+
+            // Consultar GitHub Releases API de lucianodos/oot-ps2
+            try {
+                const relRes = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`);
+                if (relRes.ok) {
+                    const relData = await relRes.json();
+                    if (Array.isArray(relData.assets)) {
+                        const elfAsset = relData.assets.find(a => a.name && a.name.toLowerCase().endsWith('.elf'));
+                        if (elfAsset && elfAsset.browser_download_url) {
+                            const binRes = await fetch(elfAsset.browser_download_url);
+                            if (binRes.ok) {
+                                const buf = await binRes.arrayBuffer();
+                                const u8 = new Uint8Array(buf);
+                                if (u8.length > 52 && u8[0] === 0x7F && u8[1] === 0x45 && u8[2] === 0x4C && u8[3] === 0x46) {
+                                    applyValidatedElf(u8, `release/${elfAsset.name}`);
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (_) {
+                // Sin release público aún
+            }
+
+            document.getElementById('repoStatusText').textContent = 'lucianodos/oot-ps2 (falta publicar oot-ps2.elf en el repo)';
+            writeLog('[github] No se encontró oot-ps2.elf precompilado en lucianodos/oot-ps2. Usa "GitHub Action" para compilarlo en la nube o "Cargar .elf local".');
+            return false;
+        }
+            return t;
+        })();
+
+        function calcCrc32(u8) {
+            let crc = 0xFFFFFFFF;
+            for (let i = 0; i < u8.length; i++) {
+                crc = CRC32_LUT[(crc ^ u8[i]) & 0xFF] ^ (crc >>> 8);
+            }
+            return (crc ^ 0xFFFFFFFF) >>> 0;
+        }
+
+        function writeLog(text, isError = false) {
+            const box = document.getElementById('logBox');
+            const div = document.createElement('div');
+            div.className = isError ? 'font-semibold underline' : 'opacity-90';
+            div.textContent = text;
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function setProgress(pct) {
+            document.getElementById('progressBar').style.width = `${pct}%`;
+        }
+
+        function updateActionButtons() {
+            const ready = Boolean(appState.baseElfBytes && appState.romBytes);
+            document.getElementById('btnBuildElf').disabled = !ready;
+            document.getElementById('btnBuildIso').disabled = !ready;
+        }
+
+        /**
+         * Valida estrictamente que el archivo ELF sea un ejecutable PS2 MIPS R5900 real
+         * y que su punto de entrada (e_entry) esté alineado a 4 bytes.
+         */
+        function parseAndValidatePs2Elf(u8, sourceName) {
+            if (u8.length < 52) {
+                throw new Error('El archivo es demasiado pequeño para ser un ejecutable ELF32.');
+            }
+            const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+
+            // Verificar magia 0x7F 'E' 'L' 'F'
+            if (u8[0] !== 0x7F || u8[1] !== 0x45 || u8[2] !== 0x4C || u8[3] !== 0x46) {
+                const magicHex = dv.getUint32(0, false).toString(16).toUpperCase().padStart(8, '0');
+                if (magicHex === '80371240' || magicHex === '37804012' || magicHex === '40123780') {
+                    throw new Error('Subiste una ROM de N64 en el paso 1. Aquí debes subir el ejecutable oot-ps2.elf compilado.');
+                }
+                throw new Error(`Cabecera ELF inválida (0x${magicHex}).`);
+            }
+
+            const eiClass = u8[4]; // 1 = 32-bit
+            const eiData  = u8[5]; // 1 = Little-Endian
+            const eType   = dv.getUint16(16, true); // 2 = ET_EXEC
+            const eMach   = dv.getUint16(18, true); // 8 = EM_MIPS
+            const eEntry  = dv.getUint32(24, true);
+            const ePhoff  = dv.getUint32(28, true);
+            const eShoff  = dv.getUint32(32, true);
+            const ePhentsize = dv.getUint16(42, true);
+            const ePhnum     = dv.getUint16(44, true);
+            const eShentsize = dv.getUint16(46, true);
+            const eShnum     = dv.getUint16(48, true);
+            const eShstrndx  = dv.getUint16(50, true);
+
+            if (eiClass !== 1 || eiData !== 1) {
+                throw new Error('El ELF debe ser de 32 bits y Little-Endian (estándar PS2 Emotion Engine).');
+            }
+            if (eMach !== 8) {
+                throw new Error(`Arquitectura ELF incorrecta (e_machine=${eMach}). Se requiere MIPS R5900 (8).`);
+            }
+            if (eType !== 2) {
+                throw new Error(`El ELF no es un ejecutable final (e_type=${eType}, se esperaba ET_EXEC=2).`);
+            }
+            if ((eEntry & 3) !== 0) {
+                throw new Error(`Entry Point desalineado (0x${eEntry.toString(16)}). Causaría R5900 Exception en PCSX2.`);
+            }
+            if (eEntry < 0x00080000 || eEntry >= 0x02000000) {
+                throw new Error(`Entry Point fuera de la RAM del Emotion Engine (0x${eEntry.toString(16)}).`);
+            }
+
+            // Contar segmentos PT_LOAD válidos
+            let ptLoadCount = 0;
+            for (let i = 0; i < ePhnum; i++) {
+                const phOff = ePhoff + i * ePhentsize;
+                if (phOff + 32 <= u8.length) {
+                    const pType = dv.getUint32(phOff, true);
+                    if (pType === 1) ptLoadCount++;
+                }
+            }
+
+            if (ptLoadCount === 0) {
+                throw new Error('El ELF no contiene ningún segmento ejecutable PT_LOAD.');
+            }
+
+            // Buscar si existe la sección .ps2_release_data en la tabla de secciones
+            let releaseSection = null;
+            if (eShoff > 0 && eShnum > 0 && eShstrndx < eShnum) {
+                const strHdrOff = eShoff + eShstrndx * eShentsize;
+                if (strHdrOff + 40 <= u8.length) {
+                    const strTabOff  = dv.getUint32(strHdrOff + 16, true);
+                    const strTabSize = dv.getUint32(strHdrOff + 20, true);
+
+                    for (let i = 0; i < eShnum; i++) {
+                        const shOff = eShoff + i * eShentsize;
+                        if (shOff + 40 > u8.length) break;
+                        const shNameIdx = dv.getUint32(shOff, true);
+                        const shType    = dv.getUint32(shOff + 4, true);
+                        const shAddr    = dv.getUint32(shOff + 12, true);
+                        const shOffset  = dv.getUint32(shOff + 16, true);
+                        const shSize    = dv.getUint32(shOff + 20, true);
+
+                        let secName = '';
+                        if (strTabOff + shNameIdx < u8.length && strTabSize > 0) {
+                            let p = strTabOff + shNameIdx;
+                            while (p < u8.length && u8[p] !== 0 && secName.length < 64) {
+                                secName += String.fromCharCode(u8[p++]);
+                            }
+                        }
+
+                        if (secName === '.ps2_release_data' || secName === '.romdata') {
+                            releaseSection = {
+                                index: i,
+                                name: secName,
+                                type: shType,
+                                addr: shAddr,
+                                offset: shOffset,
+                                size: shSize
+                            };
+                        }
+                    }
+                }
+            }
+
+            return {
+                sourceName,
+                eEntry,
+                ePhnum,
+                ptLoadCount,
+                eShnum,
+                releaseSection
+            };
+        }
+
+        function applyValidatedElf(u8, fileName) {
+            const meta = parseAndValidatePs2Elf(u8, fileName);
+            appState.baseElfBytes = u8;
+            appState.baseElfName = fileName;
+            appState.elfMeta = meta;
+
+            const sizeKB = (u8.length / 1024).toFixed(1);
+            const entryHex = '0x' + meta.eEntry.toString(16).toUpperCase().padStart(8, '0');
+
+            document.getElementById('elfStatusBadge').textContent = `${sizeKB} KB`;
+            document.getElementById('elfPrimaryText').textContent = `${fileName} (${sizeKB} KB)`;
+            document.getElementById('elfSubText').textContent = `MIPS R5900 válido · Entry Point: ${entryHex}`;
+
+            document.getElementById('valElfEntry').textContent = entryHex;
+            document.getElementById('valElfPhdr').textContent = `${meta.ptLoadCount} (${meta.ePhnum} total)`;
+            document.getElementById('valElfSection').textContent = meta.releaseSection
+                ? `${meta.releaseSection.name} (0x${meta.releaseSection.offset.toString(16)})`
+                : 'Externa (ISO / USB)';
+
+            document.getElementById('elfDetailsBox').classList.remove('hidden');
+            updateActionButtons();
+
+            writeLog(`[elf32] "${fileName}" validado: Entry=${entryHex} (alineado a 4 bytes), ${meta.ptLoadCount} segmento(s) PT_LOAD.`);
+        }
+
+        // Intenta detectar automáticamente si existe ./oot-ps2.elf precompilado junto al HTML
+        async function probeLocalCompiledElf() {
+            const candidates = ['./oot-ps2.elf', './OOT_PS2.ELF', './build/oot-ps2.elf'];
+            for (const path of candidates) {
+                try {
+                    const res = await fetch(path, { method: 'GET', cache: 'no-store' });
+                    if (res.ok) {
+                        const buf = await res.arrayBuffer();
+                        const u8 = new Uint8Array(buf);
+                        if (u8.length > 52 && u8[0] === 0x7F && u8[1] === 0x45 && u8[2] === 0x4C && u8[3] === 0x46) {
+                            applyValidatedElf(u8, path);
+                            return;
+                        }
+                    }
+                } catch (_) {
+                    // Continúa si no está alojado en esa ruta
+                }
+            }
+        }
+
+        // Normaliza cualquier variante de ROM N64 a Big-Endian (.z64) como hace tools/prepare_ps2_rom.py
+        function normalizeRomToZ64(arrayBuffer) {
+            const raw = new Uint8Array(arrayBuffer);
+            if (raw.length < 0x1060) {
+                throw new Error('Archivo demasiado pequeño para ser una ROM válida de Ocarina of Time.');
+            }
+
+            const dv = new DataView(arrayBuffer);
+            const magic = dv.getUint32(0, false);
+            const out = new Uint8Array(raw.length);
+            let endianLabel = '';
+
+            if (magic === 0x80371240) {
+                endianLabel = '.z64 (Big-Endian)';
+                out.set(raw);
+            } else if (magic === 0x37804012) {
+                endianLabel = '.v64 -> .z64 (Byte-Swapped)';
+                for (let i = 0; i < raw.length; i += 2) {
+                    out[i] = raw[i + 1];
+                    out[i + 1] = raw[i];
+                }
+            } else if (magic === 0x40123780) {
+                endianLabel = '.n64 -> .z64 (Little-Endian)';
+                for (let i = 0; i < raw.length; i += 4) {
+                    out[i]     = raw[i + 3];
+                    out[i + 1] = raw[i + 2];
+                    out[i + 2] = raw[i + 1];
+                    out[i + 3] = raw[i];
+                }
+            } else {
+                if (raw[0] === 0x7F && raw[1] === 0x45 && raw[2] === 0x4C && raw[3] === 0x46) {
+                    throw new Error('Seleccionaste un archivo .ELF en el paso 2. Súbelo en el paso 1.');
+                }
+                throw new Error(`Firma N64 inválida (0x${magic.toString(16).toUpperCase()}). Usa una ROM .z64, .v64 o .n64.`);
+            }
+
+            return { z64: out, endianLabel };
+        }
+
+        // Escanea la ROM buscando la tabla dmadata real (src/boot/z_std_dma.c)
+        function scanDmaDataTable(z64) {
+            const dv = new DataView(z64.buffer, z64.byteOffset, z64.byteLength);
+            const maxScan = Math.min(z64.length - 64, 0x040000);
+
+            for (let off = 0x1000; off < maxScan; off += 16) {
+                const e0_vStart = dv.getUint32(off, false);
+                const e0_vEnd   = dv.getUint32(off + 4, false);
+                const e0_rStart = dv.getUint32(off + 8, false);
+                const e0_rEnd   = dv.getUint32(off + 12, false);
+
+                const e2_vStart = dv.getUint32(off + 32, false);
+                const e2_rStart = dv.getUint32(off + 40, false);
+
+                if (e0_vStart === 0 && (e0_vEnd === 0x1060 || e0_vEnd === 0x1000) && e0_rStart === 0 && e0_rEnd === 0 &&
+                    e2_vStart === off && e2_rStart === off) {
+                    let count = 0;
+                    let ptr = off;
+                    while (ptr + 16 <= z64.length && count < 4096) {
+                        const vs = dv.getUint32(ptr, false);
+                        const ve = dv.getUint32(ptr + 4, false);
+                        const rs = dv.getUint32(ptr + 8, false);
+                        const re = dv.getUint32(ptr + 12, false);
+                        if (vs === 0 && ve === 0 && rs === 0 && re === 0 && count > 0) {
+                            break;
+                        }
+                        count++;
+                        ptr += 16;
+                    }
+                    const tableByteLength = (count + 1) * 16;
+                    return {
+                        offset: off,
+                        entries: count,
+                        rawTable: z64.subarray(off, Math.min(z64.length, off + tableByteLength))
+                    };
+                }
+            }
+
+            return {
+                offset: 0x007430,
+                entries: 0,
+                rawTable: z64.subarray(0x007430, Math.min(z64.length, 0x007430 + 0x6000))
+            };
+        }
+
+        function handleRomFile(file) {
+            setProgress(20);
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                try {
+                    const { z64, endianLabel } = normalizeRomToZ64(ev.target.result);
+                    const dv = new DataView(z64.buffer, z64.byteOffset, z64.byteLength);
+
+                    let title = '';
+                    for (let i = 0x20; i < 0x34; i++) {
+                        const c = z64[i];
+                        if (c >= 32 && c <= 126) title += String.fromCharCode(c);
+                    }
+                    title = title.trim() || 'THE LEGEND OF ZELDA';
+
+                    let gameId = '';
+                    for (let i = 0x3B; i < 0x3F; i++) {
+                        const c = z64[i];
+                        if (c >= 32 && c <= 126) gameId += String.fromCharCode(c);
+                    }
+                    const ver = z64[0x3F];
+                    const crc1 = dv.getUint32(0x10, false).toString(16).toUpperCase().padStart(8, '0');
+                    const crc2 = dv.getUint32(0x14, false).toString(16).toUpperCase().padStart(8, '0');
+                    const dma = scanDmaDataTable(z64);
+                    const romCrc32 = calcCrc32(z64);
+
+                    appState.romBytes = z64;
+                    appState.romName = file.name;
+                    appState.romInfo = {
+                        title,
+                        gameId: gameId || 'CZLE',
+                        version: ver,
+                        crc1,
+                        crc2,
+                        romCrc32,
+                        endianLabel,
+                        dma
+                    };
+
+                    const sizeMB = (z64.length / (1024 * 1024)).toFixed(2);
+                    document.getElementById('romStatusBadge').textContent = `${sizeMB} MB`;
+                    document.getElementById('dropzonePrimaryText').textContent = file.name;
+                    document.getElementById('dropzoneSubText').textContent = `${sizeMB} MB · CRC32: ${romCrc32.toString(16).toUpperCase().padStart(8, '0')}`;
+                    document.getElementById('metaFormatTag').textContent = endianLabel;
+
+                    document.getElementById('valTitle').textContent = title;
+                    document.getElementById('valGameId').textContent = `${gameId} (1.${ver})`;
+                    document.getElementById('valCrc').textContent = `${crc1} / ${crc2}`;
+                    document.getElementById('valDma').textContent = dma.entries > 0
+                        ? `0x${dma.offset.toString(16).toUpperCase()} (${dma.entries} segs)`
+                        : `0x${dma.offset.toString(16).toUpperCase()}`;
+
+                    document.getElementById('romDetailsSection').classList.remove('hidden');
+                    updateActionButtons();
+                    setProgress(100);
+
+                    writeLog(`[rom] "${file.name}" convertida a ${endianLabel} (${sizeMB} MB).`);
+                    writeLog(`[z_std_dma] Tabla dmadata detectada en 0x${dma.offset.toString(16).toUpperCase()} (${dma.entries} segmentos).`);
+                } catch (err) {
+                    setProgress(0);
+                    writeLog(`[error] ${err.message}`, true);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        /**
+         * Inyecta o enlaza la ROM en el ELF real sin tocar jamás e_entry ni los segmentos ejecutables (.text).
+         */
+        function buildSafePs2Elf() {
+            if (!appState.baseElfBytes || !appState.elfMeta) {
+                document.getElementById('workflowHelperPanel').classList.remove('hidden');
+                throw new Error('El repositorio lucianodos/oot-ps2 aún no tiene publicado oot-ps2.elf. Activa el GitHub Action mostrado arriba o haz clic en "Cargar .elf local".');
+            }
+            const base = appState.baseElfBytes;
+            const z64  = appState.romBytes;
+            const info = appState.romInfo;
+            const meta = appState.elfMeta;
+            const enc  = new TextEncoder();
+
+            // Si el ELF tiene una sección .ps2_release_data con espacio preasignado para la ROM, escribimos en ese offset
+            if (meta.releaseSection && meta.releaseSection.type === 1 &&
+                meta.releaseSection.size >= z64.length &&
+                meta.releaseSection.offset + z64.length <= base.length) {
+                const patched = new Uint8Array(base.length);
+                patched.set(base);
+                patched.set(z64, meta.releaseSection.offset);
+                writeLog(`[elf32] ROM inyectada en sección ${meta.releaseSection.name} (offset 0x${meta.releaseSection.offset.toString(16)}).`);
+                return patched;
+            }
+
+            // Si el ELF carga assets externos o lee el bloque al final del archivo,
+            // alineamos a 16 bytes sin modificar ningún Program Header ni el Entry Point.
+            const releaseHeader = new Uint8Array(64);
+            const rdv = new DataView(releaseHeader.buffer);
+            releaseHeader.set(enc.encode('OOTPS2RD'), 0);
+            rdv.setUint32(0x08, 1, true);
+            rdv.setUint32(0x0C, z64.length, true);
+            rdv.setUint32(0x10, info.romCrc32, true);
+            rdv.setUint32(0x14, info.dma.offset, true);
+            rdv.setUint32(0x18, info.dma.entries, true);
+            rdv.setUint32(0x1C, parseInt(info.crc1, 16) >>> 0, true);
+            rdv.setUint32(0x20, parseInt(info.crc2, 16) >>> 0, true);
+            releaseHeader.set(enc.encode(info.title.slice(0, 20)), 0x24);
+            releaseHeader.set(enc.encode(info.gameId.slice(0, 4)), 0x38);
+
+            const alignedBase = (base.length + 15) & ~15;
+            const out = new Uint8Array(alignedBase + releaseHeader.length + z64.length);
+            out.set(base, 0);
+            out.set(releaseHeader, alignedBase);
+            out.set(z64, alignedBase + releaseHeader.length);
+            return out;
+        }
+
+        /**
+         * Construye una imagen ISO9660 estándar (sectores de 2048 bytes) para PS2:
+         * Empaqueta el ejecutable oot-ps2.elf 100% INTACTO (bit-for-bit) junto a
+         * SYSTEM.CNF y la ROM normalizada (con entradas ROM.Z64 y OOT.Z64 apuntando al mismo LBA).
+         */
+        function assemblePs2Iso(untouchedElfBytes, romBytes) {
+            const SECTOR = 2048;
+            const enc = new TextEncoder();
+
+            const sysCnfText = 'BOOT2 = cdrom0:\\OOT_PS2.ELF;1\r\nVER = 1.00\r\nVMODE = NTSC\r\n';
+            const cnfBytes = enc.encode(sysCnfText);
+
+            const cnfSectors = Math.ceil(cnfBytes.length / SECTOR);
+            const elfSectors = Math.ceil(untouchedElfBytes.length / SECTOR);
+            const romSectors = Math.ceil(romBytes.length / SECTOR);
+
+            const lbaRoot = 20;
+            const lbaCnf  = 21;
+            const lbaElf  = lbaCnf + cnfSectors;
+            const lbaRom  = lbaElf + elfSectors;
+            const totalSectors = lbaRom + romSectors;
+
+            const isoBuf = new ArrayBuffer(totalSectors * SECTOR);
+            const iso = new Uint8Array(isoBuf);
+            const dv = new DataView(isoBuf);
+
+            function setBoth32(off, val) {
+                dv.setUint32(off, val, true);
+                dv.setUint32(off + 4, val, false);
+            }
+            function setBoth16(off, val) {
+                dv.setUint16(off, val, true);
+                dv.setUint16(off + 2, val, false);
+            }
+            function setAscii(off, str, len) {
+                for (let i = 0; i < len; i++) {
+                    iso[off + i] = i < str.length ? str.charCodeAt(i) : 0x20;
+                }
+            }
+            function writeDirEntry(off, lba, size, isDir, name) {
+                const nameArr = typeof name === 'string' ? enc.encode(name) : name;
+                const nLen = nameArr.length;
+                const recLen = 33 + nLen + (nLen % 2 === 0 ? 1 : 0);
+                iso[off] = recLen;
+                setBoth32(off + 2, lba);
+                setBoth32(off + 10, size);
+                iso[off + 18] = 126; // 2026
+                iso[off + 19] = 11;
+                iso[off + 20] = 12;
+                iso[off + 25] = isDir ? 0x02 : 0x00;
+                setBoth16(off + 28, 1);
+                iso[off + 32] = nLen;
+                iso.set(nameArr, off + 33);
+                return recLen;
+            }
+
+            // Primary Volume Descriptor (Sector 16)
+            const pvd = 16 * SECTOR;
+            iso[pvd] = 1;
+            setAscii(pvd + 1, 'CD001', 5);
+            iso[pvd + 6] = 1;
+            setAscii(pvd + 8, 'PLAYSTATION', 32);
+            setAscii(pvd + 40, 'OOT_PS2', 32);
+            setBoth32(pvd + 80, totalSectors);
+            setBoth16(pvd + 120, 1);
+            setBoth16(pvd + 124, 1);
+            setBoth16(pvd + 128, SECTOR);
+            setBoth32(pvd + 132, 10);
+            dv.setUint32(pvd + 140, 18, true);
+            dv.setUint32(pvd + 148, 19, false);
+            writeDirEntry(pvd + 156, lbaRoot, SECTOR, true, new Uint8Array([0]));
+            setAscii(pvd + 318, 'LUCIANODOS', 128);
+            setAscii(pvd + 574, 'PLAYSTATION 2', 128);
+            iso[pvd + 881] = 1;
+
+            // Volume Descriptor Set Terminator (Sector 17)
+            const vdst = 17 * SECTOR;
+            iso[vdst] = 255;
+            setAscii(vdst + 1, 'CD001', 5);
+            iso[vdst + 6] = 1;
+
+            // Path Tables (Sector 18 LE & Sector 19 BE)
+            iso[18 * SECTOR] = 1;
+            dv.setUint32(18 * SECTOR + 2, lbaRoot, true);
+            dv.setUint16(18 * SECTOR + 6, 1, true);
+
+            iso[19 * SECTOR] = 1;
+            dv.setUint32(19 * SECTOR + 2, lbaRoot, false);
+            dv.setUint16(19 * SECTOR + 6, 1, false);
+
+            // Directorio Raíz (Sector 20)
+            // Incluye alias para el ELF y para la ROM apuntando al mismo sector LBA (sin duplicar tamaño)
+            let dp = lbaRoot * SECTOR;
+            dp += writeDirEntry(dp, lbaRoot, SECTOR, true, new Uint8Array([0]));
+            dp += writeDirEntry(dp, lbaRoot, SECTOR, true, new Uint8Array([1]));
+            dp += writeDirEntry(dp, lbaCnf, cnfBytes.length, false, 'SYSTEM.CNF;1');
+            dp += writeDirEntry(dp, lbaElf, untouchedElfBytes.length, false, 'OOT_PS2.ELF;1');
+            dp += writeDirEntry(dp, lbaRom, romBytes.length, false, 'ROM.Z64;1');
+            dp += writeDirEntry(dp, lbaRom, romBytes.length, false, 'OOT.Z64;1');
+
+            // Escribir archivos en sus LBA correspondientes
+            iso.set(cnfBytes, lbaCnf * SECTOR);
+            iso.set(untouchedElfBytes, lbaElf * SECTOR);
+            iso.set(romBytes, lbaRom * SECTOR);
+
+            return iso;
+        }
+
+        function triggerDownload(u8Array, fileName) {
+            const blob = new Blob([u8Array], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 4000);
+        }
+
+        function handleElfFile(file) {
+            const r = new FileReader();
+            r.onload = (ev) => {
+                try {
+                    const u8 = new Uint8Array(ev.target.result);
+                    applyValidatedElf(u8, file.name);
+                } catch (err) {
+                    writeLog(`[error] ${err.message}`, true);
+                }
+            };
+            r.readAsArrayBuffer(file);
+        }
+
+        // Inicialización de eventos
+        window.addEventListener('DOMContentLoaded', () => {
+            // Detectar tema del sistema por defecto, manteniendo el botón con el texto "Oscuro"
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+                document.documentElement.classList.remove('dark');
+            }
+
+            syncEngineFromGitHub();
+            updateActionButtons();
+
+            // Botón de modo Oscuro
+            const btnTheme = document.getElementById('btnThemeToggle');
+            btnTheme.addEventListener('click', () => {
+                document.documentElement.classList.toggle('dark');
+                btnTheme.textContent = 'Oscuro';
+            });
+
+            // Botones auxiliares de cabecera para GitHub Action / ELF local
+            const elfInput = document.getElementById('customElfInput');
+            document.getElementById('btnLocalElfTrigger').addEventListener('click', () => elfInput.click());
+            elfInput.addEventListener('change', (e) => {
+                if (e.target.files && e.target.files[0]) {
+                    handleElfFile(e.target.files[0]);
+                }
+            });
+
+            const workflowPanel = document.getElementById('workflowHelperPanel');
+            document.getElementById('btnToggleWorkflow').addEventListener('click', () => {
+                workflowPanel.classList.toggle('hidden');
+            });
+
+            document.getElementById('btnCopyWorkflow').addEventListener('click', () => {
+                const code = document.getElementById('workflowYamlCode').textContent;
+                const ta = document.createElement('textarea');
+                ta.value = code;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                document.getElementById('btnCopyWorkflow').textContent = 'Copiado';
+                setTimeout(() => {
+                    document.getElementById('btnCopyWorkflow').textContent = 'Copiar YAML';
+                }, 1800);
+            });
+
+            // Selector único de ROM
+            const dropzone = document.getElementById('romDropzone');
+            const romInput = document.getElementById('romFileInput');
+
+            dropzone.addEventListener('click', () => romInput.click());
+            dropzone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropzone.classList.add('border-neutral-600', 'dark:border-neutral-400');
+            });
+            dropzone.addEventListener('dragleave', () => {
+                dropzone.classList.remove('border-neutral-600', 'dark:border-neutral-400');
+            });
+            dropzone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropzone.classList.remove('border-neutral-600', 'dark:border-neutral-400');
+                if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                    handleRomFile(e.dataTransfer.files[0]);
+                }
+            });
+            romInput.addEventListener('change', (e) => {
+                if (e.target.files && e.target.files[0]) {
+                    handleRomFile(e.target.files[0]);
+                }
+            });
+
+            // Acción: Generar .ELF
+            document.getElementById('btnBuildElf').addEventListener('click', async () => {
+                if (!appState.romBytes) return;
+                try {
+                    setProgress(35);
+                    if (!appState.baseElfBytes) {
+                        await syncEngineFromGitHub();
+                    }
+                    const elf = buildSafePs2Elf();
+                    setProgress(100);
+                    writeLog(`[build_ps2] Generado oot-ps2.elf (${(elf.length / (1024 * 1024)).toFixed(2)} MB) listo para PCSX2.`);
+                    triggerDownload(elf, 'oot-ps2.elf');
+                } catch (err) {
+                    setProgress(0);
+                    writeLog(`[error] ${err.message}`, true);
+                }
+            });
+
+            // Acción: Generar .ISO (PS2)
+            document.getElementById('btnBuildIso').addEventListener('click', async () => {
+                if (!appState.romBytes) return;
+                try {
+                    setProgress(35);
+                    if (!appState.baseElfBytes) {
+                        await syncEngineFromGitHub();
+                    }
+                    if (!appState.baseElfBytes) {
+                        document.getElementById('workflowHelperPanel').classList.remove('hidden');
+                        throw new Error('El repositorio lucianodos/oot-ps2 aún no tiene publicado oot-ps2.elf. Activa el GitHub Action mostrado arriba o usa "Cargar .elf local".');
+                    }
+                    writeLog(`[iso9660] Empaquetando ${appState.baseElfName} + SYSTEM.CNF + ROM.Z64...`);
+                    await new Promise(r => setTimeout(r, 80));
+
+                    const iso = assemblePs2Iso(appState.baseElfBytes, appState.romBytes);
+                    setProgress(100);
+                    writeLog(`[iso9660] Imagen oot-ps2.iso generada (${iso.length / 2048} sectores, ${(iso.length / (1024 * 1024)).toFixed(2)} MB).`);
+                    triggerDownload(iso, 'oot-ps2.iso');
+                } catch (err) {
+                    setProgress(0);
+                    writeLog(`[error] ${err.message}`, true);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
